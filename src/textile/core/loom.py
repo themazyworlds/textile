@@ -111,10 +111,13 @@ class Loom:
         if not yarn or not strand or not strand.handler:
             return f"Error: Strand '{strand_name}' not found or no provider yarn is enabled."
 
+        handler = strand.handler
+
         if strand.capability and strand.capability in self._capability_to_strand:
             active_s, active_y = self._capability_to_strand[strand.capability]
             if active_y.name != yarn.name:
                 strand, yarn = active_s, active_y
+                handler = strand.handler or handler
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
@@ -127,9 +130,9 @@ class Loom:
         success = True
         err = None
         try:
-            if inspect.iscoroutinefunction(strand.handler):
-                return await strand.handler(args)
-            return await asyncio.to_thread(strand.handler, args)
+            if inspect.iscoroutinefunction(handler):
+                return await handler(args)
+            return await asyncio.to_thread(handler, args)
         except Exception as e:
             success = False
             err = str(e)
@@ -180,7 +183,9 @@ class Loom:
         and strips matched attunement tokens from the returned text.
         """
         self.initialize()
-        if not chunk or not self.wefts:
+        if not chunk:
+            return chunk or ""
+        if not self.wefts:
             return chunk
 
         # Collect all matches across active wefts
@@ -214,7 +219,9 @@ class Loom:
     async def process_stream_async(self, chunk: str) -> str:
         """Asynchronous streaming text processor for active Wefts."""
         self.initialize()
-        if not chunk or not self.wefts:
+        if not chunk:
+            return chunk or ""
+        if not self.wefts:
             return chunk
 
         all_matches = []

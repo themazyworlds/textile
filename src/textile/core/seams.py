@@ -6,6 +6,7 @@ import importlib
 import logging
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -172,43 +173,15 @@ class SeamOrchestrator:
         uv_bin = shutil.which("uv")
         if uv_bin:
             try:
-                cmd = [uv_bin, "pip", "compile", "-", "-q"]
-                r_in, w_in = os.pipe()
-                r_out, w_out = os.pipe()
-                r_err, w_err = os.pipe()
-                file_actions = [
-                    (os.POSIX_SPAWN_DUP2, r_in, 0),
-                    (os.POSIX_SPAWN_DUP2, w_out, 1),
-                    (os.POSIX_SPAWN_DUP2, w_err, 2),
-                    (os.POSIX_SPAWN_CLOSE, r_in),
-                    (os.POSIX_SPAWN_CLOSE, w_in),
-                    (os.POSIX_SPAWN_CLOSE, r_out),
-                    (os.POSIX_SPAWN_CLOSE, w_out),
-                    (os.POSIX_SPAWN_CLOSE, r_err),
-                    (os.POSIX_SPAWN_CLOSE, w_err),
-                ]
-                os.write(w_in, req.encode())
-                os.close(w_in)
-
-                pid = os.posix_spawn(cmd[0], cmd, os.environ, file_actions=file_actions)
-                os.close(r_in)
-                os.close(w_out)
-                os.close(w_err)
-
-                err_chunks = []
-                while True:
-                    chunk = os.read(r_err, 4096)
-                    if not chunk:
-                        break
-                    err_chunks.append(chunk)
-                os.close(r_err)
-                os.close(r_out)
-
-                _, status = os.waitpid(pid, 0)
-                returncode = os.waitstatus_to_exitcode(status)
-                stderr_text = b"".join(err_chunks).decode().strip()
-
-                if returncode == 0:
+                res = subprocess.run(
+                    [uv_bin, "pip", "compile", "-", "-q"],
+                    input=req,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                if res.returncode == 0:
                     return DependencyCheck(
                         dep_type=DependencyType.PYTHON_MODULE,
                         target=req,
@@ -217,7 +190,7 @@ class SeamOrchestrator:
                         is_optional=optional,
                     )
                 else:
-                    err = stderr_text.splitlines()[-1] if stderr_text else "Resolution error"
+                    err = res.stderr.strip().splitlines()[-1] if res.stderr else "Resolution error"
                     return DependencyCheck(
                         dep_type=DependencyType.PYTHON_MODULE,
                         target=req,
@@ -225,7 +198,7 @@ class SeamOrchestrator:
                         details=f"uv dependency conflict: {err}",
                         is_optional=optional,
                     )
-            except (OSError, ValueError, RuntimeError) as e:
+            except (subprocess.SubprocessError, OSError, ValueError) as e:
                 logger.debug(f"uv dependency compile error: {e}")
 
         base_pkg = req
@@ -236,8 +209,12 @@ class SeamOrchestrator:
 
     def check_env_variable(self, var_name: str, optional: bool = False) -> DependencyCheck:
         val = os.environ.get(var_name)
-        satisfied = val is not None and len(val.strip()) > 0
-        details = f"Set (len={len(val)})" if satisfied else f"Environment variable '{var_name}' is unset or empty"
+        if val is not None and len(val.strip()) > 0:
+            details = f"Set (len={len(val)})"
+            satisfied = True
+        else:
+            details = f"Environment variable '{var_name}' is unset or empty"
+            satisfied = False
         return DependencyCheck(
             dep_type=DependencyType.ENV_VARIABLE,
             target=var_name,

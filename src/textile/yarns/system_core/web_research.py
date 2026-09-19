@@ -135,7 +135,7 @@ def fetch_webpage(url: str) -> str:
             headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"},
         )
         with urllib.request.urlopen(req, timeout=12) as response:
-            content_type = response.headers.get("Content-Type", "")
+            response.headers.get("Content-Type", "")
             raw_data = response.read()
 
         text = raw_data.decode("utf-8", errors="replace")

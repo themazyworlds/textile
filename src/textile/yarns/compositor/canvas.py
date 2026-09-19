@@ -175,7 +175,7 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
             caller = event.get("caller", "")
             strand = event.get("strand", "")
             # Ignore internal Canvas UI strands and passive state inspections
-            if strand.startswith("canvas_") or strand.startswith("textile_get_"):
+            if strand.startswith(("canvas_", "textile_get_")):
                 return
             # The forehead gemstone only ripples when an actual system/agent tool task is channeled by Weave
             if caller == "weave":

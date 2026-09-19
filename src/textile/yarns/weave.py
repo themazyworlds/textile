@@ -5,8 +5,10 @@ Provides seamless real-time full-duplex voice companion bound to the Textile int
 
 import os
 import re
+import shutil
 import sys
 from collections.abc import AsyncGenerator, AsyncIterable
+from pathlib import Path
 from typing import Any
 
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, cli, mcp
@@ -14,11 +16,11 @@ from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import google
 
 from textile.core.loom import loom
+from textile.core.warp import WarpEvent, warp
 
 server = AgentServer()
 
 MOOD_TAG_REGEX = re.compile(r"<mood:([a-zA-Z_-]+)>", re.IGNORECASE)
-from textile.core.warp import WarpEvent, warp
 
 
 def extract_and_apply_mood_tags(content: str) -> None:
@@ -52,19 +54,21 @@ class WeaveAgent(Agent):
                     yield clean_delta
 
 
-@server.rtc_session()
+@server.rtc_session(agent_name="weave")
 async def entrypoint(ctx: JobContext):
+    # Enrich log context with room identity
+    ctx.log_context_fields = {"room": ctx.room.name}
+
     # Prewarm Loom and active yarns before connecting audio session
     loom.initialize()
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     model_name = os.getenv("TEXTILE_LIVE_MODEL", os.getenv("WEAVE_LIVE_MODEL", "gemini-3.8-live"))
     voice_name = os.getenv("TEXTILE_VOICE", os.getenv("WEAVE_VOICE", "Puck"))
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
+    # LiveKit Google plugin automatically resolves GOOGLE_API_KEY from environment
     realtime_model = google.realtime.RealtimeModel(
         model=model_name,
-        api_key=api_key,
         voice=voice_name,
     )
 
@@ -132,8 +136,11 @@ async def entrypoint(ctx: JobContext):
     )
 
     await session.start(room=ctx.room, agent=agent)
-    await session.generate_reply(instructions="Say a brief, confident hello with <mood:happy> stating that desktop systems and voice weave are online.")
-
+    await session.generate_reply(
+        instructions=(
+            "Say a brief, confident hello with <mood:happy> stating that desktop systems and voice weave are online."
+        )
+    )
 
 
 def run_voice_agent(
@@ -143,9 +150,6 @@ def run_voice_agent(
     text_mode: bool = False,
 ):
     """Entry point to run Weave Voice Agent using LiveKit CLI (lk)."""
-    import shutil
-    from pathlib import Path
-
     os.environ["TEXTILE_LIVE_MODEL"] = model
     os.environ["TEXTILE_VOICE"] = voice
     os.environ["WEAVE_LIVE_MODEL"] = model

@@ -20,7 +20,7 @@ try:
 except Exception:
     Variant = None
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, CapabilityTier, strand
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, CapabilityTier, Yarn, strand
 from textile.yarns.protocols.dbus_system import dbus_api
 
 logger = logging.getLogger(__name__)
@@ -295,8 +295,7 @@ polkit.addRule(function(action, subject) {{
         try:
             proc = subprocess.run(
                 cmd_args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 env=exec_env,
                 timeout=timeout_seconds,

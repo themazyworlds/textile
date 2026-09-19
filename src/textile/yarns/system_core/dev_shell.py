@@ -7,7 +7,7 @@ Layer 10 (Core POSIX).
 import os
 import subprocess
 
-from textile.core.base import LAYER_BASE, Yarn, CapabilityTier, strand
+from textile.core.base import LAYER_BASE, CapabilityTier, Yarn, strand
 
 
 class DevShell(Yarn):
@@ -50,8 +50,7 @@ class DevShell(Yarn):
             res = subprocess.run(
                 cmd,
                 shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 timeout=25,
                 cwd=os.getcwd()

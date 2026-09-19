@@ -92,7 +92,7 @@ class Skein:
                     try:
                         if yarn.is_available():
                             active[name] = yarn
-                    except Exception as e:  # noqa: BLE001
+                    except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                         logger.debug(f"Yarn '{name}' availability check failed: {e}")
             return active
 
@@ -103,7 +103,7 @@ class Skein:
                 instance = getattr(mod, cls_name)()
                 with self._lock:
                     self.all_yarns[instance.name] = instance
-            except Exception as e:  # noqa: BLE001
+            except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.debug(f"Skipping builtin yarn {mod_path}: {e}")
 
     def load_entrypoint_yarns(self) -> None:
@@ -115,9 +115,9 @@ class Skein:
                         instance = yarn_cls()
                         with self._lock:
                             self.all_yarns[instance.name] = instance
-                except Exception as e:  # noqa: BLE001
+                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                     logger.debug(f"Failed loading entrypoint yarn {ep}: {e}")
-        except Exception as e:  # noqa: BLE001
+        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
             logger.debug(f"Failed scanning entrypoints: {e}")
 
     def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
@@ -137,7 +137,7 @@ class Skein:
                             instance = attr()
                             with self._lock:
                                 self.all_yarns[instance.name] = instance
-            except Exception as e:  # noqa: BLE001
+            except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.debug(f"Failed loading user yarn {py_file}: {e}")
 
     def _load_config(self) -> None:

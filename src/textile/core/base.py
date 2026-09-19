@@ -2,16 +2,14 @@
 Textile Core Yarn & Strand System - Base Interfaces & Definitions.
 """
 
-import contextlib
-import importlib
 import inspect
 import json
 import logging
-import multiprocessing
 import os
 import pwd
 import re
 import shutil
+import subprocess
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -85,7 +83,7 @@ def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list
         desc = p_spec.get("description", "")
         enum_vals = p_spec.get("enum")
         t_str = str(p_spec.get("type", "string")).lower()
-        field_type = Literal[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)  # type: ignore
+        field_type: Any = Literal[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)  # type: ignore
         if p_name in (required or []):
             fields[p_name] = (field_type, Field(..., description=desc))
         else:
@@ -166,19 +164,6 @@ class Weft:
         if self.handler:
             return self.handler(**coerced)
         return None
-
-
-def _isolated_worker(module_name: str, class_name: str, strand_name: str, args: dict[str, Any], conn: Any) -> None:
-    try:
-        mod = importlib.import_module(module_name)
-        yarn = getattr(mod, class_name)()
-        res = yarn._execute_direct(strand_name, args)
-        conn.send((True, str(res) if res is not None else "ok"))
-    except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-        conn.send((False, f"Error: {e}"))
-    finally:
-        with contextlib.suppress(OSError, ValueError, AttributeError, RuntimeError):
-            conn.close()
 
 
 def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> list[str]:
@@ -273,14 +258,14 @@ def strand(
     timeout: float = 30.0,
 ):
     """Decorator marking a Yarn method as an executable Desktop Strand."""
-    def decorator(fn: Callable) -> Callable:
-        fn._is_strand = True
-        fn._strand_name = name or fn.__name__
-        fn._strand_description = description
-        fn._strand_capability = capability
-        fn._strand_tier = tier
-        fn._strand_isolated = isolated
-        fn._strand_timeout = timeout
+    def decorator(fn: Any) -> Any:
+        setattr(fn, "_is_strand", True)
+        setattr(fn, "_strand_name", name or getattr(fn, "__name__", ""))
+        setattr(fn, "_strand_description", description)
+        setattr(fn, "_strand_capability", capability)
+        setattr(fn, "_strand_tier", tier)
+        setattr(fn, "_strand_isolated", isolated)
+        setattr(fn, "_strand_timeout", timeout)
         return fn
 
     return decorator(func) if func is not None else decorator
@@ -298,13 +283,13 @@ def weft(
     """Decorator marking a Yarn method as a real-time streaming token Weft attunement."""
     compiled_pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
 
-    def decorator(fn: Callable) -> Callable:
-        fn._is_weft = True
-        fn._weft_name = name or fn.__name__
-        fn._weft_pattern = compiled_pattern
-        fn._weft_description = description
-        fn._weft_strip = strip
-        fn._weft_priority = priority
+    def decorator(fn: Any) -> Any:
+        setattr(fn, "_is_weft", True)
+        setattr(fn, "_weft_name", name or getattr(fn, "__name__", ""))
+        setattr(fn, "_weft_pattern", compiled_pattern)
+        setattr(fn, "_weft_description", description)
+        setattr(fn, "_weft_strip", strip)
+        setattr(fn, "_weft_priority", priority)
         return fn
 
     return decorator(func) if func is not None else decorator
@@ -380,7 +365,7 @@ def _create_invoker(
     isolated: bool,
     is_async: bool,
     timeout: float,
-) -> Callable[[dict[str, Any]], str]:
+) -> Callable[[dict[str, Any]], Any]:
     if is_async:
         async def _async_invoker(args: dict[str, Any]) -> str:
             return await _exec_async_strand(method, strand_name, args, args_model, params, req_list)
@@ -391,6 +376,7 @@ def _create_invoker(
         return _exec_sync_strand(yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout)
 
     return _sync_invoker
+
 
 class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
@@ -482,7 +468,7 @@ class Yarn(ABC):
     def _method_to_weft(self, method: Callable) -> Weft:
         sig = inspect.signature(method)
         weft_name = getattr(method, "_weft_name", method.__name__)
-        weft_pattern = method._weft_pattern
+        weft_pattern = getattr(method, "_weft_pattern")
         weft_desc = getattr(method, "_weft_description", None) or inspect.getdoc(method) or weft_name
         weft_strip = getattr(method, "_weft_strip", True)
         weft_priority = getattr(method, "_weft_priority", 100)
@@ -651,11 +637,14 @@ class Yarn(ABC):
             isolated=is_isolated,
         )
 
-    def _run_isolated_uv(
-        self, strand_name: str, args: dict[str, Any], deps: list[str], uv_bin: str, timeout: float
-    ) -> str | None:
+    def _run_isolated(self, strand_name: str, args: dict[str, Any], timeout: float = 30.0) -> str:
+        """Run strand in an isolated ephemeral subprocess using `uv`."""
+        uv_bin = shutil.which("uv")
+        if not uv_bin:
+            return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
+
         cmd = [uv_bin, "run", "--quiet", "--isolated"]
-        for dep in deps:
+        for dep in self.get_python_dependencies():
             cmd.extend(["--with", str(dep)])
         cmd.extend([
             "-m",
@@ -665,112 +654,29 @@ class Yarn(ABC):
             strand_name,
             json.dumps(args),
         ])
-        res_str = None
         try:
-            r_out, w_out = os.pipe()
-            r_err, w_err = os.pipe()
-            file_actions = [
-                (os.POSIX_SPAWN_CLOSE, r_out),
-                (os.POSIX_SPAWN_CLOSE, r_err),
-                (os.POSIX_SPAWN_DUP2, w_out, 1),
-                (os.POSIX_SPAWN_DUP2, w_err, 2),
-                (os.POSIX_SPAWN_CLOSE, w_out),
-                (os.POSIX_SPAWN_CLOSE, w_err),
-            ]
-            pid = os.posix_spawn(cmd[0], cmd, os.environ, file_actions=file_actions)
-            os.close(w_out)
-            os.close(w_err)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+            out = res.stdout.strip()
+            err = res.stderr.strip()
 
-            out_chunks, err_chunks = [], []
-            while True:
-                chunk = os.read(r_out, 4096)
-                if not chunk:
-                    break
-                out_chunks.append(chunk)
-            os.close(r_out)
-
-            while True:
-                chunk = os.read(r_err, 4096)
-                if not chunk:
-                    break
-                err_chunks.append(chunk)
-            os.close(r_err)
-
-            _, status = os.waitpid(pid, 0)
-            returncode = os.waitstatus_to_exitcode(status)
-            out = b"".join(out_chunks).decode().strip()
-            err = b"".join(err_chunks).decode().strip()
-
-            if returncode == 0 and out:
+            if res.returncode == 0 and out:
                 try:
                     payload = json.loads(out)
                     if payload.get("success"):
                         res_val = payload.get("result")
                         if isinstance(res_val, (dict, list)):
-                            res_str = json.dumps(res_val, indent=2)
-                        else:
-                            res_str = str(res_val) if res_val is not None else "ok"
-                    else:
-                        res_str = f"Error: {payload.get('error', 'Execution failed')}"
+                            return json.dumps(res_val, indent=2)
+                        return str(res_val) if res_val is not None else "ok"
+                    return f"Error: {payload.get('error', 'Execution failed')}"
                 except (json.JSONDecodeError, ValueError, TypeError):
-                    res_str = out
-            else:
-                err_msg = err if err else f"Exit code {returncode}"
-                res_str = (
-                    f"Error: Strand '{strand_name}' isolated worker process crashed "
-                    f"({err_msg}). Host process preserved."
-                )
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(f"uv execution encountered an error ({e}), falling back to multiprocessing worker.")
-        return res_str
+                    return out
 
-    def _run_isolated_mp(self, strand_name: str, args: dict[str, Any], timeout: float) -> str:
-        ctx = multiprocessing.get_context("spawn")
-        p_conn, c_conn = ctx.Pipe()
-        proc = ctx.Process(
-            target=_isolated_worker,
-            args=(self.__class__.__module__, self.__class__.__name__, strand_name, args, c_conn),
-        )
-        proc.start()
-        c_conn.close()
-
-        got_result, result = False, None
-        try:
-            if p_conn.poll(timeout):
-                try:
-                    _, result = p_conn.recv()
-                    got_result = True
-                except EOFError:
-                    pass
-        finally:
-            with contextlib.suppress(OSError, ValueError, AttributeError, RuntimeError):
-                p_conn.close()
-
-        proc.join(timeout=1.0)
-        if proc.is_alive():
-            proc.kill()
-            proc.join(timeout=1.0)
-
-        if got_result:
-            return result or "ok"
-        if proc.exitcode is not None and proc.exitcode != 0:
-            return (
-                f"Error: Strand '{strand_name}' isolated worker process crashed "
-                f"(exit code {proc.exitcode}). Host process preserved."
-            )
-        return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
-
-    def _run_isolated(self, strand_name: str, args: dict[str, Any], timeout: float = 30.0) -> str:
-        """Run strand in an isolated ephemeral subprocess using `uv` or multiprocessing spawn."""
-        deps = self.get_python_dependencies()
-        uv_bin = shutil.which("uv")
-
-        if deps and uv_bin:
-            uv_res = self._run_isolated_uv(strand_name, args, deps, uv_bin, timeout)
-            if uv_res is not None:
-                return uv_res
-
-        return self._run_isolated_mp(strand_name, args, timeout)
+            err_msg = err if err else f"Exit code {res.returncode}"
+            return f"Error: Strand '{strand_name}' isolated worker process crashed ({err_msg}). Host process preserved."
+        except subprocess.TimeoutExpired:
+            return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
+        except (subprocess.SubprocessError, OSError, ValueError) as e:
+            return f"Error executing isolated strand '{strand_name}': {e}"
 
     def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():

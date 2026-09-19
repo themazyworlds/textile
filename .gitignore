@@ -11,9 +11,30 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+.ruff_cache/
+
+# Environment files
+.env
+.env.*
+!.env.example
 
 # Virtual environments & IDE
 .venv/
-.env
+.idea/
+.vscode/
 scratch/
+KMS
+
+# AI Tooling & Local Settings
+.claude/settings.local.json
+.claude/worktrees/
+.codex/config.local.toml
+.gemini/history/
+.gemini/tmp/
+.gemini/google_accounts.json
+.gemini/installation_id
+.gemini/oauth_creds.json
+.cursor/chat/
+.cursor/rules/*.local.mdc
+.github/personal-instructions.md
 

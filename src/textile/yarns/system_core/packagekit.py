@@ -16,7 +16,7 @@ try:
 except Exception:
     BusType = Variant = MessageBus = None
 
-from textile.core.base import LAYER_BASE, Yarn, CapabilityTier, strand
+from textile.core.base import LAYER_BASE, CapabilityTier, Yarn, strand
 
 logger = logging.getLogger(__name__)
 
