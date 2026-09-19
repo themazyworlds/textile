@@ -20,9 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 def _get_qml_path() -> str:
-    """Return the absolute path to the Canvas shell.qml."""
-    base_dir = Path(__file__).resolve().parent.parent.parent
-    return str(base_dir / "ui" / "canvas" / "shell.qml")
+    """Return the absolute path to the Canvas QML interface inside the yarn module."""
+    curr_dir = Path(__file__).resolve().parent
+    qml_file = curr_dir / "canvas.qml"
+    if qml_file.exists():
+        return str(qml_file)
+    fallback = curr_dir / "shell.qml"
+    if fallback.exists():
+        return str(fallback)
+    return str(Path(__file__).resolve().parent.parent.parent / "ui" / "canvas" / "shell.qml")
 
 
 class CanvasController:
@@ -196,6 +202,11 @@ class Canvas(BaseYarn):
         self.warp.subscribe(WarpEvent.MOOD_CHANGE, self._on_mood_change)
         self.warp.subscribe(WarpEvent.VOICE_STATE, self._on_voice_state)
 
+        # Auto-launch Canvas UI window when yarn is active and available (unless in test suite)
+        if not os.environ.get("TEXTILE_TESTING") and not os.environ.get("PYTEST_CURRENT_TEST"):
+            if self.is_available() and not canvas_ctl.is_running():
+                canvas_ctl.launch()
+
     def on_unload(self) -> None:
         from textile.core.warp import WarpEvent
         if hasattr(self, "_on_tool_start"):
@@ -204,6 +215,9 @@ class Canvas(BaseYarn):
             self.warp.unsubscribe(WarpEvent.MOOD_CHANGE, self._on_mood_change)
         if hasattr(self, "_on_voice_state"):
             self.warp.unsubscribe(WarpEvent.VOICE_STATE, self._on_voice_state)
+        # Close canvas on yarn unload / disable
+        if canvas_ctl.is_running():
+            canvas_ctl.close()
 
     @weft(pattern=r"<mood:([a-zA-Z_-]+)>", description="Stream attunement for dynamic mood changes. Emit frequent inline tags (e.g. <mood:curious>, <mood:thinking>, <mood:happy>, <mood:excited>, <mood:focused>, <mood:shy>, <mood:mischievous>, <mood:neutral>) across your spoken sentences to animate the avatar face in real time.")
     def on_stream_mood(self, mood: str) -> None:
