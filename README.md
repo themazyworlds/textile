@@ -1,7 +1,7 @@
 # Textile • Linux Desktop Intelligence & Automation Fabric
 
 <p align="center">
-  <img src="assets/canvas_showcase.gif" alt="Textile Canvas Emotive Desktop Avatar" width="720" style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);" />
+  <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);"></video>
 </p>
 
 Textile is a high-performance, protocol-first desktop intelligence and automation subsystem for Linux. Powered by a decoupled microkernel architecture, it seamlessly connects AI agents, full-duplex voice companions, and local CLI tools to the Linux desktop across all compositor, session, protocol, and kernel layers.
