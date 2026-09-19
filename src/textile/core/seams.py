@@ -183,7 +183,7 @@ class SeamOrchestrator:
                         dep_type=DependencyType.PYTHON_MODULE,
                         target=req,
                         is_satisfied=True,
-                        details=f"Package requirement '{req}' resolvable via uv SAT resolver",
+                        details=f"Package requirement '{req}' resolvable via uv PubGrub resolver",
                         is_optional=optional,
                     )
                 else:
