@@ -223,8 +223,16 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_weave_mood_tag_parsing(self):
         import time
+        from textile.yarns.compositor.canvas import Canvas
         from textile.yarns.weave import extract_and_apply_mood_tags
         from textile.core.tapestry import tapestry
+        from textile.core.skein import skein
+        from textile.core.loom import loom
+
+        canvas = Canvas()
+        canvas.is_available = lambda: True
+        skein.register_yarn(canvas)
+        loom._rebuild_active()
 
         # Simulate Gemini returning speech text with inline semantic mood tags
         gemini_speech = "<mood:curious> Let me check that system log for you... <mood:thinking> analyzing now... <mood:happy> everything looks clean!"
@@ -237,8 +245,16 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_weave_streaming_transcription_node(self):
         import asyncio
         import time
+        from textile.yarns.compositor.canvas import Canvas
         from textile.yarns.weave import WeaveAgent
         from textile.core.tapestry import tapestry
+        from textile.core.skein import skein
+        from textile.core.loom import loom
+
+        canvas = Canvas()
+        canvas.is_available = lambda: True
+        skein.register_yarn(canvas)
+        loom._rebuild_active()
 
         agent = WeaveAgent(instructions="test instructions")
 

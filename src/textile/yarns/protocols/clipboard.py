@@ -31,7 +31,10 @@ class Clipboard(BaseYarn):
     ]
 
     def is_available(self) -> bool:
-        return pyxclip is not None
+        if pyxclip is None:
+            return False
+        import os
+        return bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
 
     @strand(description="Read the current text content from the system clipboard.")
     def clipboard_get(self) -> str:
