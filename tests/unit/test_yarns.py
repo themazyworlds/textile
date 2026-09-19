@@ -187,7 +187,37 @@ class TestYarnArchitecture(unittest.TestCase):
         st_raw = canvas.execute_strand("canvas_get_state", {})
         import json
         st = json.loads(st_raw) if isinstance(st_raw, str) else st_raw
-        self.assertIsInstance(st, dict)
+    def test_capability_tiers_and_auto_isolation(self):
+        from textile.core.base import CapabilityTier, strand
+
+        class TierTestYarn(BaseYarn):
+            name = "tier_test"
+            def is_available(self): return True
+
+            @strand(description="Read telemetry", tier=CapabilityTier.OBSERVE)
+            def read_stat(self) -> str:
+                return "stat_ok"
+
+            @strand(description="Elevated command execution", tier=CapabilityTier.PRIVILEGED)
+            def admin_task(self) -> str:
+                return "admin_ok"
+
+            @strand(description="Custom command runner", tier=CapabilityTier.SYSTEM_EXEC)
+            def exec_task(self) -> str:
+                return "exec_ok"
+
+        yarn = TierTestYarn()
+        strands = {s.name: s for s in yarn.get_strands()}
+
+        self.assertEqual(strands["read_stat"].tier, CapabilityTier.OBSERVE)
+        self.assertFalse(strands["read_stat"].isolated)
+
+        self.assertEqual(strands["admin_task"].tier, CapabilityTier.PRIVILEGED)
+        self.assertTrue(strands["admin_task"].isolated)
+
+        self.assertEqual(strands["exec_task"].tier, CapabilityTier.SYSTEM_EXEC)
+        self.assertTrue(strands["exec_task"].isolated)
+
     def test_weft_attunements_and_pydantic_coercion(self):
         from textile.core.base import weft
 

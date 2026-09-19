@@ -18,13 +18,14 @@ try:
 except Exception:
     BusType = Variant = MessageBus = None
 
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_BASE
 
 logger = logging.getLogger(__name__)
 
 
-def parse_package_id(pkg_id: str) -> Dict[str, str]:
+def parse_package_id(package_id: str) -> Dict[str, str]:
     """Parse a standard PackageKit package_id string (name;version;arch;data)."""
+    pkg_id = package_id
     parts = pkg_id.split(";")
     return {
         "id": pkg_id,
@@ -441,7 +442,10 @@ class PackageKit(BaseYarn):
     def is_available(self) -> bool:
         return packagekit_ctl.is_available()
 
-    @strand(description="Search for available or installed packages across distribution repositories via PackageKit D-Bus.")
+    @strand(
+        description="Search for available or installed packages across distribution repositories via PackageKit D-Bus.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def packagekit_search(self, query: str = "", limit: int = 25) -> List[Dict[str, Any]]:
         """Search packages by name or keyword across distribution repositories.
 
@@ -450,7 +454,10 @@ class PackageKit(BaseYarn):
         """
         return packagekit_ctl.search(query=query, limit=limit)
 
-    @strand(description="Install one or more packages non-interactively via PackageKit D-Bus with Polkit authorization.")
+    @strand(
+        description="Install one or more packages non-interactively via PackageKit D-Bus with Polkit authorization.",
+        tier=CapabilityTier.PRIVILEGED,
+    )
     def packagekit_install(self, packages: str) -> str:
         """Install one or more packages.
 
@@ -459,7 +466,10 @@ class PackageKit(BaseYarn):
         pkgs_raw = [p.strip() for p in packages.replace(",", " ").split() if p.strip()]
         return packagekit_ctl.install(packages=pkgs_raw)
 
-    @strand(description="Remove one or more installed packages via PackageKit D-Bus.")
+    @strand(
+        description="Remove one or more installed packages via PackageKit D-Bus.",
+        tier=CapabilityTier.PRIVILEGED,
+    )
     def packagekit_remove(self, packages: str, autoremove: bool = False) -> str:
         """Remove one or more packages.
 
@@ -469,7 +479,10 @@ class PackageKit(BaseYarn):
         pkgs_raw = [p.strip() for p in packages.replace(",", " ").split() if p.strip()]
         return packagekit_ctl.remove(packages=pkgs_raw, autoremove=autoremove)
 
-    @strand(description="Get detailed metadata, description, license, and repository info for a package via PackageKit D-Bus.")
+    @strand(
+        description="Get detailed metadata, description, license, and repository info for a package via PackageKit D-Bus.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def packagekit_get_details(self, package: str) -> Dict[str, Any]:
         """Get detailed metadata for a package.
 
@@ -477,12 +490,18 @@ class PackageKit(BaseYarn):
         """
         return packagekit_ctl.get_details(package=package)
 
-    @strand(description="Check for pending package and system software updates via PackageKit D-Bus.")
+    @strand(
+        description="Check for pending package and system software updates via PackageKit D-Bus.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def packagekit_check_updates(self) -> List[Dict[str, Any]]:
         """Check for pending system updates."""
         return packagekit_ctl.check_updates()
 
-    @strand(description="Find which package provides a specific file path or binary via PackageKit D-Bus.")
+    @strand(
+        description="Find which package provides a specific file path or binary via PackageKit D-Bus.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def packagekit_what_provides(self, file_path: str) -> str:
         """Find package providing a specific file.
 
@@ -490,7 +509,10 @@ class PackageKit(BaseYarn):
         """
         return packagekit_ctl.what_provides(file_path=file_path)
 
-    @strand(description="Refresh package manager repository metadata cache via PackageKit D-Bus.")
+    @strand(
+        description="Refresh package manager repository metadata cache via PackageKit D-Bus.",
+        tier=CapabilityTier.PRIVILEGED,
+    )
     def packagekit_refresh_cache(self, force: bool = False) -> str:
         """Refresh package repository cache.
 

@@ -20,7 +20,7 @@ try:
 except Exception:
     Variant = None
 
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
 from textile.yarns.protocols.dbus_system import dbus_api
 
 
@@ -332,7 +332,10 @@ class Polkit(BaseYarn):
     def is_available(self) -> bool:
         return polkit_api.is_available()
 
-    @strand(description="Check authorization for a Polkit action ID against org.freedesktop.PolicyKit1.Authority.")
+    @strand(
+        description="Check authorization for a Polkit action ID against org.freedesktop.PolicyKit1.Authority.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def polkit_check_auth(
         self,
         action_id: str,
@@ -355,7 +358,7 @@ class Polkit(BaseYarn):
 
         return polkit_api.check_authorization(action_id=act_id, details=det, allow_user_interaction=allow_user_interaction)
 
-    @strand(description="List and search registered Polkit action definitions.")
+    @strand(description="List and search registered Polkit action definitions.", tier=CapabilityTier.OBSERVE)
     def polkit_list_actions(self, filter_query: Optional[str] = None) -> Dict[str, Any]:
         """List and search registered Polkit action definitions.
 
@@ -364,7 +367,10 @@ class Polkit(BaseYarn):
         actions = polkit_api.list_actions(filter_query=filter_query)
         return {"count": len(actions), "filter": filter_query or "all", "actions": actions[:100]}
 
-    @strand(description="Generate standards-compliant .policy XML definitions for custom actions.")
+    @strand(
+        description="Generate standards-compliant .policy XML definitions for custom actions.",
+        tier=CapabilityTier.MUTATE,
+    )
     def polkit_generate_policy(
         self,
         actions: str,
@@ -388,7 +394,10 @@ class Polkit(BaseYarn):
 
         return polkit_api.generate_policy(actions=parsed_actions, vendor=vendor, vendor_url=vendor_url, output_path=output_path)
 
-    @strand(description="Generate a Polkit-1 JavaScript rule (.rules) for pre-authorizing specific actions.")
+    @strand(
+        description="Generate a Polkit-1 JavaScript rule (.rules) for pre-authorizing specific actions.",
+        tier=CapabilityTier.MUTATE,
+    )
     def polkit_generate_rule(
         self,
         rule_name: str,
@@ -433,7 +442,10 @@ class Polkit(BaseYarn):
             output_path=output_path,
         )
 
-    @strand(description="Execute a command with elevated privileges using pkexec CLI escalation.")
+    @strand(
+        description="Execute a command with elevated privileges using pkexec CLI escalation.",
+        tier=CapabilityTier.PRIVILEGED,
+    )
     def polkit_pkexec(
         self,
         command: str,

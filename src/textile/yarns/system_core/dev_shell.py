@@ -8,7 +8,7 @@ import os
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_BASE
 
 
 class DevShell(BaseYarn):
@@ -20,7 +20,10 @@ class DevShell(BaseYarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(description="Execute a bash shell command for developer tasks (git, tests, builds, package managers).")
+    @strand(
+        description="Execute a bash shell command for developer tasks (git, tests, builds, package managers).",
+        tier=CapabilityTier.SYSTEM_EXEC,
+    )
     def run_command(self, command: str, background: bool = False) -> str:
         """Execute a bash shell command for developer tasks (git, tests, builds, package managers).
 

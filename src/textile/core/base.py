@@ -12,6 +12,7 @@ import re
 import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
 
 from pydantic import BaseModel, Field, ValidationError, create_model
@@ -24,6 +25,32 @@ LAYER_DESKTOP_PROTOCOL = 50   # Generic Wayland, XDG, D-Bus protocols
 LAYER_COMPOSITOR_DE = 100     # Specific Compositors & DEs (Hyprland, Caelestia, GNOME, KDE)
 LAYER_SESSION_MANAGER = 150   # Session Managers & Cgroup Wrappers (UWSM, systemd-run)
 LAYER_USER_OVERRIDE = 1000    # User custom overrides (~/.config/textile/yarns/)
+
+
+class CapabilityTier(str, Enum):
+    """Execution risk & privilege tiers for Textile Strands."""
+    OBSERVE = "observe"         # Read-only telemetry, state inspection, queries, logs (in-process fast path)
+    INTERACT = "interact"       # Desktop GUI interactions, notifications, clipboard, media (in-process fast path)
+    MUTATE = "mutate"           # File modifications, killing user processes, local workspace changes (in-process fast path)
+    PRIVILEGED = "privileged"   # System configuration, package installs, D-Bus system calls, Polkit (auto-isolated)
+    SYSTEM_EXEC = "system_exec" # Arbitrary shell command execution (auto-isolated)
+
+
+def detects_native_ffi(target: Any) -> bool:
+    """Detect if a class or module imports native C-FFI modules (ctypes, cffi)."""
+    try:
+        import sys
+        mod_name = target.__class__.__module__ if hasattr(target, "__class__") else getattr(target, "__module__", "")
+        mod = sys.modules.get(mod_name)
+        if mod:
+            for val in mod.__dict__.values():
+                if getattr(val, "__name__", "") in ("ctypes", "cffi", "_ctypes"):
+                    return True
+                if isinstance(val, type) and getattr(val, "__module__", "") in ("ctypes", "cffi", "_ctypes"):
+                    return True
+    except Exception:
+        pass
+    return False
 
 
 def resolve_terminal_and_shell() -> Tuple[str, str]:
@@ -61,6 +88,8 @@ class Strand:
     raw_handler: Optional[Callable[[Dict[str, Any]], Any]] = None
     capability: Optional[str] = None
     args_schema: Optional[Type[BaseModel]] = None
+    tier: CapabilityTier = CapabilityTier.INTERACT
+    isolated: bool = False
 
     def to_mcp_definition(self) -> Dict[str, Any]:
         """Convert strand schema into Model Context Protocol format."""
@@ -213,7 +242,8 @@ def strand(
     name: Optional[str] = None,
     description: Optional[str] = None,
     capability: Optional[str] = None,
-    isolated: bool = False,
+    tier: Union[CapabilityTier, str] = CapabilityTier.INTERACT,
+    isolated: Optional[bool] = None,
     timeout: float = 30.0,
 ):
     """Decorator marking a BaseYarn method as an executable Desktop Strand."""
@@ -222,6 +252,7 @@ def strand(
         fn._strand_name = name or fn.__name__
         fn._strand_description = description
         fn._strand_capability = capability
+        fn._strand_tier = tier
         fn._strand_isolated = isolated
         fn._strand_timeout = timeout
         return fn
@@ -384,7 +415,34 @@ class BaseYarn(ABC):
         strand_name = getattr(method, "_strand_name", method.__name__)
         strand_desc = getattr(method, "_strand_description", None) or main_desc or strand_name
         strand_cap = getattr(method, "_strand_capability", None)
-        isolated = getattr(method, "_strand_isolated", False)
+        raw_tier = getattr(method, "_strand_tier", CapabilityTier.INTERACT)
+        if isinstance(raw_tier, CapabilityTier):
+            tier_val = raw_tier
+        elif isinstance(raw_tier, str):
+            try:
+                tier_val = CapabilityTier(raw_tier.lower())
+            except ValueError:
+                tier_val = CapabilityTier.INTERACT
+        else:
+            tier_val = CapabilityTier.INTERACT
+
+        explicit_isolated = getattr(method, "_strand_isolated", None)
+        if explicit_isolated is not None:
+            isolated = bool(explicit_isolated)
+        else:
+            # Origin-blind automatic isolation rule:
+            # 1. External PyPI package dependencies declared
+            # 2. Privileged or SYSTEM_EXEC capability tier (protecting system integrity)
+            # 3. Native C-FFI (ctypes/cffi) usage detected (protecting against memory crashes/segfaults)
+            if self.get_python_dependencies():
+                isolated = True
+            elif tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
+                isolated = True
+            elif detects_native_ffi(self):
+                isolated = True
+            else:
+                isolated = False
+
         timeout = getattr(method, "_strand_timeout", 30.0)
         is_async = inspect.iscoroutinefunction(method)
 
@@ -443,6 +501,8 @@ class BaseYarn(ABC):
             raw_handler=method,
             capability=strand_cap,
             args_schema=args_model,
+            tier=tier_val,
+            isolated=isolated,
         )
 
     def build_strand(
@@ -453,20 +513,43 @@ class BaseYarn(ABC):
         args_schema: Optional[Type[BaseModel]] = None,
         parameters: Optional[Dict[str, Any]] = None,
         required: Optional[List[str]] = None,
-        isolated: bool = False,
+        isolated: Optional[bool] = None,
         timeout: float = 30.0,
         capability: Optional[str] = None,
+        tier: Union[CapabilityTier, str] = CapabilityTier.INTERACT,
     ) -> Strand:
         """Helper to build a Strand dynamically."""
+        if isinstance(tier, CapabilityTier):
+            tier_val = tier
+        elif isinstance(tier, str):
+            try:
+                tier_val = CapabilityTier(tier.lower())
+            except ValueError:
+                tier_val = CapabilityTier.INTERACT
+        else:
+            tier_val = CapabilityTier.INTERACT
+
+        if isolated is not None:
+            is_isolated = bool(isolated)
+        else:
+            if self.get_python_dependencies():
+                is_isolated = True
+            elif tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
+                is_isolated = True
+            elif detects_native_ffi(self):
+                is_isolated = True
+            else:
+                is_isolated = False
+
         schema_model = args_schema or (schema_to_model(name, parameters or {}, required or []) if parameters else None)
         schema = schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
-        params, req_list = (schema.get("properties", {}), schema.get("required", [])) if schema_model else (parameters or {}, required or [])
+        params, req_list = (schema.get("properties", {}), schema.get("required", []) if schema_model else (parameters or {}, required or []))
 
         def _safe_handler(args: Dict[str, Any]) -> str:
             val_err, coerced = validate_strand_arguments(name, args, schema_model=schema_model, parameters=params, required=req_list)
             if val_err:
                 return val_err
-            if isolated:
+            if is_isolated:
                 return self._run_isolated(name, coerced, timeout=timeout)
             try:
                 res = handler(coerced)
@@ -483,6 +566,8 @@ class BaseYarn(ABC):
             raw_handler=handler,
             capability=capability,
             args_schema=schema_model,
+            tier=tier_val,
+            isolated=is_isolated,
         )
 
     def _run_isolated(self, strand_name: str, args: Dict[str, Any], timeout: float = 30.0) -> str:
