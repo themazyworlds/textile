@@ -1,6 +1,7 @@
 # Textile • Linux Desktop Intelligence & Automation Fabric
 
 <p align="center">
+  <a href="https://github.com/themazyworlds/textile/actions/workflows/ci.yml"><img src="https://github.com/themazyworlds/textile/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python 3.12+" />
   <a href="#-system-architecture"><img src="https://img.shields.io/badge/architecture-microkernel-89b4fa.svg" alt="Architecture" /></a>
@@ -15,7 +16,7 @@ Textile is a high-performance, protocol-first desktop intelligence and automatio
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ System Architecture & Glossary
 
 Textile is structured around a focused, decoupled weaving metaphor:
 
@@ -39,11 +40,18 @@ Textile is structured around a focused, decoupled weaving metaphor:
 └───────────────┘   └───────────────┘     └───────────────────────────────┘
 ```
 
-1. **`Skein` (Discovery & Package Manager)**: Equivalent to `lazy.nvim`. Discovers built-in yarns, PEP 621 entrypoints (`[project.entry-points."textile.yarns"]`), and `~/.config/textile/yarns/`. Manages configuration persistence and health probes.
-2. **`Loom` (High-Speed Runtime Dispatcher)**: Equivalent to `nvim-core`. Manages live in-memory strand execution, priority layer resolution (`150` ➔ `10`), and multi-process worker isolation (`_run_isolated`).
-3. **`Twill` (Protocol Wire Gateway)**: Universal Model Context Protocol (MCP) server exposing all active strands to external AI assistants (Claude, Cursor, Antigravity, Weave).
-4. **`Weave` (Voice AI Engine)**: Full-duplex conversational voice companion powered by LiveKit Agents and Google Gemini 2.0 / 3 Live Realtime APIs.
-5. **`Yarns & Strands`**: Modular capability units written in clean Python with Pydantic v2 type hints and `@strand` reflection.
+| Textile Concept | Engineering Equivalent | Purpose |
+|---|---|---|
+| **`Loom`** | Dispatch Engine & Executor | Manages runtime dispatch, capability overrides, and worker isolation. |
+| **`Skein`** | Plugin Discovery & Registry | Discovers Yarns, PEP 621 entrypoints, and manages enable/disable state. |
+| **`Yarn`** | Capability Module / Plugin | Domain capability class (e.g. `PackageKit`, `Polkit`, `Hyprland`). |
+| **`Strand`** | Callable Tool / Function | Individual tool exposed to AI agents with Pydantic type validation. |
+| **`Weft`** | Streaming Token Interceptor | Real-time regex pattern interceptor for conversational speech streams. |
+| **`Warp`** | Universal Pub/Sub Event Bus | Low-latency asynchronous sensory and state event distribution. |
+| **`Tapestry`** | Live State Blackboard | Dynamic sensory ledger tracking slots, active tasks, and notices. |
+| **`Twill`** | MCP Server Interface | Model Context Protocol gateway connecting external AI assistants. |
+| **`Seams`** | Diagnostics & Self-Healing | Automated dependency validation and PubGrub conflict resolver. |
+| **`Weave`** | Voice AI Companion | Full-duplex live audio/vision agent powered by LiveKit and Gemini. |
 
 ---
 
@@ -91,7 +99,7 @@ Every capability module is a standard Python class subclassing `BaseYarn`. Writi
 
 ```python
 from typing import Literal, Optional
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
 
 class CustomYarn(BaseYarn):
     publisher = "myname"
@@ -99,16 +107,18 @@ class CustomYarn(BaseYarn):
     version = "1.0.0"
     layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
 
-    @strand(description="Play or pause media playback.")
+    # Optional: declare external PyPI packages for automatic uv isolation
+    python_dependencies = ["mpris2>=1.0.2"]
+
+    @strand(description="Play or pause media playback.", tier=CapabilityTier.INTERACT)
     def toggle_playback(self, player: Optional[str] = None) -> str:
         """Play or pause media playback.
 
         :param player: Target player name (e.g., 'spotify').
         """
-        # Your logic here
         return "Toggled playback"
 
-    @strand(description="Adjust playback volume level.")
+    @strand(description="Adjust playback volume level.", tier=CapabilityTier.INTERACT)
     def set_volume(self, level: int) -> str:
         """Adjust playback volume level.
 

@@ -1,5 +1,5 @@
 """
-Textile • Pure Modular AI Subsystem & Desktop Intelligence Engine.
+Textile • Modular AI Subsystem & Desktop Intelligence Engine.
 """
 
 import warnings

@@ -1,7 +1,7 @@
 [project]
 name = "textile"
 version = "0.1.2"
-description = "Textile • Pure Modular AI Subsystem & Desktop Intelligence Engine"
+description = "Textile • Modular AI Subsystem & Desktop Intelligence Engine"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [

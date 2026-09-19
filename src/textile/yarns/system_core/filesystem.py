@@ -1,7 +1,6 @@
 """
-Pure Python Native File System & Linux inotify Operations Capability Yarn.
-100% cross-platform, zero subprocesses, atomic operations, direct glibc/POSIX bindings,
-and Linux kernel inotify real-time filesystem event monitoring.
+File System & Linux inotify Operations Capability Yarn.
+Provides file operations, atomic writes, and Linux kernel inotify real-time event monitoring.
 Layer 10 (Core POSIX).
 """
 
@@ -271,7 +270,7 @@ inotify_api = InotifyAPI()
 
 
 class FileIO:
-    """Deterministic pure-Python file reader, writer, in-place editor, and POSIX filesystem interface."""
+    """File reader, writer, in-place editor, and POSIX filesystem interface."""
 
     def _resolve(self, path: str) -> Path:
         if not path or path.strip() == "":
@@ -475,7 +474,7 @@ file_io = FileIO()
 
 class FilesystemStorage(BaseYarn):
     name = "filesystem_storage"
-    description = "Pure Python Native File Operations and Linux Kernel inotify Real-Time Event Monitoring."
+    description = "File Operations and Linux Kernel inotify Real-Time Event Monitoring."
     version = "1.3.0"
     layer = LAYER_BASE  # Layer 10
 
@@ -558,7 +557,7 @@ class FilesystemStorage(BaseYarn):
         """List mounted filesystems and storage devices."""
         return file_io.list_mounts()
 
-    @strand(description="Pure Python native file reader, writer, replacer, directory navigator, stat, chmod, disk usage, and inotify.")
+    @strand(description="File system operations, directory navigation, permissions, disk usage, and inotify monitoring.")
     def file_op(
         self,
         operation: Literal[

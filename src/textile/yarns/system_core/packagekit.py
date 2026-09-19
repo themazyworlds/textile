@@ -1,8 +1,7 @@
 """
-Linux Universal Package Management Capability Yarn for Textile via Pure PackageKit D-Bus IPC.
+Linux Universal Package Management Capability Yarn for Textile via PackageKit D-Bus IPC.
 Provides distribution-agnostic package search, installation, removal, update checks,
-and file provider queries directly via the freedesktop.org PackageKit D-Bus protocol (org.freedesktop.PackageKit).
-Zero subprocess execution, zero CLI wrappers.
+and file provider queries via the freedesktop.org PackageKit D-Bus protocol (org.freedesktop.PackageKit).
 Layer 10 (Core POSIX / System Lifecycle).
 """
 
@@ -351,7 +350,7 @@ class PackageKitDBusClient:
 
 
 class PackageKitController:
-    """Pure D-Bus Controller for PackageKit."""
+    """D-Bus Controller for PackageKit."""
 
     def __init__(self):
         self.client = PackageKitDBusClient() if MessageBus is not None else None
@@ -428,10 +427,10 @@ packagekit_ctl = PackageKitController()
 
 
 class PackageKit(BaseYarn):
-    """Universal Linux Package Management Capability Yarn via Pure PackageKit D-Bus IPC."""
+    """Universal Linux Package Management Capability Yarn via PackageKit D-Bus IPC."""
 
     name = "packagekit"
-    description = "Universal Linux Package Management: Cross-Distribution Search, Installation, Updates, and File Tracking via Pure PackageKit D-Bus IPC."
+    description = "Universal Linux Package Management: Cross-Distribution Search, Installation, Updates, and File Tracking via PackageKit D-Bus IPC."
     version = "2.0.0"
     layer = LAYER_BASE  # Layer 10 (Core POSIX / System Lifecycle)
 
