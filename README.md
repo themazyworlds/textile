@@ -53,6 +53,30 @@ Textile is structured around a focused, decoupled weaving metaphor:
 | **`Seams`** | Diagnostics & Self-Healing | Automated dependency validation and PubGrub conflict resolver. |
 | **`Weave`** | Voice AI Companion | Full-duplex live audio/vision agent powered by LiveKit and Gemini. |
 
+## 📋 Prerequisites & Setup
+
+To run Textile with full conversational voice companion (**Weave**) and emotive desktop avatar (**Canvas**) support:
+
+1. **Google Gemini API Key** (for Gemini Live audio & multimodal model):
+   ```bash
+   export GOOGLE_API_KEY="your-gemini-api-key"
+   ```
+
+2. **LiveKit CLI (`lk`)** (for low-latency terminal audio and LiveKit Cloud integration):
+   ```bash
+   # Install lk CLI
+   curl -sSL https://get.livekit.io/cli | bash
+
+   # Authenticate with your LiveKit Cloud project
+   lk cloud auth
+   ```
+
+3. **Quickshell** (for the 60 FPS emotive desktop avatar Face UI):
+   ```bash
+   # Arch Linux / AUR
+   paru -S quickshell-git
+   ```
+
 ---
 
 ## 🚀 Quick Start & CLI Reference

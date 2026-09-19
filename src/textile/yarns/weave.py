@@ -143,7 +143,7 @@ def run_voice_agent(
     voice: str = "Puck",
     text_mode: bool = False,
 ):
-    """Entry point to run Weave Voice Agent using lk CLI if available or native livekit.agents.cli."""
+    """Entry point to run Weave Voice Agent using LiveKit CLI (lk)."""
     import shutil
     from pathlib import Path
 
@@ -152,31 +152,35 @@ def run_voice_agent(
     os.environ["WEAVE_LIVE_MODEL"] = model
     os.environ["WEAVE_VOICE"] = voice
 
+    if mode == "start":
+        sys.argv = ["textile-weave", "start"]
+        cli.run_app(server)
+        return
+
     script_path = str(Path(__file__).resolve())
     lk_bin = shutil.which("lk")
 
-    if mode == "console" and lk_bin:
+    if not lk_bin:
+        raise RuntimeError(
+            "LiveKit CLI ('lk') is required to run Weave in interactive console/dev mode.\n"
+            "Install it via:\n"
+            "  curl -sSL https://get.livekit.io/cli | bash\n"
+            "Then authenticate with your LiveKit Cloud project:\n"
+            "  lk cloud auth\n"
+        )
+
+    if mode == "console":
         cmd = [lk_bin, "agent", "console", script_path]
         if text_mode:
             cmd.append("--text")
         os.execvpe(lk_bin, cmd, os.environ)
-    elif mode == "dev" and lk_bin:
+    elif mode == "dev":
         cmd = [lk_bin, "agent", "dev", script_path]
         os.execvpe(lk_bin, cmd, os.environ)
-    else:
-        if mode == "console":
-            sys.argv = ["textile-weave", "console"]
-            if text_mode:
-                sys.argv.append("--text")
-        elif mode == "dev":
-            sys.argv = ["textile-weave", "dev"]
-        elif mode == "start":
-            sys.argv = ["textile-weave", "start"]
-
-        cli.run_app(server)
 
 
 if __name__ == "__main__":
     cli.run_app(server)
+
 
 
