@@ -1,6 +1,6 @@
 # Textile
 
-![](./assets/canvas_showcase.mp4)
+https://github.com/user-attachments/assets/291ad11e-f4ad-48ff-933b-03c0285b8933
 
 A modular intelligence and automation framework for Linux. Textile provides a layered runtime dispatch engine and plugin architecture that exposes system capabilities and desktop interfaces to Model Context Protocol (MCP) clients and local tooling.
 
@@ -40,7 +40,7 @@ To run Textile with conversational voice companion (**Weave**) and desktop prese
    lk cloud auth
    ```
 
-3. **Quickshell** (Highly Recommended, for the 60 FPS emotive desktop Canvas Face UI):
+3. **Quickshell** (Highly Recommended, for the desktop Canvas Face UI):
    ```bash
    # Arch Linux / AUR
    paru -S quickshell-git
