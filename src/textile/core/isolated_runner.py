@@ -27,6 +27,14 @@ def main():
         print(json.dumps({"success": False, "error": f"Failed to parse arguments JSON: {e}"}))
         sys.exit(1)
 
+    import os
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+    tests_dir = os.path.join(cwd, "tests")
+    if os.path.exists(tests_dir) and tests_dir not in sys.path:
+        sys.path.insert(0, tests_dir)
+
     try:
         mod = importlib.import_module(module_name)
         cls = getattr(mod, class_name)

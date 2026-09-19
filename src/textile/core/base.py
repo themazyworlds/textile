@@ -654,8 +654,13 @@ class Yarn(ABC):
             strand_name,
             json.dumps(args),
         ])
+        env = dict(os.environ)
+        python_path = env.get("PYTHONPATH", "")
+        cwd = os.getcwd()
+        env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
+
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False, env=env)
             out = res.stdout.strip()
             err = res.stderr.strip()
 
