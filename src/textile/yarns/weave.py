@@ -83,7 +83,6 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         llm=realtime_model,
-        turn_detection="realtime_llm",
     )
 
     # Event handlers connecting LiveKit voice stream to Textile Canvas UI asynchronously via Warp pub/sub
@@ -143,24 +142,40 @@ def run_voice_agent(
     voice: str = "Puck",
     text_mode: bool = False,
 ):
-    """Entry point to run Weave Voice Agent using livekit.agents.cli."""
+    """Entry point to run Weave Voice Agent using lk CLI if available or native livekit.agents.cli."""
+    import shutil
+    from pathlib import Path
+
     os.environ["TEXTILE_LIVE_MODEL"] = model
     os.environ["TEXTILE_VOICE"] = voice
     os.environ["WEAVE_LIVE_MODEL"] = model
     os.environ["WEAVE_VOICE"] = voice
 
-    if mode == "console":
-        sys.argv = ["textile-weave", "console"]
-        if text_mode:
-            sys.argv.append("--text")
-    elif mode == "dev":
-        sys.argv = ["textile-weave", "dev"]
-    elif mode == "start":
-        sys.argv = ["textile-weave", "start"]
+    script_path = str(Path(__file__).resolve())
+    lk_bin = shutil.which("lk")
 
-    cli.run_app(server)
+    if mode == "console" and lk_bin:
+        cmd = [lk_bin, "agent", "console", script_path]
+        if text_mode:
+            cmd.append("--text")
+        os.execvpe(lk_bin, cmd, os.environ)
+    elif mode == "dev" and lk_bin:
+        cmd = [lk_bin, "agent", "dev", script_path]
+        os.execvpe(lk_bin, cmd, os.environ)
+    else:
+        if mode == "console":
+            sys.argv = ["textile-weave", "console"]
+            if text_mode:
+                sys.argv.append("--text")
+        elif mode == "dev":
+            sys.argv = ["textile-weave", "dev"]
+        elif mode == "start":
+            sys.argv = ["textile-weave", "start"]
+
+        cli.run_app(server)
 
 
 if __name__ == "__main__":
     cli.run_app(server)
+
 
