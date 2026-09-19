@@ -1,55 +1,48 @@
-# Textile: Linux Desktop Intelligence and Automation Fabric
+# Textile
+
+A Linux desktop intelligence and automation framework. Textile provides a layered runtime dispatch architecture that exposes Linux system subsystems, Wayland compositors, and desktop protocols to AI agents, Model Context Protocol (MCP) clients, and real-time voice companions.
 
 <p align="center">
-  <a href="https://github.com/themazyworlds/textile/actions/workflows/ci.yml"><img src="https://github.com/themazyworlds/textile/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 8px;"></video>
 </p>
-
-<p align="center">
-  <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);"></video>
-</p>
-
-Textile is a high-performance, protocol-first desktop intelligence and automation subsystem for Linux. Powered by a decoupled microkernel architecture, it connects AI agents, full-duplex voice companions, and local CLI tools to the Linux desktop across all compositor, session, protocol, and kernel layers.
 
 ---
 
-## System Architecture and Glossary
+## Architecture Overview
 
-Textile is structured around a focused, decoupled weaving metaphor:
+Textile organizes desktop capabilities into modular components with priority-based layer dispatch and worker process isolation:
 
-| Textile Concept | Engineering Equivalent | Purpose |
+| Concept | Implementation | Description |
 |---|---|---|
-| **`Loom`** | Dispatch Engine & Executor | Manages runtime dispatch, capability overrides, and worker isolation. |
-| **`Skein`** | Plugin Discovery & Registry | Discovers Yarns, PEP 621 entrypoints, and manages enable/disable state. |
-| **`Yarn`** | Capability Module / Plugin | Domain capability class (e.g. `PackageKit`, `Polkit`, `Hyprland`). |
-| **`Strand`** | Callable Tool / Function | Individual tool exposed to AI agents with Pydantic type validation. |
-| **`Weft`** | Streaming Token Interceptor | Real-time regex pattern interceptor for conversational speech streams. |
-| **`Warp`** | Universal Pub/Sub Event Bus | Low-latency asynchronous sensory and state event distribution. |
-| **`Tapestry`** | Live State Blackboard | Dynamic sensory ledger tracking slots, active tasks, and notices. |
-| **`Twill`** | MCP Server Interface | Model Context Protocol gateway connecting external AI assistants. |
-| **`Seams`** | Diagnostics & Self-Healing | Automated dependency validation and PubGrub conflict resolver. |
-| **`Weave`** | Voice AI Companion | Full-duplex live audio/vision agent powered by LiveKit and Gemini. |
+| **Loom** | Dispatch Engine | Manages runtime tool routing, layer overrides (10 to 150), and subprocess isolation. |
+| **Skein** | Discovery Registry | Scans entrypoints, dynamic plugins, and tracks enable/disable state. |
+| **Yarn** | Capability Module | Modular domain class (e.g. PackageKit, Polkit, Hyprland, D-Bus). |
+| **Strand** | Tool Function | Individual typed function exposed to agents with Pydantic v2 validation. |
+| **Weft** | Stream Interceptor | Regex pattern parser for real-time text and speech streams. |
+| **Warp** | Event Bus | Asynchronous pub/sub broker for system state and UI events. |
+| **Tapestry** | State Blackboard | In-memory key-value ledger for active context and task tracking. |
+| **Twill** | MCP Server | Standard Model Context Protocol (stdio) interface for external AI assistants. |
+| **Seams** | Health Diagnostics | Dependency auditing and PubGrub conflict resolution engine. |
+| **Weave** | Voice Agent | Real-time voice companion integrated with LiveKit and Google Gemini Live API. |
 
 ---
 
-## Prerequisites and Setup
+## Prerequisites
 
-To run Textile with full conversational voice companion (**Weave**) and emotive desktop avatar (**Canvas**) support:
+To use all subsystems, configure the following components:
 
-1. **Google Gemini API Key** (for Gemini Live audio and multimodal model):
+1. **Google Gemini API Key** (required for Weave voice agent):
    ```bash
    export GOOGLE_API_KEY="your-gemini-api-key"
    ```
 
-2. **LiveKit CLI (`lk`)** (for low-latency terminal audio and LiveKit Cloud integration):
+2. **LiveKit CLI (`lk`)** (required for Weave interactive console and dev modes):
    ```bash
-   # Install lk CLI
    curl -sSL https://get.livekit.io/cli | bash
-
-   # Authenticate with your LiveKit Cloud project
    lk cloud auth
    ```
 
-3. **Quickshell** (for the 60 FPS emotive desktop avatar Face UI):
+3. **Quickshell** (optional, required for the desktop avatar UI):
    ```bash
    # Arch Linux / AUR
    paru -S quickshell-git
@@ -57,114 +50,112 @@ To run Textile with full conversational voice companion (**Weave**) and emotive 
 
 ---
 
-## Quick Start and CLI Reference
+## CLI Reference
 
 ```bash
-# Manage yarn discovery, registry, publishers, and enable/disable states
+# Manage yarn registry and lifecycle
 uv run textile skein
 uv run textile skein disable packagekit
 uv run textile skein enable packagekit
 
-# Inspect active strands, parameter schemas, and layer mappings on The Loom
+# Inspect active strands, parameter schemas, and layer priority
 uv run textile loom
 uv run textile loom --yarn hyprland
 
-# Run Seams diagnostics: yarn integrity, dependency audit, and OS health
+# Run dependency audit and system health checks
 uv run textile seams
 
-# View priority layer hierarchy (Layer 150 -> Layer 10)
+# View priority layer hierarchy (Layer 150 to Layer 10)
 uv run textile layers
 
-# Directly execute any strand from the terminal
+# Execute a strand directly
 uv run textile call clipboard_set text="Hello from Textile"
 uv run textile call clipboard_get
 uv run textile call hyprland_focus_workspace workspace="2"
 
-# Control the Quickshell Canvas Face UI and dynamic mood engine
+# Control Canvas UI state
 uv run textile canvas launch
-uv run textile canvas mood excited
+uv run textile canvas mood thinking
 uv run textile canvas talk on
 uv run textile canvas close
 
-# Start the Twill Model Context Protocol (MCP) server (stdio)
+# Start the Twill MCP server over stdio
 uv run textile twill
 
-# Launch the Weave real-time conversational desktop companion
+# Launch the Weave real-time voice agent
 uv run textile weave
 ```
 
 ---
 
-## Authoring a Yarn (`@strand` and Pydantic v2)
+## Authoring Yarns
 
-Every capability module is a standard Python class subclassing `BaseYarn`. Writing a strand takes just **3 to 5 lines of Python code** with type annotations and docstrings:
+Custom capability modules subclass `BaseYarn`. Functions decorated with `@strand` are automatically registered on the Loom and exposed over MCP:
 
 ```python
-from typing import Literal, Optional
+from typing import Optional
 from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
 
-class CustomYarn(BaseYarn):
-    publisher = "myname"
+class MediaPlayerYarn(BaseYarn):
+    publisher = "community"
     name = "media_player"
     version = "1.0.0"
     layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
 
-    # Optional: declare external PyPI packages for automatic uv isolation
+    # Optional: declare isolated runtime dependencies
     python_dependencies = ["mpris2>=1.0.2"]
 
-    @strand(description="Play or pause media playback.", tier=CapabilityTier.INTERACT)
+    @strand(description="Toggle media playback.", tier=CapabilityTier.INTERACT)
     def toggle_playback(self, player: Optional[str] = None) -> str:
-        """Play or pause media playback.
+        """Toggle media playback.
 
-        :param player: Target player name (e.g., 'spotify').
+        :param player: Optional player identifier (e.g., 'spotify').
         """
-        return "Toggled playback"
+        return f"Toggled playback on {player or 'default'}"
 
-    @strand(description="Adjust playback volume level.", tier=CapabilityTier.INTERACT)
+    @strand(description="Set audio volume level.", tier=CapabilityTier.INTERACT)
     def set_volume(self, level: int) -> str:
-        """Adjust playback volume level.
+        """Set playback volume level.
 
-        :param level: Volume percentage (0 to 100).
+        :param level: Volume level between 0 and 100.
         """
         return f"Volume set to {level}%"
 ```
 
-Pydantic v2 automatically derives argument validation, type coercion, and MCP JSON Schemas directly from the signature and docstrings.
+Pydantic v2 validates inputs, coerces types, and generates JSON Schema specifications for MCP clients.
 
 ---
 
-## Linux Desktop Subsystems and Privilege Control
+## Linux Subsystems and Privilege Management
 
-Textile owns its privilege lifecycle cleanly through **Linux PolicyKit-1 (`polkit_*`) and D-Bus**:
-- **System Pre-Authorization**: Pre-authorized elevated operations run instantly without UI dialogs.
-- **AT-SPI Semantic Automation**: Coordinate-independent Linux GUI element querying, clicking, text insertion, and tab switching.
-- **Compositor Control**: Direct socket IPC for Hyprland layout geometry, workspaces, night light, and focus.
-- **POSIX and Kernel Telemetry**: Atomic filesystem operations, real-time inotify file monitoring, sensor telemetry, and hardware frequency queries.
-
----
-
-## Textile Canvas: 60 FPS Emotive Desktop Avatar
-
-Textile Canvas is a hardware-accelerated, real-time emotive desktop presence powered by [Quickshell](https://quickshell.outfoxxed.me/) and QtQuick. It gives voice AI companions and autonomous agents an expressive presence on the Linux desktop:
-
-- **17 Mood Palettes**: `neutral`, `happy`, `excited`, `celebrating`, `thinking`, `focused`, `listening`, `curious`, `calm`, `shy`, `mischievous`, `confused`, `surprised`, `alert`, `sleepy`, `error`, `glitch`.
-- **Zero-Latency Semantic Stream Attunement**: Weave and connected AI models emit inline semantic tags (e.g., `<mood:curious>`, `<gaze:8.0,-5.0>`) directly inside conversational streams.
-- **Forehead Gem Ripple Mechanics**: Automatically pulses with water ripples whenever an autonomous agent initiates system automation or tool calls.
-- **Organic Micro-Saccades and Physics**: Smooth 60 FPS mouth phoneme interpolation, biological eye micro-saccades, reactive head tilt inertia, and interactive elastic click bounce.
-- **Self-Contained and Modular**: Packaged directly within the compositor yarn (`src/textile/yarns/compositor/canvas.qml`), auto-launching on startup with full CLI and IPC controls.
+- **PolicyKit-1 Integration**: Strands can request execution authorization through Polkit rules without spawning interactive dialogs.
+- **AT-SPI Accessibility**: Inspect and interact with desktop application widgets, buttons, menus, and text fields via semantic object paths.
+- **Compositor IPC**: Direct socket communication for Hyprland window placement, workspace routing, monitor layout, and night light configuration.
+- **System and POSIX Primitives**: Safe filesystem operations, kernel inotify directory watches, hardware sensors, and CPU frequency queries.
 
 ---
 
-## Testing and Verification
+## Canvas Desktop UI
+
+Textile Canvas provides a Wayland overlay UI rendered via QtQuick and Quickshell:
+
+- **17 Preset Mood States**: `neutral`, `happy`, `excited`, `celebrating`, `thinking`, `focused`, `listening`, `curious`, `calm`, `shy`, `mischievous`, `confused`, `surprised`, `alert`, `sleepy`, `error`, `glitch`.
+- **Inline Stream Interception**: Weave extracts semantic control tags (`<mood:...>`, `<gaze:x,y>`) from model responses in real time.
+- **State Feedback**: Visual cues for voice activity, speech synthesis, and active background execution.
+- **Standalone Process**: Runs independently through IPC and can be launched or stopped via the CLI.
+
+---
+
+## Testing
 
 ```bash
-# Run pytest test suite
+# Run test suite
 uv run pytest
 
-# Run end-to-end integration suite
+# Run integration diagnostics
 uv run python tests/run_all_tests.py
 
-# Build distribution wheel and source package
+# Build distribution packages
 uv build
 ```
 
@@ -173,5 +164,6 @@ uv build
 ## License
 
 Textile is open-source software licensed under the [Apache License 2.0](LICENSE).
+
 
 
