@@ -165,6 +165,42 @@ class SeamOrchestrator:
                 is_optional=optional,
             )
 
+    def check_python_dependency(self, req: str, optional: bool = False) -> DependencyCheck:
+        """Audit a Python package dependency using uv pip compile dry-run resolution."""
+        uv_bin = shutil.which("uv")
+        if uv_bin:
+            import subprocess
+            try:
+                res = subprocess.run(
+                    [uv_bin, "pip", "compile", "-", "-q"],
+                    input=req,
+                    text=True,
+                    capture_output=True,
+                    timeout=5,
+                )
+                if res.returncode == 0:
+                    return DependencyCheck(
+                        dep_type=DependencyType.PYTHON_MODULE,
+                        target=req,
+                        is_satisfied=True,
+                        details=f"Package requirement '{req}' resolvable via uv SAT resolver",
+                        is_optional=optional,
+                    )
+                else:
+                    err = res.stderr.strip().splitlines()[-1] if res.stderr else "Resolution error"
+                    return DependencyCheck(
+                        dep_type=DependencyType.PYTHON_MODULE,
+                        target=req,
+                        is_satisfied=False,
+                        details=f"uv dependency conflict: {err}",
+                        is_optional=optional,
+                    )
+            except Exception:
+                pass
+
+        base_pkg = req.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip()
+        return self.check_python_module(base_pkg, optional=optional)
+
     def check_env_variable(self, var_name: str, optional: bool = False) -> DependencyCheck:
         val = os.environ.get(var_name)
         satisfied = val is not None and len(val.strip()) > 0
@@ -196,6 +232,10 @@ class SeamOrchestrator:
                 results.append(self.check_env_variable(target, optional))
             elif dtype == DependencyType.DBUS_SERVICE.value:
                 results.append(self.check_dbus_service(target, bus_type=dep.get("bus", "session"), optional=optional))
+
+        if hasattr(yarn, "get_python_dependencies"):
+            for p_dep in yarn.get_python_dependencies():
+                results.append(self.check_python_dependency(p_dep))
 
         return results
 

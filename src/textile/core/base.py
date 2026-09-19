@@ -263,10 +263,15 @@ class BaseYarn(ABC):
     layer: int = LAYER_BASE
     contract: Optional[str] = None
     dependencies: List[Dict[str, Any]] = []
+    python_dependencies: List[str] = []
 
     def get_contract(self) -> Optional[str]:
         """Return the yarn's sealed contract / advisory letter for the AI client."""
         return getattr(self, "contract", None) or (self.__doc__.strip() if self.__doc__ else None)
+
+    def get_python_dependencies(self) -> List[str]:
+        """Return declared external Python package requirements for isolated uv execution."""
+        return list(getattr(self, "python_dependencies", []) or [])
 
     @property
     def warp(self):
@@ -481,6 +486,41 @@ class BaseYarn(ABC):
         )
 
     def _run_isolated(self, strand_name: str, args: Dict[str, Any], timeout: float = 30.0) -> str:
+        """Run strand in an isolated ephemeral subprocess using `uv` (if external deps declared) or multiprocessing spawn."""
+        deps = self.get_python_dependencies()
+        uv_bin = shutil.which("uv")
+
+        if deps and uv_bin:
+            import subprocess
+            cmd = [uv_bin, "run", "--quiet", "--isolated"]
+            for dep in deps:
+                cmd.extend(["--with", str(dep)])
+            cmd.extend([
+                "-m", "textile.core.isolated_runner",
+                self.__class__.__module__,
+                self.__class__.__name__,
+                strand_name,
+                json.dumps(args),
+            ])
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                out = res.stdout.strip()
+                if res.returncode == 0 and out:
+                    try:
+                        payload = json.loads(out)
+                        if payload.get("success"):
+                            res_val = payload.get("result")
+                            return json.dumps(res_val, indent=2) if isinstance(res_val, (dict, list)) else (str(res_val) if res_val is not None else "ok")
+                        return f"Error: {payload.get('error', 'Execution failed')}"
+                    except Exception:
+                        return out
+                err_msg = res.stderr.strip() if res.stderr else f"Exit code {res.returncode}"
+                return f"Error: Strand '{strand_name}' isolated worker process crashed ({err_msg}). Host process preserved."
+            except subprocess.TimeoutExpired:
+                return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
+            except Exception as e:
+                logger.warning(f"uv execution encountered an error ({e}), falling back to multiprocessing worker.")
+
         ctx = multiprocessing.get_context("spawn")
         p_conn, c_conn = ctx.Pipe()
         proc = ctx.Process(target=_isolated_worker, args=(self.__class__.__module__, self.__class__.__name__, strand_name, args, c_conn))
