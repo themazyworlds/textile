@@ -143,40 +143,24 @@ def run_voice_agent(
     voice: str = "Puck",
     text_mode: bool = False,
 ):
-    """Entry point to run Weave Voice Agent via LiveKit CLI (lk)."""
-    import shutil
-    from pathlib import Path
-
+    """Entry point to run Weave Voice Agent using livekit.agents.cli."""
     os.environ["TEXTILE_LIVE_MODEL"] = model
     os.environ["TEXTILE_VOICE"] = voice
     os.environ["WEAVE_LIVE_MODEL"] = model
     os.environ["WEAVE_VOICE"] = voice
 
-    script_path = str(Path(__file__).resolve())
-    lk_bin = shutil.which("lk")
-
     if mode == "console":
-        if lk_bin:
-            cmd = [lk_bin, "agent", "console", script_path]
-            if text_mode:
-                cmd.append("--text")
-            os.execvpe(lk_bin, cmd, os.environ)
-        else:
-            sys.argv = ["textile-weave", "console"]
-            if text_mode:
-                sys.argv.append("--text")
-            cli.run_app(server)
+        sys.argv = ["textile-weave", "console"]
+        if text_mode:
+            sys.argv.append("--text")
     elif mode == "dev":
-        if lk_bin:
-            cmd = [lk_bin, "agent", "dev", script_path]
-            os.execvpe(lk_bin, cmd, os.environ)
-        else:
-            sys.argv = ["textile-weave", "dev"]
-            cli.run_app(server)
+        sys.argv = ["textile-weave", "dev"]
     elif mode == "start":
         sys.argv = ["textile-weave", "start"]
-        cli.run_app(server)
+
+    cli.run_app(server)
 
 
 if __name__ == "__main__":
     cli.run_app(server)
+
