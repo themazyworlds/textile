@@ -1,8 +1,6 @@
 # Textile
 
-<p align="center">
-  <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 8px;"></video>
-</p>
+![](./assets/canvas_showcase.mp4)
 
 A modular intelligence and automation framework for Linux. Textile provides a layered runtime dispatch engine and plugin architecture that exposes system capabilities and desktop interfaces to Model Context Protocol (MCP) clients and local tooling.
 
