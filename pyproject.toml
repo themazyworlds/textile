@@ -1,0 +1,52 @@
+[project]
+name = "textile"
+version = "0.1.2"
+description = "Textile • Pure Modular AI Subsystem & Desktop Intelligence Engine"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "themazyworlds", email = "meerahemant9086@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "dbus-fast>=5.0.22",
+    "livekit-agents[google,mcp]>=1.8.2",
+    "mss>=10.2.0",
+    "pillow>=12.3.0",
+    "pydantic>=2.10.0",
+    "pyxclip>=0.2.3",
+    "rich>=15.0.0",
+]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
+    "Topic :: System :: Systems Administration",
+    "Programming Language :: Python :: 3.14",
+]
+
+[project.scripts]
+textile = "textile.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:.*unix_signal_add_full.*",
+    "ignore:.*GLib.*deprecated.*",
+    "ignore:.*_UnionGenericAlias.*:DeprecationWarning",
+]
+
+[tool.uv.build-backend]
+source-include = ["tests/**", "AGENTS.md"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+

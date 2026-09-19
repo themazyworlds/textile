@@ -1,0 +1,190 @@
+"""
+Weave - Voice & Perception Agent Subsystem powered by LiveKit Agents & Gemini 3 Live API.
+Provides seamless real-time full-duplex voice companion bound to the Textile intelligence fabric.
+"""
+
+import os
+import sys
+from typing import Optional
+from livekit.agents import AgentServer, AutoSubscribe, JobContext, cli, mcp
+from livekit.agents.voice import Agent, AgentSession
+from livekit.plugins import google
+import asyncio
+import concurrent.futures
+import re
+from textile.core.loom import loom
+
+from typing import Any, AsyncGenerator, AsyncIterable, Optional
+
+server = AgentServer()
+
+MOOD_TAG_REGEX = re.compile(r"<mood:([a-zA-Z_-]+)>", re.IGNORECASE)
+from textile.core.warp import warp, WarpEvent
+
+
+def extract_and_apply_mood_tags(content: str) -> None:
+    """Extract and process semantic attunements from speech text using Loom Wefts."""
+    if not content or not isinstance(content, str):
+        return
+    loom.process_stream(content)
+
+
+class WeaveAgent(Agent):
+    """Weave Voice Companion Agent with real-time streaming semantic token interception via Loom Wefts."""
+
+    async def transcription_node(
+        self, text: AsyncIterable[str | Any], model_settings: Any
+    ) -> AsyncGenerator[str | Any, None]:
+        buffer = ""
+        async for delta in text:
+            delta_text = getattr(delta, "text", None) or (delta if isinstance(delta, str) else str(delta))
+            buffer += delta_text
+
+            # Execute matching wefts and strip matched tags from buffer
+            buffer = loom.process_stream(buffer)
+
+            # Clean the current delta chunk
+            clean_delta = loom.process_stream(delta_text)
+            if clean_delta:
+                if hasattr(delta, "text"):
+                    delta.text = clean_delta
+                    yield delta
+                else:
+                    yield clean_delta
+
+
+@server.rtc_session()
+async def entrypoint(ctx: JobContext):
+    # Prewarm Loom and active yarns before connecting audio session
+    loom.initialize()
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+    model_name = os.getenv("TEXTILE_LIVE_MODEL", os.getenv("WEAVE_LIVE_MODEL", "gemini-3.8-live"))
+    voice_name = os.getenv("TEXTILE_VOICE", os.getenv("WEAVE_VOICE", "Puck"))
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+    realtime_model = google.realtime.RealtimeModel(
+        model=model_name,
+        api_key=api_key,
+        voice=voice_name,
+    )
+
+    textile_env = dict(os.environ)
+    textile_env["TEXTILE_CALLER"] = "weave"
+
+    textile_toolset = mcp.MCPToolset(
+        id="textile",
+        mcp_server=mcp.MCPServerStdio(
+            command="textile",
+            args=["twill"],
+            env=textile_env,
+        ),
+    )
+
+    session = AgentSession(
+        llm=realtime_model,
+        turn_detection="realtime_llm",
+    )
+
+    # Event handlers connecting LiveKit voice stream to Textile Canvas UI asynchronously via Warp pub/sub
+    @session.on("agent_state_changed")
+    def on_agent_state_changed(ev):
+        state = getattr(ev, "new_state", None)
+        if state == "speaking":
+            warp.publish(WarpEvent.VOICE_STATE, {"talking": True, "listening": False})
+        elif state == "thinking":
+            warp.publish(WarpEvent.MOOD_CHANGE, {"mood": "thinking", "source": "weave"})
+            warp.publish(WarpEvent.VOICE_STATE, {"talking": False})
+        elif state == "listening":
+            warp.publish(WarpEvent.VOICE_STATE, {"listening": True, "talking": False})
+        elif state in ("idle", "initializing", None):
+            warp.publish(WarpEvent.VOICE_STATE, {"talking": False})
+
+    @session.on("user_state_changed")
+    def on_user_state_changed(ev):
+        state = getattr(ev, "new_state", None)
+        if state == "speaking":
+            warp.publish(WarpEvent.VOICE_STATE, {"listening": True, "talking": False})
+
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(ev):
+        item = getattr(ev, "item", None)
+        if item is not None:
+            content = getattr(item, "content", None)
+            if isinstance(content, str):
+                extract_and_apply_mood_tags(content)
+            elif isinstance(content, list):
+                for part in content:
+                    text_val = getattr(part, "text", None) or (part if isinstance(part, str) else "")
+                    extract_and_apply_mood_tags(text_val)
+
+    agent = WeaveAgent(
+        instructions="""You are Weave, a calm, sovereign Linux desktop companion powered by the Textile intelligence fabric.
+        Textile is the master package that binds everything together across the desktop.
+        You have direct protocol-level control over the user's Linux desktop via Twill strands (Hyprland, AT-SPI, D-Bus, Polkit, Wayland, UWSM, Canvas, System/POSIX).
+        When asked to switch workspaces, move windows, launch apps, inspect errors, or manipulate UI elements,
+        use your available strands immediately and succinctly report the results back in natural spoken voice.
+
+        EMOTIONS, GAZE & CANVAS AVATAR (HIGH-FREQUENCY EMOTIVE STREAMING):
+        The Canvas avatar is your live face on the desktop. To make your avatar exceptionally fluid, expressive, and alive,
+        you MUST actively embed multiple semantic mood and gaze tags across your spoken sentences in EVERY single response (2 to 4 tags per turn):
+        - Mood tags: <mood:curious>, <mood:thinking>, <mood:happy>, <mood:excited>, <mood:focused>, <mood:celebrating>, <mood:confused>, <mood:surprised>, <mood:shy>, <mood:mischievous>, <mood:calm>, <mood:alert>, <mood:neutral>.
+        - Gaze tags: <gaze:X,Y> (e.g. <gaze:8.0,-6.0> to glance up-right, <gaze:-10.0,0.0> to glance left, <gaze:0.0,8.0> to look down).
+
+        MULTI-TAG BEST PRACTICES:
+        - Open your response with your initial reaction tag (e.g. <mood:curious> or <mood:thinking>).
+        - Transition mid-thought while taking action or pondering (e.g. <mood:focused> or <gaze:6.0,-4.0>).
+        - Conclude with your final emotional posture (e.g. <mood:happy>, <mood:celebrating>, or <mood:calm>).
+        - Example: "<mood:curious> Let's take a look at your windows. <mood:thinking> Checking Hyprland workspaces now... <mood:focused> <gaze:6.0,-4.0> Moving your terminal over... <mood:happy> Done! Everything is organized."
+        - Do NOT read these tags aloud; they are visual semantic cues for your Canvas avatar.""",
+        tools=[textile_toolset],
+    )
+
+    await session.start(room=ctx.room, agent=agent)
+    await session.generate_reply(instructions="Say a brief, confident hello with <mood:happy> stating that desktop systems and voice weave are online.")
+
+
+
+def run_voice_agent(
+    mode: str = "console",
+    model: str = "gemini-3.8-live",
+    voice: str = "Puck",
+    text_mode: bool = False,
+):
+    """Entry point to run Weave Voice Agent via LiveKit CLI (lk)."""
+    import shutil
+    from pathlib import Path
+
+    os.environ["TEXTILE_LIVE_MODEL"] = model
+    os.environ["TEXTILE_VOICE"] = voice
+    os.environ["WEAVE_LIVE_MODEL"] = model
+    os.environ["WEAVE_VOICE"] = voice
+
+    script_path = str(Path(__file__).resolve())
+    lk_bin = shutil.which("lk")
+
+    if mode == "console":
+        if lk_bin:
+            cmd = [lk_bin, "agent", "console", script_path]
+            if text_mode:
+                cmd.append("--text")
+            os.execvpe(lk_bin, cmd, os.environ)
+        else:
+            sys.argv = ["textile-weave", "console"]
+            if text_mode:
+                sys.argv.append("--text")
+            cli.run_app(server)
+    elif mode == "dev":
+        if lk_bin:
+            cmd = [lk_bin, "agent", "dev", script_path]
+            os.execvpe(lk_bin, cmd, os.environ)
+        else:
+            sys.argv = ["textile-weave", "dev"]
+            cli.run_app(server)
+    elif mode == "start":
+        sys.argv = ["textile-weave", "start"]
+        cli.run_app(server)
+
+
+if __name__ == "__main__":
+    cli.run_app(server)
