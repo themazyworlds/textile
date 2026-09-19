@@ -1,44 +1,20 @@
-# Textile • Linux Desktop Intelligence & Automation Fabric
+# Textile: Linux Desktop Intelligence and Automation Fabric
 
 <p align="center">
   <a href="https://github.com/themazyworlds/textile/actions/workflows/ci.yml"><img src="https://github.com/themazyworlds/textile/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python 3.12+" />
-  <a href="#-system-architecture"><img src="https://img.shields.io/badge/architecture-microkernel-89b4fa.svg" alt="Architecture" /></a>
-  <a href="#-textile-canvas--60-fps-emotive-desktop-avatar"><img src="https://img.shields.io/badge/avatar-60fps_QtQuick-fab387.svg" alt="Canvas" /></a>
 </p>
 
 <p align="center">
   <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);"></video>
 </p>
 
-Textile is a high-performance, protocol-first desktop intelligence and automation subsystem for Linux. Powered by a decoupled microkernel architecture, it seamlessly connects AI agents, full-duplex voice companions, and local CLI tools to the Linux desktop across all compositor, session, protocol, and kernel layers.
+Textile is a high-performance, protocol-first desktop intelligence and automation subsystem for Linux. Powered by a decoupled microkernel architecture, it connects AI agents, full-duplex voice companions, and local CLI tools to the Linux desktop across all compositor, session, protocol, and kernel layers.
 
 ---
 
-## 🏛️ System Architecture & Glossary
+## System Architecture and Glossary
 
 Textile is structured around a focused, decoupled weaving metaphor:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Weave (Real-Time Voice & AI Engine)                  │
-└────────────────────────────────────┬────────────────────────────────────┘
-                                     │ Twill (MCP / Stdio JSON-RPC)
-┌────────────────────────────────────▼────────────────────────────────────┐
-│                       Loom (Runtime Dispatch Engine)                    │
-│             High-speed in-memory strand execution & layer overrides     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                       Skein (Yarn & Lifecycle Manager)                  │
-│             Discovery, PEP 621 entrypoints, dependency auditing         │
-└───────┬───────────────────┬─────────────────────┬───────────────────────┘
-        │ Layer 150         │ Layer 100           │ Layer 50 / 10
-        ▼                   ▼                     ▼
-┌───────────────┐   ┌───────────────┐     ┌───────────────────────────────┐
-│ Session Yarn  │   │  Compositor   │     │ Semantic Protocols & POSIX    │
-│    (UWSM)     │   │  (Hyprland)   │     │ (AT-SPI, D-Bus, Polkit, Clipboard)│
-└───────────────┘   └───────────────┘     └───────────────────────────────┘
-```
 
 | Textile Concept | Engineering Equivalent | Purpose |
 |---|---|---|
@@ -53,11 +29,13 @@ Textile is structured around a focused, decoupled weaving metaphor:
 | **`Seams`** | Diagnostics & Self-Healing | Automated dependency validation and PubGrub conflict resolver. |
 | **`Weave`** | Voice AI Companion | Full-duplex live audio/vision agent powered by LiveKit and Gemini. |
 
-## 📋 Prerequisites & Setup
+---
+
+## Prerequisites and Setup
 
 To run Textile with full conversational voice companion (**Weave**) and emotive desktop avatar (**Canvas**) support:
 
-1. **Google Gemini API Key** (for Gemini Live audio & multimodal model):
+1. **Google Gemini API Key** (for Gemini Live audio and multimodal model):
    ```bash
    export GOOGLE_API_KEY="your-gemini-api-key"
    ```
@@ -79,7 +57,7 @@ To run Textile with full conversational voice companion (**Weave**) and emotive 
 
 ---
 
-## 🚀 Quick Start & CLI Reference
+## Quick Start and CLI Reference
 
 ```bash
 # Manage yarn discovery, registry, publishers, and enable/disable states
@@ -102,7 +80,7 @@ uv run textile call clipboard_set text="Hello from Textile"
 uv run textile call clipboard_get
 uv run textile call hyprland_focus_workspace workspace="2"
 
-# Control the Quickshell Canvas Face UI & dynamic mood engine
+# Control the Quickshell Canvas Face UI and dynamic mood engine
 uv run textile canvas launch
 uv run textile canvas mood excited
 uv run textile canvas talk on
@@ -117,9 +95,9 @@ uv run textile weave
 
 ---
 
-## 🛠️ Authoring a Yarn (`@strand` & Pydantic v2)
+## Authoring a Yarn (`@strand` and Pydantic v2)
 
-Every capability module is a standard Python class subclassing `BaseYarn`. Writing a strand takes just **3–5 lines of natural Python code** with pure type annotations and docstrings:
+Every capability module is a standard Python class subclassing `BaseYarn`. Writing a strand takes just **3 to 5 lines of Python code** with type annotations and docstrings:
 
 ```python
 from typing import Literal, Optional
@@ -155,29 +133,29 @@ Pydantic v2 automatically derives argument validation, type coercion, and MCP JS
 
 ---
 
-## 🛡️ Linux Desktop Subsystems & Privilege Control
+## Linux Desktop Subsystems and Privilege Control
 
 Textile owns its privilege lifecycle cleanly through **Linux PolicyKit-1 (`polkit_*`) and D-Bus**:
-- **System Pre-Authorization**: Pre-authorized elevated operations run instantly with zero UI dialogs.
+- **System Pre-Authorization**: Pre-authorized elevated operations run instantly without UI dialogs.
 - **AT-SPI Semantic Automation**: Coordinate-independent Linux GUI element querying, clicking, text insertion, and tab switching.
 - **Compositor Control**: Direct socket IPC for Hyprland layout geometry, workspaces, night light, and focus.
-- **POSIX & Kernel Telemetry**: Atomic filesystem operations, real-time inotify file monitoring, sensor telemetry, and hardware frequency queries.
+- **POSIX and Kernel Telemetry**: Atomic filesystem operations, real-time inotify file monitoring, sensor telemetry, and hardware frequency queries.
 
 ---
 
-## 🎨 Textile Canvas • 60 FPS Emotive Desktop Avatar
+## Textile Canvas: 60 FPS Emotive Desktop Avatar
 
-Textile Canvas is a hardware-accelerated, real-time emotive desktop presence powered by [Quickshell](https://quickshell.outfoxxed.me/) and QtQuick. It gives voice AI companions and autonomous agents a lively, organic face on the Linux desktop:
+Textile Canvas is a hardware-accelerated, real-time emotive desktop presence powered by [Quickshell](https://quickshell.outfoxxed.me/) and QtQuick. It gives voice AI companions and autonomous agents an expressive presence on the Linux desktop:
 
-- **17 Rich Mood Palettes**: `neutral`, `happy`, `excited`, `celebrating`, `thinking`, `focused`, `listening`, `curious`, `calm`, `shy`, `mischievous`, `confused`, `surprised`, `alert`, `sleepy`, `error`, `glitch`.
+- **17 Mood Palettes**: `neutral`, `happy`, `excited`, `celebrating`, `thinking`, `focused`, `listening`, `curious`, `calm`, `shy`, `mischievous`, `confused`, `surprised`, `alert`, `sleepy`, `error`, `glitch`.
 - **Zero-Latency Semantic Stream Attunement**: Weave and connected AI models emit inline semantic tags (e.g., `<mood:curious>`, `<gaze:8.0,-5.0>`) directly inside conversational streams.
-- **Harmonic Forehead Gem Ripple Mechanics**: Automatically pulses with harmonic water ripples whenever an autonomous agent initiates system automation or tool calls.
-- **Organic Micro-Saccades & Physics**: Smooth 60 FPS mouth phoneme interpolation, biological eye micro-saccades, reactive head tilt inertia, and interactive elastic click bounce.
-- **Self-Contained & Modular**: Packaged directly within the compositor yarn (`src/textile/yarns/compositor/canvas.qml`), auto-launching on startup with full CLI and IPC controls.
+- **Forehead Gem Ripple Mechanics**: Automatically pulses with water ripples whenever an autonomous agent initiates system automation or tool calls.
+- **Organic Micro-Saccades and Physics**: Smooth 60 FPS mouth phoneme interpolation, biological eye micro-saccades, reactive head tilt inertia, and interactive elastic click bounce.
+- **Self-Contained and Modular**: Packaged directly within the compositor yarn (`src/textile/yarns/compositor/canvas.qml`), auto-launching on startup with full CLI and IPC controls.
 
 ---
 
-## 🧪 Testing & Verification
+## Testing and Verification
 
 ```bash
 # Run pytest test suite
@@ -192,7 +170,8 @@ uv build
 
 ---
 
-## 📄 License
+## License
 
 Textile is open-source software licensed under the [Apache License 2.0](LICENSE).
+
 
