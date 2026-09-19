@@ -16,7 +16,34 @@ from textile.core.loom import loom
 def create_twill_server() -> Server:
     """Create and configure official Twill / MCP Server with yarn strand dispatchers."""
     loom.initialize()
-    app = Server("textile")
+    instructions = loom.get_fabric_instructions()
+    app = Server("textile", instructions=instructions)
+
+    @app.list_prompts()
+    async def handle_list_prompts() -> List[types.Prompt]:
+        return [
+            types.Prompt(
+                name="textile_system_contract",
+                description="Textile Desktop Fabric active yarn contracts, persona guidelines, and semantic streaming tags.",
+            )
+        ]
+
+    @app.get_prompt()
+    async def handle_get_prompt(name: str, arguments: dict | None = None) -> types.GetPromptResult:
+        if name == "textile_system_contract":
+            return types.GetPromptResult(
+                description="Textile Desktop Fabric Active System Contract",
+                messages=[
+                    types.PromptMessage(
+                        role="user",
+                        content=types.TextContent(
+                            type="text",
+                            text=loom.get_fabric_instructions(),
+                        ),
+                    )
+                ],
+            )
+        raise ValueError(f"Unknown prompt: {name}")
 
     @app.list_tools()
     async def handle_list_tools() -> List[types.Tool]:

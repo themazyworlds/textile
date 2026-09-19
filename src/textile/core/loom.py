@@ -219,7 +219,43 @@ class Loom:
             if weft.strip:
                 result = weft.pattern.sub("", result)
 
-        return result
+    def get_fabric_instructions(self) -> str:
+        """Dynamically generate fabric-level instructions and weft contract guidance for MCP clients."""
+        self.initialize()
+        active_yarn_names = list(self.active_yarns.keys())
+        lines = [
+            "Textile Linux Desktop Automation & Intelligence Fabric Active.",
+            f"Active Capability Yarns: {', '.join(active_yarn_names)}.",
+            "",
+            "## Yarn Contracts & Real-Time Stream Attunements",
+            "The following active yarns listen for inline semantic tokens in your natural language stream.",
+            "Fulfilling these contracts is advisory and strongly recommended to deliver a seamless, delightful user experience:",
+        ]
+
+        if "canvas" in self.active_yarns:
+            lines.extend([
+                "",
+                "### Canvas Emotive Desktop Avatar Contract",
+                "- You possess an animated 60 FPS emotive desktop avatar present on the user's screen.",
+                "- You are strongly encouraged to interleave 2-4 semantic mood and gaze tags across your spoken/written sentences:",
+                "  * Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>, <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>, <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>",
+                "  * Gaze tags: <gaze:X,Y> (where X: -16.0 to 16.0, Y: -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right)",
+                "- Example: \"<mood:curious> Let's look into that for you... <mood:thinking> inspecting files now... <mood:happy> Found it!\"",
+                "- The avatar automatically pulses harmonic forehead gemstone ripples when system tools are channeled.",
+            ])
+
+        for weft in self.wefts:
+            if weft.name not in ("on_stream_mood", "on_stream_gaze") and weft.description:
+                lines.append(f"- Weft `{weft.name}`: {weft.description}")
+
+        lines.extend([
+            "",
+            "## General Desktop Safety Guidelines",
+            "- Pre-authorized desktop and POSIX operations run smoothly across D-Bus, AT-SPI, and PolicyKit.",
+            "- Always verify context when performing disruptive actions.",
+        ])
+
+        return "\n".join(lines)
 
 
 loom = Loom()
