@@ -4,13 +4,13 @@ Textile Warp - Universal Real-Time Pub/Sub Sensory & Event Bus.
 
 import logging
 from collections.abc import Callable
-from enum import Enum
-from typing import Any, Union
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class WarpEvent(str, Enum):
+class WarpEvent(StrEnum):
     """Standard Core Event Topics."""
     USER_INPUT_PROMPT = "user.input.prompt"
     TOOL_EXECUTION_START = "tool.execution.start"
@@ -21,7 +21,7 @@ class WarpEvent(str, Enum):
     DESKTOP_EVENT = "desktop.event"
 
 
-Topic = Union[WarpEvent, str]
+Topic = WarpEvent | str
 
 
 class Warp:
@@ -50,8 +50,9 @@ class Warp:
         for cb in list(self._subscribers.get(key, [])):
             try:
                 cb(data)
-            except Exception as e:
+            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.debug(f"Warp subscriber error on '{key}': {e}")
 
 
 warp = Warp()
+

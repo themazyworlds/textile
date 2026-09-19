@@ -3,12 +3,18 @@ Textile Loom - High-Performance Strand Execution, Capability Resolution, and Dis
 """
 
 import asyncio
+import concurrent.futures
 import inspect
 import logging
+import os
+import time
+import uuid
 from typing import Any
 
-from textile.core.base import LAYER_BASE, Yarn, Strand, Weft
+from textile.core.base import LAYER_BASE, Strand, Weft, Yarn
 from textile.core.skein import Skein, skein
+from textile.core.tapestry import core_tapestry
+from textile.core.warp import WarpEvent, warp
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +53,8 @@ class Loom:
                     new_strand_map[strand.name] = yarn
                     if strand.capability:
                         new_cap_map[strand.capability] = (strand, yarn)
-                for weft in yarn.get_wefts():
-                    new_wefts.append(weft)
-            except Exception as e:
+                new_wefts.extend(yarn.get_wefts())
+            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.error(f"Error loading strands/wefts from yarn {yarn.name}: {e}")
 
         # Sort wefts by priority (higher priority first)
@@ -59,18 +64,22 @@ class Loom:
         old_keys, new_keys = set(self.active_yarns.keys()), set(new_active.keys())
         for name in old_keys - new_keys:
             if name in self._skein.all_yarns:
-                try: self._skein.all_yarns[name].on_unload()
-                except Exception: pass
+                try:
+                    self._skein.all_yarns[name].on_unload()
+                except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                    logger.warning(f"Error unloading yarn '{name}': {e}")
         for name in new_keys - old_keys:
-            try: new_active[name].on_load()
-            except Exception: pass
+            try:
+                new_active[name].on_load()
+            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                logger.warning(f"Error loading yarn '{name}': {e}")
 
         self.active_yarns, self.strands, self.wefts = new_active, new_strands, new_wefts
         self._strand_to_yarn, self._capability_to_strand = new_strand_map, new_cap_map
 
     def get_strand_override_status(self, strand: Strand, yarn: Yarn) -> tuple[bool, str | None, str | None]:
         if strand.capability and strand.capability in self._capability_to_strand:
-            active_s, active_y = self._capability_to_strand[strand.capability]
+            _active_s, active_y = self._capability_to_strand[strand.capability]
             if active_y.name != yarn.name:
                 return True, active_y.name, strand.capability
         return False, None, None
@@ -78,8 +87,12 @@ class Loom:
     def get_all_strands(self) -> list[Strand]:
         self.initialize()
         return [
-            s for name, s in self.strands.items()
-            if not (self._strand_to_yarn.get(name) and self.get_strand_override_status(s, self._strand_to_yarn[name])[0])
+            s
+            for name, s in self.strands.items()
+            if not (
+                self._strand_to_yarn.get(name)
+                and self.get_strand_override_status(s, self._strand_to_yarn[name])[0]
+            )
         ]
 
     def get_strand(self, strand_name: str) -> Strand | None:
@@ -103,17 +116,13 @@ class Loom:
             if active_y.name != yarn.name:
                 strand, yarn = active_s, active_y
 
-        import os
-        import time
-        import uuid
-
-        from textile.core.tapestry import core_tapestry
-        from textile.core.warp import WarpEvent, warp
-
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
         core_tapestry.record_task_start(task_id, strand_name, args)
-        warp.publish(WarpEvent.TOOL_EXECUTION_START, {"task_id": task_id, "strand": strand_name, "caller": effective_caller})
+        warp.publish(
+            WarpEvent.TOOL_EXECUTION_START,
+            {"task_id": task_id, "strand": strand_name, "caller": effective_caller},
+        )
         t0 = time.perf_counter()
         success = True
         err = None
@@ -128,7 +137,16 @@ class Loom:
         finally:
             dur = (time.perf_counter() - t0) * 1000.0
             core_tapestry.record_task_end(task_id, success=success, duration_ms=dur, error=err)
-            warp.publish(WarpEvent.TOOL_EXECUTION_DONE, {"task_id": task_id, "strand": strand_name, "success": success, "duration_ms": dur, "caller": effective_caller})
+            warp.publish(
+                WarpEvent.TOOL_EXECUTION_DONE,
+                {
+                    "task_id": task_id,
+                    "strand": strand_name,
+                    "success": success,
+                    "duration_ms": dur,
+                    "caller": effective_caller,
+                },
+            )
 
     def execute_sync(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
         """Synchronous bridge for CLI and non-async environments."""
@@ -138,7 +156,6 @@ class Loom:
             loop = None
 
         if loop and loop.is_running():
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(asyncio.run, self.execute(strand_name, args, caller=caller)).result()
         return asyncio.run(self.execute(strand_name, args, caller=caller))
@@ -184,7 +201,7 @@ class Loom:
                         loop.create_task(res)
                     except RuntimeError:
                         asyncio.run(res)
-            except Exception as e:
+            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.error(f"Error executing weft '{weft.name}': {e}")
 
         result = chunk
@@ -212,13 +229,15 @@ class Loom:
                 res = weft.execute_match(match)
                 if inspect.iscoroutine(res):
                     await res
-            except Exception as e:
+            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.error(f"Error executing weft '{weft.name}': {e}")
 
         result = chunk
         for weft in self.wefts:
             if weft.strip:
                 result = weft.pattern.sub("", result)
+
+        return result
 
     def get_fabric_instructions(self) -> str:
         """Deliver all active yarn contracts and weft attunements to the MCP client (postman pattern)."""
@@ -242,8 +261,10 @@ class Loom:
             "Textile Linux Desktop Automation & Intelligence Fabric Active.\n"
             f"Active Capability Yarns: {', '.join(active_yarn_names)}.\n\n"
             "## Active Yarn Contracts & Real-Time Stream Attunements\n"
-            "The following active yarns have delivered their behavioral contracts and stream attunements for this session.\n"
-            "Fulfilling these contracts is advisory and strongly recommended to deliver a seamless, delightful user experience:\n"
+            "The following active yarns have delivered their behavioral contracts "
+            "and stream attunements for this session.\n"
+            "Fulfilling these contracts is advisory and strongly recommended to deliver a seamless, delightful "
+            "user experience:\n"
         )
         return header + "\n" + "\n\n".join(letters)
 

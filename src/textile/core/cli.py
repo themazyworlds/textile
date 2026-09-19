@@ -16,6 +16,9 @@ from rich.tree import Tree
 from textile.core.loom import loom
 from textile.core.seams import seams
 from textile.core.skein import skein
+from textile.core.twill import run_twill
+from textile.yarns.compositor.canvas import Canvas
+from textile.yarns.weave import run_voice_agent
 
 console = Console()
 
@@ -48,14 +51,20 @@ def render_table(
     console.print(table)
 
 
+LAYER_USER_OVERRIDE_THRESHOLD = 1000
+LAYER_SESSION_MANAGER_THRESHOLD = 150
+LAYER_COMPOSITOR_DE_THRESHOLD = 100
+LAYER_DESKTOP_PROTOCOL_THRESHOLD = 50
+
+
 def _layer_info(layer: int) -> dict[str, Any]:
-    if layer >= 1000:
+    if layer >= LAYER_USER_OVERRIDE_THRESHOLD:
         return {"level": 5, "name": "User Override"}
-    elif layer >= 150:
+    elif layer >= LAYER_SESSION_MANAGER_THRESHOLD:
         return {"level": 4, "name": "Session Manager"}
-    elif layer >= 100:
+    elif layer >= LAYER_COMPOSITOR_DE_THRESHOLD:
         return {"level": 3, "name": "Compositor / DE"}
-    elif layer >= 50:
+    elif layer >= LAYER_DESKTOP_PROTOCOL_THRESHOLD:
         return {"level": 2, "name": "Desktop Protocol"}
     else:
         return {"level": 1, "name": "Core POSIX"}
@@ -82,7 +91,9 @@ def cmd_skein(args):
         state = skein.toggle_yarn(yarn_target)
         loom._rebuild_active()
         state_str = "[bold green]enabled[/bold green]" if state else "[bold yellow]disabled[/bold yellow]"
-        console.print(f"  [bold white]✓[/bold white] Toggled yarn [bold white]{yarn_target}[/bold white] to {state_str}.")
+        console.print(
+            f"  [bold white]✓[/bold white] Toggled yarn [bold white]{yarn_target}[/bold white] to {state_str}."
+        )
         return
 
     cols = [
@@ -101,7 +112,7 @@ def cmd_skein(args):
         try:
             is_av = yarn.is_available()
             av_str = "[green]YES[/green]" if is_av else "[yellow]NO[/yellow]"
-        except Exception:
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
             av_str = "[red]ERR[/red]"
 
         pub = getattr(yarn, "publisher", "") or "textile"
@@ -116,7 +127,8 @@ def cmd_skein(args):
         ])
 
     console.print(
-        f"\n  [bold bright_cyan]textile skein[/bold bright_cyan] [dim]• Yarn Registry & Lifecycle Manager • {len(skein.all_yarns)} discovered yarns[/dim]\n"
+        f"\n  [bold bright_cyan]textile skein[/bold bright_cyan] [dim]• Yarn Registry & Lifecycle Manager • "
+        f"{len(skein.all_yarns)} discovered yarns[/dim]\n"
     )
     render_table(None, cols, rows)
     console.print()
@@ -143,7 +155,10 @@ def cmd_loom(args):
         console.print(f"[dim]No active yarns found{' matching filter ' + filter_yarn if filter_yarn else ''}.[/dim]")
         return
 
-    console.print(f"\n  [bold bright_cyan]textile loom[/bold bright_cyan] [dim]• {len(sorted_yarns)} active yarns • {total_strands} registered strands[/dim]\n")
+    console.print(
+        f"\n  [bold bright_cyan]textile loom[/bold bright_cyan] [dim]• {len(sorted_yarns)} active yarns • "
+        f"{total_strands} registered strands[/dim]\n"
+    )
 
     for yarn in sorted_yarns:
         strands = yarns_map[yarn]
@@ -191,7 +206,11 @@ def cmd_layers(args):
 
         for t in yarn.get_strands():
             is_overridden, active_name, cap_id = loom.get_strand_override_status(t, yarn)
-            status_str = f"[strike dim red]Overridden by {active_name}[/strike dim red]" if is_overridden else "[green]ACTIVE[/green]"
+            status_str = (
+                f"[strike dim red]Overridden by {active_name}[/strike dim red]"
+                if is_overridden
+                else "[green]ACTIVE[/green]"
+            )
             cap_str = cap_id or "-"
             rows.append([
                 str(layer_info["level"]),
@@ -208,13 +227,11 @@ def cmd_layers(args):
 
 def cmd_twill(args):
     """Launch official Twill / MCP stdio server."""
-    from textile.core.twill import run_twill
     run_twill()
 
 
 def cmd_weave(args):
     """Launch Weave real-time voice & desktop companion."""
-    from textile.yarns.weave import run_voice_agent
     mode = "dev" if getattr(args, "dev", False) else ("start" if getattr(args, "start_worker", False) else "console")
     run_voice_agent(
         mode=mode,
@@ -226,7 +243,6 @@ def cmd_weave(args):
 
 def cmd_canvas(args):
     """Control the Quickshell Canvas Face UI and dynamic mood engine."""
-    from textile.yarns.compositor.canvas import Canvas
     action = getattr(args, "action", "status") or "status"
     target = getattr(args, "target", None)
     canvas_yarn = Canvas()
@@ -257,8 +273,14 @@ def cmd_canvas(args):
         state = canvas_yarn.canvas_get_state()
         running_str = "[bold green]RUNNING[/bold green]" if state.get("is_running") else "[dim red]STOPPED[/dim red]"
         console.print(f"\n  [bold bright_cyan]Textile Canvas[/bold bright_cyan] [dim]• Status:[/dim] {running_str}")
-        console.print(f"  [dim]Mood:[/dim] [bold cyan]{state.get('mood')}[/bold cyan] [dim]• Expression:[/dim] [bold magenta]{state.get('expression')}[/bold magenta]")
-        console.print(f"  [dim]Talking:[/dim] {state.get('is_talking')} [dim]• Listening:[/dim] {state.get('is_listening')}\n")
+        console.print(
+            f"  [dim]Mood:[/dim] [bold cyan]{state.get('mood')}[/bold cyan] "
+            f"[dim]• Expression:[/dim] [bold magenta]{state.get('expression')}[/bold magenta]"
+        )
+        console.print(
+            f"  [dim]Talking:[/dim] {state.get('is_talking')} "
+            f"[dim]• Listening:[/dim] {state.get('is_listening')}\n"
+        )
 
 
 def cmd_seams(args):
@@ -297,9 +319,27 @@ def cmd_seams(args):
     rows = []
     for p in report.get("yarns", []):
         p_health = p["health"].upper()
-        p_color = "green" if p_health == "HEALTHY" else ("yellow" if p_health == "DEGRADED" else ("blue" if p_health == "DISABLED" else "red"))
-        dep_str = ", ".join([f"{'[green]' if d['satisfied'] else '[red]'}{d['target']}[/]" for d in p.get("dependencies", [])]) or "[dim]None[/dim]"
-        rows.append([p["name"], str(p.get("layer", 10)), f"[{p_color}]{p_health}[/{p_color}]", dep_str, str(p["strands_count"])])
+        if p_health == "HEALTHY":
+            p_color = "green"
+        elif p_health == "DEGRADED":
+            p_color = "yellow"
+        elif p_health == "DISABLED":
+            p_color = "blue"
+        else:
+            p_color = "red"
+
+        dep_list = [
+            f"{'[green]' if d['satisfied'] else '[red]'}{d['target']}[/]"
+            for d in p.get("dependencies", [])
+        ]
+        dep_str = ", ".join(dep_list) or "[dim]None[/dim]"
+        rows.append([
+            p["name"],
+            str(p.get("layer", 10)),
+            f"[{p_color}]{p_health}[/{p_color}]",
+            dep_str,
+            str(p["strands_count"]),
+        ])
 
     render_table(None, cols, rows)
     console.print()
@@ -326,7 +366,7 @@ def cmd_call(args):
     if getattr(args, "json_args", None):
         try:
             parsed_args = json.loads(args.json_args)
-        except Exception as je:
+        except (json.JSONDecodeError, ValueError, TypeError) as je:
             console.print(f"[bold red]Error parsing JSON arguments:[/bold red] {je}")
             return
     else:
@@ -401,11 +441,17 @@ def cmd_help_target(args, parser=None):
     yarn = loom._strand_to_yarn[target_clean]
     is_overridden, active_name, cap_id = loom.get_strand_override_status(strand, yarn)
 
-    console.print(f"\n  [bold cyan]{strand.name}[/bold cyan] [dim]• Provider:[/dim] [bold white]{yarn.name}[/bold white] [dim](v{yarn.version})[/dim]")
+    console.print(
+        f"\n  [bold cyan]{strand.name}[/bold cyan] [dim]• Provider:[/dim] "
+        f"[bold white]{yarn.name}[/bold white] [dim](v{yarn.version})[/dim]"
+    )
     console.print(f"  [dim]{strand.description}[/dim]\n")
 
     if is_overridden:
-        console.print(f"  [bold yellow]⚠️  Notice:[/bold yellow] This strand is currently overridden by [bold cyan]{active_name}[/bold cyan] via capability [magenta]'{cap_id}'[/magenta].\n")
+        console.print(
+            f"  [bold yellow]⚠️  Notice:[/bold yellow] This strand is currently overridden by "
+            f"[bold cyan]{active_name}[/bold cyan] via capability [magenta]'{cap_id}'[/magenta].\n"
+        )
 
     cols = [
         {"name": "Parameter", "style": "bold green"},
@@ -430,23 +476,30 @@ def cmd_help_target(args, parser=None):
 def main():
     parser = argparse.ArgumentParser(
         prog="textile",
-        description="Textile • Linux Desktop Intelligence & Automation Fabric with Skein, Loom & Twill (MCP)"
+        description="Textile • Linux Desktop Intelligence & Automation Fabric with Skein, Loom & Twill (MCP)",
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
     # 1. Skein (Lifecycle & Discovery Registry)
     p_skein = subparsers.add_parser(
         "skein",
-        help="Manage yarn discovery, registry, publishers, and enable/disable states"
+        help="Manage yarn discovery, registry, publishers, and enable/disable states",
     )
-    p_skein.add_argument("action", type=str, nargs="?", choices=["enable", "disable", "toggle", "list"], default="list", help="Action to perform on yarn")
+    p_skein.add_argument(
+        "action",
+        type=str,
+        nargs="?",
+        choices=["enable", "disable", "toggle", "list"],
+        default="list",
+        help="Action to perform on yarn",
+    )
     p_skein.add_argument("yarn_target", type=str, nargs="?", help="Target yarn name to enable/disable/toggle")
     p_skein.set_defaults(func=cmd_skein)
 
     # 2. Loom (Registered Strands & Capabilities)
     p_loom = subparsers.add_parser(
         "loom",
-        help="Inspect The Loom: list all active yarns, registered strands, and parameter schemas"
+        help="Inspect The Loom: list all active yarns, registered strands, and parameter schemas",
     )
     p_loom.add_argument("--yarn", type=str, help="Filter strands by yarn name")
     p_loom.set_defaults(func=cmd_loom)
@@ -454,11 +507,13 @@ def main():
     # 3. Layers (Layer Hierarchy 10 -> 150)
     p_layers = subparsers.add_parser(
         "layers",
-        help="List all active strands organized by layer hierarchy (outermost / highest override authority first)"
+        help="List all active strands organized by layer hierarchy (outermost / highest override authority first)",
     )
     p_layers.add_argument(
-        "--layer", type=int, choices=[1, 2, 3, 4, 5],
-        help="Filter to a specific layer level (1=Core POSIX … 5=User Override)"
+        "--layer",
+        type=int,
+        choices=[1, 2, 3, 4, 5],
+        help="Filter to a specific layer level (1=Core POSIX … 5=User Override)",
     )
     p_layers.set_defaults(func=cmd_layers)
 
@@ -469,41 +524,73 @@ def main():
     # 5. Weave (Voice & Real-Time Companion)
     p_weave = subparsers.add_parser(
         "weave",
-        help="Launch Textile Weave real-time conversational & desktop companion"
+        help="Launch Textile Weave real-time conversational & desktop companion",
     )
-    p_weave.add_argument("--text", dest="text_mode", action="store_true", help="Start in text keyboard mode instead of voice audio mode")
+    p_weave.add_argument(
+        "--text",
+        dest="text_mode",
+        action="store_true",
+        help="Start in text keyboard mode instead of voice audio mode",
+    )
     p_weave.add_argument("--dev", action="store_true", help="Run LiveKit Agent in development worker mode")
-    p_weave.add_argument("--start", dest="start_worker", action="store_true", help="Run LiveKit Agent in production worker mode")
+    p_weave.add_argument(
+        "--start",
+        dest="start_worker",
+        action="store_true",
+        help="Run LiveKit Agent in production worker mode",
+    )
     p_weave.add_argument("--voice", type=str, default="Puck", help="Gemini Live voice personality (default: Puck)")
-    p_weave.add_argument("--model", type=str, default="gemini-3.8-live", help="Gemini Live model name (default: gemini-3.8-live)")
+    p_weave.add_argument(
+        "--model",
+        type=str,
+        default="gemini-3.8-live",
+        help="Gemini Live model name (default: gemini-3.8-live)",
+    )
     p_weave.set_defaults(func=cmd_weave)
 
     # 6. Canvas (Quickshell Emotive Face UI)
     p_canvas = subparsers.add_parser(
         "canvas",
-        help="Control the Quickshell Canvas Face UI and dynamic mood engine"
+        help="Control the Quickshell Canvas Face UI and dynamic mood engine",
     )
-    p_canvas.add_argument("action", type=str, nargs="?", choices=["launch", "close", "mood", "expression", "talk", "listen", "status"], default="status", help="Canvas action")
+    p_canvas.add_argument(
+        "action",
+        type=str,
+        nargs="?",
+        choices=["launch", "close", "mood", "expression", "talk", "listen", "status"],
+        default="status",
+        help="Canvas action",
+    )
     p_canvas.add_argument("target", type=str, nargs="?", help="Mood name, expression name, or on/off flag")
     p_canvas.set_defaults(func=cmd_canvas)
 
     # 7. Seams (Health Diagnostics & Dependency Audit)
     p_seams = subparsers.add_parser(
         "seams",
-        help="Run Seams diagnostics: yarn integrity, system health, and dependency audit"
+        help="Run Seams diagnostics: yarn integrity, system health, and dependency audit",
     )
     p_seams.add_argument("--json", dest="json_output", action="store_true", help="Output audit report as JSON")
     p_seams.set_defaults(func=cmd_seams)
 
     # 8. Call (Direct Strand Execution)
-    p_call = subparsers.add_parser("call", help="Execute any Textile strand directly (e.g. textile call wayland_clipboard_set text=hi)")
-    p_call.add_argument("strand_name", type=str, help="Name of the strand to execute (e.g. wayland_clipboard_set, run_command)")
+    p_call = subparsers.add_parser(
+        "call",
+        help="Execute any Textile strand directly (e.g. textile call wayland_clipboard_set text=hi)",
+    )
+    p_call.add_argument(
+        "strand_name",
+        type=str,
+        help="Name of the strand to execute (e.g. wayland_clipboard_set, run_command)",
+    )
     p_call.add_argument("extra_args", nargs="*", help="Arguments for the strand (key=val pairs or positional string)")
     p_call.add_argument("--json", dest="json_args", type=str, help="JSON string of strand arguments")
     p_call.set_defaults(func=cmd_call)
 
     # 9. Help (Parameter Schema & Target Inspection)
-    p_help = subparsers.add_parser("help", help="Display detailed parameter schema and help for a specific strand or yarn")
+    p_help = subparsers.add_parser(
+        "help",
+        help="Display detailed parameter schema and help for a specific strand or yarn",
+    )
     p_help.add_argument("target", type=str, nargs="?", help="Name of strand or yarn to inspect")
     p_help.set_defaults(func=lambda a: cmd_help_target(a, parser))
 

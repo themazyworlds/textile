@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from textile.core.base import Yarn, Strand
+from textile.core.base import Strand, Yarn
 from textile.core.loom import loom
 from textile.core.skein import skein
 
@@ -101,7 +101,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(res3, "pydantic_hello_high")
 
         # Test MCP schema conversion
-        p_strand = [s for s in dummy.get_strands() if s.name == "pydantic_tool"][0]
+        p_strand = next(s for s in dummy.get_strands() if s.name == "pydantic_tool")
         mcp_def = p_strand.to_mcp_definition()
         self.assertIn("properties", mcp_def["inputSchema"])
         self.assertIn("message", mcp_def["inputSchema"]["properties"])
@@ -135,7 +135,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(active_p, "high_cap_yarn")
         self.assertEqual(cap, "test.launcher")
 
-        is_over_high, active_p_high, _ = loom.get_strand_override_status(high_strand, p_high)
+        is_over_high, _active_p_high, _ = loom.get_strand_override_status(high_strand, p_high)
         self.assertFalse(is_over_high)
 
         # Execution of overridden low_app strand should route to high_cap_yarn
@@ -187,7 +187,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertIn("excited", res)
         st_raw = canvas.execute_strand("canvas_get_state", {})
         import json
-        st = json.loads(st_raw) if isinstance(st_raw, str) else st_raw
+        json.loads(st_raw) if isinstance(st_raw, str) else st_raw
     def test_capability_tiers_and_auto_isolation(self):
         from textile.core.base import CapabilityTier, strand
 

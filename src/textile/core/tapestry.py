@@ -2,16 +2,21 @@
 Textile Tapestry - Core Task Ledger & Open Sensory Blackboard.
 """
 
+import logging
 import threading
 from collections import deque
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from textile.core.warp import warp
 
-class NoticeLevel(str, Enum):
+logger = logging.getLogger(__name__)
+
+
+class NoticeLevel(StrEnum):
     """Notice and Alert priority levels for the Sensory Tapestry Blackboard."""
     INFO = "INFO"
     NOTICE = "NOTICE"
@@ -86,7 +91,7 @@ class CoreTapestry:
 
         with self._lock:
             for tid, task in list(self._active_tasks.items()):
-                if tid == clean_id or task.strand_name == clean_id:
+                if clean_id in (tid, task.strand_name):
                     self._active_tasks.pop(tid, None)
                     return f"Successfully cancelled active task '{task.strand_name}' (ID: {tid})."
         return f"No active task matching '{clean_id}' currently running."
@@ -147,10 +152,9 @@ class SensoryTapestry:
 
         # Broadcast simultaneously to Warp for real-time streaming listeners
         try:
-            from textile.core.warp import warp
             warp.publish(f"tapestry.{lvl.value.lower()}", notice.model_dump())
-        except Exception:
-            pass
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+            logger.warning("Failed to broadcast notice to Warp: %s", e)
 
         return notice
 

@@ -50,4 +50,21 @@ dev = [
     "ruff>=0.16.8",
 ]
 
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "BLE", "S", "PL", "SIM"]
+ignore = []
+
+[tool.ruff.lint.pylint]
+max-args = 12
+max-positional-args = 12
+max-branches = 20
+max-statements = 80
+max-returns = 10
+
+
+
 

@@ -2,6 +2,8 @@
 Textile Core Yarn & Strand System - Base Interfaces & Definitions.
 """
 
+import contextlib
+import importlib
 import inspect
 import json
 import logging
@@ -10,13 +12,17 @@ import os
 import pwd
 import re
 import shutil
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Literal, Optional
+from enum import StrEnum
+from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, ValidationError, create_model
+
+from textile.core.tapestry import tapestry
+from textile.core.warp import warp
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +33,29 @@ LAYER_COMPOSITOR_DE = 100     # Specific Compositors & DEs (Hyprland, Caelestia,
 LAYER_SESSION_MANAGER = 150   # Session Managers & Cgroup Wrappers (UWSM, systemd-run)
 LAYER_USER_OVERRIDE = 1000    # User custom overrides (~/.config/textile/yarns/)
 
+STRAND_EXEC_ERRORS = (
+    AttributeError,
+    TypeError,
+    ValueError,
+    KeyError,
+    OSError,
+    RuntimeError,
+    json.JSONDecodeError,
+)
 
-class CapabilityTier(str, Enum):
+
+class CapabilityTier(StrEnum):
     """Execution risk & privilege tiers for Textile Strands."""
-    OBSERVE = "observe"         # Read-only telemetry, state inspection, queries, logs (in-process fast path)
-    INTERACT = "interact"       # Desktop GUI interactions, notifications, clipboard, media (in-process fast path)
-    MUTATE = "mutate"           # File modifications, killing user processes, local workspace changes (in-process fast path)
-    PRIVILEGED = "privileged"   # System configuration, package installs, D-Bus system calls, Polkit (auto-isolated)
+    OBSERVE = "observe"         # Read-only telemetry, state inspection, queries, logs
+    INTERACT = "interact"       # Desktop GUI interactions, notifications, clipboard, media
+    MUTATE = "mutate"           # File modifications, killing user processes, local workspace changes
+    PRIVILEGED = "privileged"   # System configuration, package installs, D-Bus system calls, Polkit
     SYSTEM_EXEC = "system_exec" # Arbitrary shell command execution (auto-isolated)
 
 
 def detects_native_ffi(target: Any) -> bool:
     """Detect if a class or module imports native C-FFI modules (ctypes, cffi)."""
     try:
-        import sys
         mod_name = target.__class__.__module__ if hasattr(target, "__class__") else getattr(target, "__module__", "")
         mod = sys.modules.get(mod_name)
         if mod:
@@ -49,8 +64,8 @@ def detects_native_ffi(target: Any) -> bool:
                     return True
                 if isinstance(val, type) and getattr(val, "__module__", "") in ("ctypes", "cffi", "_ctypes"):
                     return True
-    except Exception:
-        pass
+    except (AttributeError, TypeError, ValueError, RuntimeError) as e:
+        logger.debug(f"detects_native_ffi inspection error: {e}")
     return False
 
 
@@ -69,11 +84,12 @@ def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list
     for p_name, p_spec in (parameters or {}).items():
         desc = p_spec.get("description", "")
         enum_vals = p_spec.get("enum")
-        field_type = Literal[tuple(enum_vals)] if enum_vals else type_map.get(str(p_spec.get("type", "string")).lower(), Any)  # type: ignore
+        t_str = str(p_spec.get("type", "string")).lower()
+        field_type = Literal[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)  # type: ignore
         if p_name in (required or []):
             fields[p_name] = (field_type, Field(..., description=desc))
         else:
-            fields[p_name] = (Optional[field_type], Field(default=None, description=desc))
+            fields[p_name] = (field_type | None, Field(default=None, description=desc))
     return create_model(f"{strand_name}_Args", **fields)
 
 
@@ -154,18 +170,15 @@ class Weft:
 
 def _isolated_worker(module_name: str, class_name: str, strand_name: str, args: dict[str, Any], conn: Any) -> None:
     try:
-        import importlib
         mod = importlib.import_module(module_name)
         yarn = getattr(mod, class_name)()
         res = yarn._execute_direct(strand_name, args)
         conn.send((True, str(res) if res is not None else "ok"))
-    except Exception as e:
+    except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
         conn.send((False, f"Error: {e}"))
     finally:
-        try:
+        with contextlib.suppress(OSError, ValueError, AttributeError, RuntimeError):
             conn.close()
-        except Exception:
-            pass
 
 
 def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> list[str]:
@@ -191,13 +204,13 @@ def validate_strand_arguments(
     required: list[str] | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
     """Strictly validates arguments using Pydantic v2."""
-    if not schema_model:
-        if parameters:
-            try:
-                schema_model = schema_to_model(strand_name, parameters, required or [])
-            except Exception:
-                return None, args
-        else:
+    model = schema_model
+    if not model:
+        if not parameters:
+            return None, args
+        try:
+            model = schema_to_model(strand_name, parameters, required or [])
+        except (AttributeError, TypeError, ValueError, KeyError, ValidationError):
             return None, args
 
     clean_args = dict(args or {})
@@ -205,22 +218,34 @@ def validate_strand_arguments(
         for r in required:
             if r in clean_args and isinstance(clean_args[r], str) and not clean_args[r].strip():
                 p_type = (parameters or {}).get(r, {}).get("type", "value")
-                return f"Validation Hint: Strand '{strand_name}' expected required parameter '{r}' (type: {p_type}), but it went missing in action!", args
+                return (
+                    f"Validation Hint: Strand '{strand_name}' expected required parameter '{r}' "
+                    f"(type: {p_type}), but it went missing in action!",
+                    args,
+                )
 
     try:
-        validated = schema_model.model_validate(clean_args)
+        validated = model.model_validate(clean_args)
         return None, {k: v for k, v in validated.model_dump().items() if v is not None}
     except ValidationError as e:
         err = e.errors()[0]
         loc = str(err["loc"][0]) if err["loc"] else "parameter"
         err_type = err["type"]
+        p_type = (parameters or {}).get(loc, {}).get("type", "value")
         if "missing" in err_type:
-            p_type = (parameters or {}).get(loc, {}).get("type", "value")
-            return f"Validation Hint: Strand '{strand_name}' expected required parameter '{loc}' (type: {p_type}), but it went missing in action!", args
-        if "literal" in err_type or "enum" in err_type:
+            msg = (
+                f"Validation Hint: Strand '{strand_name}' expected required parameter '{loc}' "
+                f"(type: {p_type}), but it went missing in action!"
+            )
+        elif "literal" in err_type or "enum" in err_type:
             expected = err.get("ctx", {}).get("expected", "")
-            return f"Validation Hint: Invalid action/option '{args.get(loc)}' for strand '{strand_name}'. Available options: [{expected}]", args
-        return f"Validation Hint: Strand '{strand_name}' parameter '{loc}' validation failed: {err['msg']}.", args
+            msg = (
+                f"Validation Hint: Invalid action/option '{args.get(loc)}' for strand '{strand_name}'. "
+                f"Available options: [{expected}]"
+            )
+        else:
+            msg = f"Validation Hint: Strand '{strand_name}' parameter '{loc}' validation failed: {err['msg']}."
+        return msg, args
 
 
 def _extract_docstring_info(doc: str | None) -> tuple[str, dict[str, str]]:
@@ -284,6 +309,89 @@ def weft(
 
     return decorator(func) if func is not None else decorator
 
+
+def _parse_tier(raw_tier: Any) -> CapabilityTier:
+    if isinstance(raw_tier, CapabilityTier):
+        return raw_tier
+    if isinstance(raw_tier, str):
+        try:
+            return CapabilityTier(raw_tier.lower())
+        except ValueError:
+            pass
+    return CapabilityTier.INTERACT
+
+
+async def _exec_async_strand(
+    method: Callable,
+    strand_name: str,
+    args: dict[str, Any],
+    args_model: type[BaseModel] | None,
+    params: dict[str, Any],
+    req_list: list[str],
+) -> str:
+    val_err, coerced = validate_strand_arguments(
+        strand_name, args, schema_model=args_model, parameters=params, required=req_list
+    )
+    if val_err:
+        return val_err
+    try:
+        res = await method(**coerced)
+        if isinstance(res, (dict, list)):
+            return json.dumps(res, indent=2)
+        return str(res) if res is not None else "ok"
+    except STRAND_EXEC_ERRORS as e:
+        return f"Error executing strand '{strand_name}': {e}"
+
+
+def _exec_sync_strand(
+    yarn: Any,
+    method: Callable,
+    strand_name: str,
+    args: dict[str, Any],
+    args_model: type[BaseModel] | None,
+    params: dict[str, Any],
+    req_list: list[str],
+    isolated: bool,
+    timeout: float,
+) -> str:
+    val_err, coerced = validate_strand_arguments(
+        strand_name, args, schema_model=args_model, parameters=params, required=req_list
+    )
+    if val_err:
+        return val_err
+    if isolated:
+        return yarn._run_isolated(strand_name, coerced, timeout=timeout)
+    try:
+        res = method(**coerced)
+        if isinstance(res, (dict, list)):
+            return json.dumps(res, indent=2)
+        return str(res) if res is not None else "ok"
+    except STRAND_EXEC_ERRORS as e:
+        return f"Error executing strand '{strand_name}': {e}"
+
+
+def _create_invoker(
+    yarn: Any,
+    method: Callable,
+    strand_name: str,
+    args_model: type[BaseModel] | None,
+    params: dict[str, Any],
+    req_list: list[str],
+    isolated: bool,
+    is_async: bool,
+    timeout: float,
+) -> Callable[[dict[str, Any]], str]:
+    if is_async:
+        async def _async_invoker(args: dict[str, Any]) -> str:
+            return await _exec_async_strand(method, strand_name, args, args_model, params, req_list)
+
+        return _async_invoker
+
+    def _sync_invoker(args: dict[str, Any]) -> str:
+        return _exec_sync_strand(yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout)
+
+    return _sync_invoker
+
 class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
@@ -307,13 +415,11 @@ class Yarn(ABC):
     @property
     def warp(self):
         """Universal Pub/Sub sensory and event bus."""
-        from textile.core.warp import warp
         return warp
 
     @property
     def tapestry(self):
         """Universal live state & sensory blackboard."""
-        from textile.core.tapestry import tapestry
         return tapestry
 
     def publish_event(self, topic: Any, data: Any = None) -> None:
@@ -351,7 +457,8 @@ class Yarn(ABC):
                 continue
             try:
                 attr = getattr(self, attr_name)
-            except Exception:
+            except (AttributeError, TypeError, ValueError, RuntimeError) as e:
+                logger.debug(f"Error inspecting attribute '{attr_name}' for strands: {e}")
                 continue
             if callable(attr) and getattr(attr, "_is_strand", False):
                 discovered.append(self._method_to_strand(attr))
@@ -365,7 +472,8 @@ class Yarn(ABC):
                 continue
             try:
                 attr = getattr(self, attr_name)
-            except Exception:
+            except (AttributeError, TypeError, ValueError, RuntimeError) as e:
+                logger.debug(f"Error inspecting attribute '{attr_name}' for wefts: {e}")
                 continue
             if callable(attr) and getattr(attr, "_is_weft", False):
                 discovered.append(self._method_to_weft(attr))
@@ -380,12 +488,11 @@ class Yarn(ABC):
         weft_priority = getattr(method, "_weft_priority", 100)
 
         try:
-            from typing import get_type_hints
             hints = get_type_hints(method)
-        except Exception:
+        except (AttributeError, TypeError, NameError, ValueError, KeyError):
             hints = {}
 
-        param_names = [p_name for p_name in sig.parameters.keys() if p_name not in ("self", "cls")]
+        param_names = [p_name for p_name in sig.parameters if p_name not in ("self", "cls")]
         fields = {}
         for p_name in param_names:
             param = sig.parameters[p_name]
@@ -415,37 +522,24 @@ class Yarn(ABC):
         strand_name = getattr(method, "_strand_name", method.__name__)
         strand_desc = getattr(method, "_strand_description", None) or main_desc or strand_name
         strand_cap = getattr(method, "_strand_capability", None)
-        raw_tier = getattr(method, "_strand_tier", CapabilityTier.INTERACT)
-        if isinstance(raw_tier, CapabilityTier):
-            tier_val = raw_tier
-        elif isinstance(raw_tier, str):
-            try:
-                tier_val = CapabilityTier(raw_tier.lower())
-            except ValueError:
-                tier_val = CapabilityTier.INTERACT
-        else:
-            tier_val = CapabilityTier.INTERACT
+        tier_val = _parse_tier(getattr(method, "_strand_tier", CapabilityTier.INTERACT))
 
         explicit_isolated = getattr(method, "_strand_isolated", None)
         if explicit_isolated is not None:
             isolated = bool(explicit_isolated)
         else:
-            # Origin-blind automatic isolation rule:
-            # 1. External PyPI package dependencies declared
-            # 2. Privileged or SYSTEM_EXEC capability tier (protecting system integrity)
-            # 3. Native C-FFI (ctypes/cffi) usage detected (protecting against memory crashes/segfaults)
-            if self.get_python_dependencies() or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) or detects_native_ffi(self):
-                isolated = True
-            else:
-                isolated = False
+            isolated = bool(
+                self.get_python_dependencies()
+                or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
+                or detects_native_ffi(self)
+            )
 
         timeout = getattr(method, "_strand_timeout", 30.0)
         is_async = inspect.iscoroutinefunction(method)
 
         try:
-            from typing import get_type_hints
             hints = get_type_hints(method)
-        except Exception:
+        except (AttributeError, TypeError, NameError, ValueError, KeyError):
             hints = {}
 
         fields = {}
@@ -460,33 +554,16 @@ class Yarn(ABC):
                 fields[p_name] = (p_type, Field(default=param.default, description=p_desc))
 
         args_model = create_model(f"{strand_name}_Args", **fields) if fields else None
-        schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
+        schema = (
+            args_model.model_json_schema()
+            if args_model
+            else {"type": "object", "properties": {}, "required": []}
+        )
         params, req_list = schema.get("properties", {}), schema.get("required", [])
 
-        if is_async:
-            async def _async_invoker(args: dict[str, Any]) -> str:
-                val_err, coerced = validate_strand_arguments(strand_name, args, schema_model=args_model, parameters=params, required=req_list)
-                if val_err:
-                    return val_err
-                try:
-                    res = await method(**coerced)
-                    return json.dumps(res, indent=2) if isinstance(res, (dict, list)) else (str(res) if res is not None else "ok")
-                except Exception as e:
-                    return f"Error executing strand '{strand_name}': {e}"
-            invoker = _async_invoker
-        else:
-            def _sync_invoker(args: dict[str, Any]) -> str:
-                val_err, coerced = validate_strand_arguments(strand_name, args, schema_model=args_model, parameters=params, required=req_list)
-                if val_err:
-                    return val_err
-                if isolated:
-                    return self._run_isolated(strand_name, coerced, timeout=timeout)
-                try:
-                    res = method(**coerced)
-                    return json.dumps(res, indent=2) if isinstance(res, (dict, list)) else (str(res) if res is not None else "ok")
-                except Exception as e:
-                    return f"Error executing strand '{strand_name}': {e}"
-            invoker = _sync_invoker
+        invoker = _create_invoker(
+            self, method, strand_name, args_model, params, req_list, isolated, is_async, timeout
+        )
 
         return Strand(
             name=strand_name,
@@ -527,18 +604,30 @@ class Yarn(ABC):
 
         if isolated is not None:
             is_isolated = bool(isolated)
+        elif (
+            self.get_python_dependencies()
+            or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
+            or detects_native_ffi(self)
+        ):
+            is_isolated = True
         else:
-            if self.get_python_dependencies() or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) or detects_native_ffi(self):
-                is_isolated = True
-            else:
-                is_isolated = False
+            is_isolated = False
 
-        schema_model = args_schema or (schema_to_model(name, parameters or {}, required or []) if parameters else None)
-        schema = schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
-        params, req_list = (schema.get("properties", {}), schema.get("required", []) if schema_model else (parameters or {}, required or []))
+        schema_model = args_schema or (
+            schema_to_model(name, parameters or {}, required or []) if parameters else None
+        )
+        schema = (
+            schema_model.model_json_schema()
+            if schema_model
+            else {"type": "object", "properties": {}, "required": []}
+        )
+        params = schema.get("properties", {})
+        req_list = schema.get("required", []) if schema_model else (required or [])
 
         def _safe_handler(args: dict[str, Any]) -> str:
-            val_err, coerced = validate_strand_arguments(name, args, schema_model=schema_model, parameters=params, required=req_list)
+            val_err, coerced = validate_strand_arguments(
+                name, args, schema_model=schema_model, parameters=params, required=req_list
+            )
             if val_err:
                 return val_err
             if is_isolated:
@@ -546,7 +635,7 @@ class Yarn(ABC):
             try:
                 res = handler(coerced)
                 return str(res) if res is not None else "ok"
-            except Exception as e:
+            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 return f"Error executing strand '{name}': {e}"
 
         return Strand(
@@ -562,45 +651,86 @@ class Yarn(ABC):
             isolated=is_isolated,
         )
 
-    def _run_isolated(self, strand_name: str, args: dict[str, Any], timeout: float = 30.0) -> str:
-        """Run strand in an isolated ephemeral subprocess using `uv` (if external deps declared) or multiprocessing spawn."""
-        deps = self.get_python_dependencies()
-        uv_bin = shutil.which("uv")
+    def _run_isolated_uv(
+        self, strand_name: str, args: dict[str, Any], deps: list[str], uv_bin: str, timeout: float
+    ) -> str | None:
+        cmd = [uv_bin, "run", "--quiet", "--isolated"]
+        for dep in deps:
+            cmd.extend(["--with", str(dep)])
+        cmd.extend([
+            "-m",
+            "textile.core.isolated_runner",
+            self.__class__.__module__,
+            self.__class__.__name__,
+            strand_name,
+            json.dumps(args),
+        ])
+        res_str = None
+        try:
+            r_out, w_out = os.pipe()
+            r_err, w_err = os.pipe()
+            file_actions = [
+                (os.POSIX_SPAWN_CLOSE, r_out),
+                (os.POSIX_SPAWN_CLOSE, r_err),
+                (os.POSIX_SPAWN_DUP2, w_out, 1),
+                (os.POSIX_SPAWN_DUP2, w_err, 2),
+                (os.POSIX_SPAWN_CLOSE, w_out),
+                (os.POSIX_SPAWN_CLOSE, w_err),
+            ]
+            pid = os.posix_spawn(cmd[0], cmd, os.environ, file_actions=file_actions)
+            os.close(w_out)
+            os.close(w_err)
 
-        if deps and uv_bin:
-            import subprocess
-            cmd = [uv_bin, "run", "--quiet", "--isolated"]
-            for dep in deps:
-                cmd.extend(["--with", str(dep)])
-            cmd.extend([
-                "-m", "textile.core.isolated_runner",
-                self.__class__.__module__,
-                self.__class__.__name__,
-                strand_name,
-                json.dumps(args),
-            ])
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-                out = res.stdout.strip()
-                if res.returncode == 0 and out:
-                    try:
-                        payload = json.loads(out)
-                        if payload.get("success"):
-                            res_val = payload.get("result")
-                            return json.dumps(res_val, indent=2) if isinstance(res_val, (dict, list)) else (str(res_val) if res_val is not None else "ok")
-                        return f"Error: {payload.get('error', 'Execution failed')}"
-                    except Exception:
-                        return out
-                err_msg = res.stderr.strip() if res.stderr else f"Exit code {res.returncode}"
-                return f"Error: Strand '{strand_name}' isolated worker process crashed ({err_msg}). Host process preserved."
-            except subprocess.TimeoutExpired:
-                return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
-            except Exception as e:
-                logger.warning(f"uv execution encountered an error ({e}), falling back to multiprocessing worker.")
+            out_chunks, err_chunks = [], []
+            while True:
+                chunk = os.read(r_out, 4096)
+                if not chunk:
+                    break
+                out_chunks.append(chunk)
+            os.close(r_out)
 
+            while True:
+                chunk = os.read(r_err, 4096)
+                if not chunk:
+                    break
+                err_chunks.append(chunk)
+            os.close(r_err)
+
+            _, status = os.waitpid(pid, 0)
+            returncode = os.waitstatus_to_exitcode(status)
+            out = b"".join(out_chunks).decode().strip()
+            err = b"".join(err_chunks).decode().strip()
+
+            if returncode == 0 and out:
+                try:
+                    payload = json.loads(out)
+                    if payload.get("success"):
+                        res_val = payload.get("result")
+                        if isinstance(res_val, (dict, list)):
+                            res_str = json.dumps(res_val, indent=2)
+                        else:
+                            res_str = str(res_val) if res_val is not None else "ok"
+                    else:
+                        res_str = f"Error: {payload.get('error', 'Execution failed')}"
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    res_str = out
+            else:
+                err_msg = err if err else f"Exit code {returncode}"
+                res_str = (
+                    f"Error: Strand '{strand_name}' isolated worker process crashed "
+                    f"({err_msg}). Host process preserved."
+                )
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"uv execution encountered an error ({e}), falling back to multiprocessing worker.")
+        return res_str
+
+    def _run_isolated_mp(self, strand_name: str, args: dict[str, Any], timeout: float) -> str:
         ctx = multiprocessing.get_context("spawn")
         p_conn, c_conn = ctx.Pipe()
-        proc = ctx.Process(target=_isolated_worker, args=(self.__class__.__module__, self.__class__.__name__, strand_name, args, c_conn))
+        proc = ctx.Process(
+            target=_isolated_worker,
+            args=(self.__class__.__module__, self.__class__.__name__, strand_name, args, c_conn),
+        )
         proc.start()
         c_conn.close()
 
@@ -613,10 +743,8 @@ class Yarn(ABC):
                 except EOFError:
                     pass
         finally:
-            try:
+            with contextlib.suppress(OSError, ValueError, AttributeError, RuntimeError):
                 p_conn.close()
-            except Exception:
-                pass
 
         proc.join(timeout=1.0)
         if proc.is_alive():
@@ -626,8 +754,23 @@ class Yarn(ABC):
         if got_result:
             return result or "ok"
         if proc.exitcode is not None and proc.exitcode != 0:
-            return f"Error: Strand '{strand_name}' isolated worker process crashed (exit code {proc.exitcode}). Host process preserved."
+            return (
+                f"Error: Strand '{strand_name}' isolated worker process crashed "
+                f"(exit code {proc.exitcode}). Host process preserved."
+            )
         return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
+
+    def _run_isolated(self, strand_name: str, args: dict[str, Any], timeout: float = 30.0) -> str:
+        """Run strand in an isolated ephemeral subprocess using `uv` or multiprocessing spawn."""
+        deps = self.get_python_dependencies()
+        uv_bin = shutil.which("uv")
+
+        if deps and uv_bin:
+            uv_res = self._run_isolated_uv(strand_name, args, deps, uv_bin, timeout)
+            if uv_res is not None:
+                return uv_res
+
+        return self._run_isolated_mp(strand_name, args, timeout)
 
     def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():

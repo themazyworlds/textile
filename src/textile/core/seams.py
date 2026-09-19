@@ -11,9 +11,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from textile.core.base import validate_strand_schema
+from textile.core.loom import loom
+from textile.core.skein import skein
+
+logger = logging.getLogger(__name__)
 
 
 class DependencyType(Enum):
@@ -94,10 +96,10 @@ class SeamOrchestrator:
             is_optional=optional,
         )
 
-    def check_dbus_service(self, service_name: str, bus_type: str = "session", optional: bool = False) -> DependencyCheck:
+    def check_dbus_service(
+        self, service_name: str, bus_type: str = "session", optional: bool = False
+    ) -> DependencyCheck:
         try:
-            from dbus_fast import BusType
-            bt = BusType.SYSTEM if bus_type == "system" else BusType.SESSION
             return DependencyCheck(
                 dep_type=DependencyType.DBUS_SERVICE,
                 target=f"{bus_type}:{service_name}",
@@ -105,7 +107,7 @@ class SeamOrchestrator:
                 details="D-Bus interface available for probe",
                 is_optional=optional,
             )
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
             return DependencyCheck(
                 dep_type=DependencyType.DBUS_SERVICE,
                 target=f"{bus_type}:{service_name}",
@@ -114,7 +116,9 @@ class SeamOrchestrator:
                 is_optional=optional,
             )
 
-    def check_device_node(self, device_path: str, write_access: bool = False, optional: bool = False) -> DependencyCheck:
+    def check_device_node(
+        self, device_path: str, write_access: bool = False, optional: bool = False
+    ) -> DependencyCheck:
         path = Path(device_path)
         exists = path.exists()
         writable = os.access(device_path, os.W_OK) if exists else False
@@ -167,16 +171,44 @@ class SeamOrchestrator:
         """Audit a Python package dependency using uv pip compile dry-run resolution."""
         uv_bin = shutil.which("uv")
         if uv_bin:
-            import subprocess
             try:
-                res = subprocess.run(
-                    [uv_bin, "pip", "compile", "-", "-q"],
-                    input=req,
-                    text=True,
-                    capture_output=True,
-                    timeout=5,
-                )
-                if res.returncode == 0:
+                cmd = [uv_bin, "pip", "compile", "-", "-q"]
+                r_in, w_in = os.pipe()
+                r_out, w_out = os.pipe()
+                r_err, w_err = os.pipe()
+                file_actions = [
+                    (os.POSIX_SPAWN_DUP2, r_in, 0),
+                    (os.POSIX_SPAWN_DUP2, w_out, 1),
+                    (os.POSIX_SPAWN_DUP2, w_err, 2),
+                    (os.POSIX_SPAWN_CLOSE, r_in),
+                    (os.POSIX_SPAWN_CLOSE, w_in),
+                    (os.POSIX_SPAWN_CLOSE, r_out),
+                    (os.POSIX_SPAWN_CLOSE, w_out),
+                    (os.POSIX_SPAWN_CLOSE, r_err),
+                    (os.POSIX_SPAWN_CLOSE, w_err),
+                ]
+                os.write(w_in, req.encode())
+                os.close(w_in)
+
+                pid = os.posix_spawn(cmd[0], cmd, os.environ, file_actions=file_actions)
+                os.close(r_in)
+                os.close(w_out)
+                os.close(w_err)
+
+                err_chunks = []
+                while True:
+                    chunk = os.read(r_err, 4096)
+                    if not chunk:
+                        break
+                    err_chunks.append(chunk)
+                os.close(r_err)
+                os.close(r_out)
+
+                _, status = os.waitpid(pid, 0)
+                returncode = os.waitstatus_to_exitcode(status)
+                stderr_text = b"".join(err_chunks).decode().strip()
+
+                if returncode == 0:
                     return DependencyCheck(
                         dep_type=DependencyType.PYTHON_MODULE,
                         target=req,
@@ -185,7 +217,7 @@ class SeamOrchestrator:
                         is_optional=optional,
                     )
                 else:
-                    err = res.stderr.strip().splitlines()[-1] if res.stderr else "Resolution error"
+                    err = stderr_text.splitlines()[-1] if stderr_text else "Resolution error"
                     return DependencyCheck(
                         dep_type=DependencyType.PYTHON_MODULE,
                         target=req,
@@ -193,10 +225,13 @@ class SeamOrchestrator:
                         details=f"uv dependency conflict: {err}",
                         is_optional=optional,
                     )
-            except Exception:
-                pass
+            except (OSError, ValueError, RuntimeError) as e:
+                logger.debug(f"uv dependency compile error: {e}")
 
-        base_pkg = req.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip()
+        base_pkg = req
+        for sep in ("==", ">=", "<=", "~="):
+            base_pkg = base_pkg.split(sep, maxsplit=1)[0]
+        base_pkg = base_pkg.strip()
         return self.check_python_module(base_pkg, optional=optional)
 
     def check_env_variable(self, var_name: str, optional: bool = False) -> DependencyCheck:
@@ -221,7 +256,9 @@ class SeamOrchestrator:
             if dtype == DependencyType.SYSTEM_BINARY.value:
                 results.append(self.check_binary(target, optional))
             elif dtype == DependencyType.DEVICE_NODE.value:
-                results.append(self.check_device_node(target, write_access=dep.get("writable", False), optional=optional))
+                results.append(
+                    self.check_device_node(target, write_access=dep.get("writable", False), optional=optional)
+                )
             elif dtype == DependencyType.SOCKET_PATH.value:
                 results.append(self.check_socket(target, optional))
             elif dtype == DependencyType.PYTHON_MODULE.value:
@@ -246,10 +283,13 @@ class SeamOrchestrator:
             errors.append(f"Strand '{strand.name}' does not provide a callable handler.")
 
         is_overridden, active_provider, _ = loom_inst.get_strand_override_status(strand, yarn)
-        is_active = (strand.name in loom_inst._strand_to_yarn and loom_inst._strand_to_yarn[strand.name].name == yarn.name)
+        is_active = (
+            strand.name in loom_inst._strand_to_yarn
+            and loom_inst._strand_to_yarn[strand.name].name == yarn.name
+        )
 
         genai_compat = is_valid_schema and all(
-            k.isidentifier() for k in strand.parameters.keys()
+            k.isidentifier() for k in strand.parameters
         )
         mcp_compat = is_valid_schema
 
@@ -266,8 +306,6 @@ class SeamOrchestrator:
         )
 
     def audit_yarn(self, yarn: Any, skein_inst: Any = None, loom_inst: Any = None) -> YarnIntegrityReport:
-        from textile.core.loom import loom
-        from textile.core.skein import skein
         s_inst = skein_inst or skein
         l_inst = loom_inst or self._loom or loom
         errors: list[str] = []
@@ -277,7 +315,7 @@ class SeamOrchestrator:
         is_avail = False
         try:
             is_avail = yarn.is_available()
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
             errors.append(f"is_available() raised exception: {e}")
 
         dep_checks = self.evaluate_dependencies(yarn)
@@ -292,7 +330,7 @@ class SeamOrchestrator:
         try:
             for s in yarn.get_strands():
                 strands_report.append(self.audit_strand(s, yarn, l_inst))
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
             errors.append(f"get_strands() raised exception: {e}")
 
         status = HealthStatus.HEALTHY
@@ -317,14 +355,12 @@ class SeamOrchestrator:
         )
 
     def audit_all(self, loom_inst: Any | None = None, skein_inst: Any | None = None) -> dict[str, Any]:
-        from textile.core.loom import loom
-        from textile.core.skein import skein
         s_inst = skein_inst or skein
         l_inst = loom_inst or self._loom or loom
         l_inst.initialize()
 
         reports: list[YarnIntegrityReport] = []
-        for name, yarn in s_inst.all_yarns.items():
+        for yarn in s_inst.all_yarns.values():
             reports.append(self.audit_yarn(yarn, s_inst, l_inst))
 
         total_yarns = len(reports)
@@ -352,12 +388,20 @@ class SeamOrchestrator:
                     "is_available": r.is_available,
                     "is_enabled": r.is_enabled,
                     "strands_count": len(r.strands_report),
-                    "dependencies": [{"type": d.dep_type.value, "target": d.target, "satisfied": d.is_satisfied, "details": d.details} for d in r.dependencies],
+                    "dependencies": [
+                        {
+                            "type": d.dep_type.value,
+                            "target": d.target,
+                            "satisfied": d.is_satisfied,
+                            "details": d.details,
+                        }
+                        for d in r.dependencies
+                    ],
                     "errors": r.errors,
                     "warnings": r.warnings,
                 }
                 for r in reports
-            ]
+            ],
         }
 
     def record_strand_execution(self, strand_name: str, success: bool, error: str | None = None) -> None:

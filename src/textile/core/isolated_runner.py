@@ -8,9 +8,11 @@ import json
 import sys
 from typing import Any
 
+MIN_ARG_COUNT = 5
+
 
 def main():
-    if len(sys.argv) < 5:
+    if len(sys.argv) < MIN_ARG_COUNT:
         print(json.dumps({"success": False, "error": "Invalid arguments to isolated_runner"}))
         sys.exit(1)
 
@@ -21,7 +23,7 @@ def main():
 
     try:
         args: dict[str, Any] = json.loads(args_json) if args_json else {}
-    except Exception as e:
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
         print(json.dumps({"success": False, "error": f"Failed to parse arguments JSON: {e}"}))
         sys.exit(1)
 
@@ -29,12 +31,12 @@ def main():
         mod = importlib.import_module(module_name)
         cls = getattr(mod, class_name)
         instance = cls()
-        
+
         # Execute the raw handler or strand method directly
         res = instance._execute_direct(strand_name, args)
         print(json.dumps({"success": True, "result": res}))
         sys.exit(0)
-    except Exception as e:
+    except (ImportError, AttributeError, TypeError, ValueError, RuntimeError, KeyError, OSError) as e:
         print(json.dumps({"success": False, "error": str(e)}))
         sys.exit(1)
 

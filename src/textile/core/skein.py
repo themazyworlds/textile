@@ -92,8 +92,8 @@ class Skein:
                     try:
                         if yarn.is_available():
                             active[name] = yarn
-                    except Exception:
-                        pass
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug(f"Yarn '{name}' availability check failed: {e}")
             return active
 
     def load_builtin_yarns(self) -> None:
@@ -103,8 +103,8 @@ class Skein:
                 instance = getattr(mod, cls_name)()
                 with self._lock:
                     self.all_yarns[instance.name] = instance
-            except Exception as e:
-                logger.debug(f"Skipping yarn {mod_path}: {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Skipping builtin yarn {mod_path}: {e}")
 
     def load_entrypoint_yarns(self) -> None:
         try:
@@ -115,10 +115,10 @@ class Skein:
                         instance = yarn_cls()
                         with self._lock:
                             self.all_yarns[instance.name] = instance
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(f"Failed loading entrypoint yarn {ep}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Failed scanning entrypoints: {e}")
 
     def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
         target_dir = yarn_dir or self._user_yarns_dir
@@ -137,22 +137,23 @@ class Skein:
                             instance = attr()
                             with self._lock:
                                 self.all_yarns[instance.name] = instance
-            except Exception:
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Failed loading user yarn {py_file}: {e}")
 
     def _load_config(self) -> None:
         try:
             if self._config_file.exists():
                 self._disabled_yarns = set(json.loads(self._config_file.read_text()).get("disabled_yarns", []))
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.debug(f"Could not load skein config: {e}")
 
     def _save_config(self) -> None:
         try:
             self._config_file.parent.mkdir(parents=True, exist_ok=True)
             self._config_file.write_text(json.dumps({"disabled_yarns": list(self._disabled_yarns)}, indent=2))
-        except Exception:
-            pass
+        except (OSError, TypeError) as e:
+            logger.warning(f"Could not save skein config: {e}")
 
 
 skein = Skein()
+

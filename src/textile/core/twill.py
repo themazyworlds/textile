@@ -4,6 +4,7 @@ Provides standard MCP stdio JSON-RPC tool/strand dispatching aggregated across a
 """
 
 import asyncio
+import sys
 
 from mcp import types
 from mcp.server.lowlevel import Server
@@ -23,7 +24,9 @@ def create_twill_server() -> Server:
         return [
             types.Prompt(
                 name="textile_system_contract",
-                description="Textile Desktop Fabric active yarn contracts, persona guidelines, and semantic streaming tags.",
+                description=(
+                    "Textile Desktop Fabric active yarn contracts, persona guidelines, and semantic streaming tags."
+                ),
             )
         ]
 
@@ -62,13 +65,10 @@ def create_twill_server() -> Server:
         try:
             res_text = await loom.execute_strand_async(name, arguments or {})
             return [types.TextContent(type="text", text=str(res_text))]
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError) as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
 
     return app
-
-
-import sys
 
 
 async def run_twill_async():
