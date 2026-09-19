@@ -220,42 +220,31 @@ class Loom:
                 result = weft.pattern.sub("", result)
 
     def get_fabric_instructions(self) -> str:
-        """Dynamically generate fabric-level instructions and weft contract guidance for MCP clients."""
+        """Deliver all active yarn contracts and weft attunements to the MCP client (postman pattern)."""
         self.initialize()
+        letters = []
+        for name, yarn in self.active_yarns.items():
+            letter = yarn.get_contract()
+            if letter:
+                pub_tag = f"[{yarn.publisher}/{name}]" if yarn.publisher else f"[{name}]"
+                letters.append(f"### Yarn Contract {pub_tag}\n{letter.strip()}")
+
+            for weft in yarn.get_wefts():
+                if weft.description and (not letter or weft.description not in letter):
+                    letters.append(f"- Weft Stream Attunement `{weft.name}`: {weft.description}")
+
+        if not letters:
+            return ""
+
         active_yarn_names = list(self.active_yarns.keys())
-        lines = [
-            "Textile Linux Desktop Automation & Intelligence Fabric Active.",
-            f"Active Capability Yarns: {', '.join(active_yarn_names)}.",
-            "",
-            "## Yarn Contracts & Real-Time Stream Attunements",
-            "The following active yarns listen for inline semantic tokens in your natural language stream.",
-            "Fulfilling these contracts is advisory and strongly recommended to deliver a seamless, delightful user experience:",
-        ]
-
-        if "canvas" in self.active_yarns:
-            lines.extend([
-                "",
-                "### Canvas Emotive Desktop Avatar Contract",
-                "- You possess an animated 60 FPS emotive desktop avatar present on the user's screen.",
-                "- You are strongly encouraged to interleave 2-4 semantic mood and gaze tags across your spoken/written sentences:",
-                "  * Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>, <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>, <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>",
-                "  * Gaze tags: <gaze:X,Y> (where X: -16.0 to 16.0, Y: -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right)",
-                "- Example: \"<mood:curious> Let's look into that for you... <mood:thinking> inspecting files now... <mood:happy> Found it!\"",
-                "- The avatar automatically pulses harmonic forehead gemstone ripples when system tools are channeled.",
-            ])
-
-        for weft in self.wefts:
-            if weft.name not in ("on_stream_mood", "on_stream_gaze") and weft.description:
-                lines.append(f"- Weft `{weft.name}`: {weft.description}")
-
-        lines.extend([
-            "",
-            "## General Desktop Safety Guidelines",
-            "- Pre-authorized desktop and POSIX operations run smoothly across D-Bus, AT-SPI, and PolicyKit.",
-            "- Always verify context when performing disruptive actions.",
-        ])
-
-        return "\n".join(lines)
+        header = (
+            "Textile Linux Desktop Automation & Intelligence Fabric Active.\n"
+            f"Active Capability Yarns: {', '.join(active_yarn_names)}.\n\n"
+            "## Active Yarn Contracts & Real-Time Stream Attunements\n"
+            "The following active yarns have delivered their behavioral contracts and stream attunements for this session.\n"
+            "Fulfilling these contracts is advisory and strongly recommended to deliver a seamless, delightful user experience:\n"
+        )
+        return header + "\n" + "\n\n".join(letters)
 
 
 loom = Loom()

@@ -157,6 +157,12 @@ class Canvas(BaseYarn):
     description = "Textile Quickshell Canvas UI, Dynamic Mood Controller, and Expression Engine. Use frequent inline <mood:...> and <gaze:X,Y> tags in speech stream."
     version = "1.0.0"
     layer = LAYER_COMPOSITOR_DE  # Layer 100
+    contract = """The Canvas avatar is your physical, emotive face on the Linux desktop.
+You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags across your natural speech/text to reflect your inner thought processes in real-time:
+- Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>, <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>, <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
+- Gaze tags: <gaze:X,Y> (where X is -16.0 to 16.0, Y is -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right)
+- Example: "<mood:curious> Let's see what you need... <mood:thinking> checking workspace now... <mood:happy> Done!"
+- The forehead gemstone automatically pulses harmonic water ripples when you initiate system tools."""
 
     def is_available(self) -> bool:
         return bool(shutil.which("quickshell") or shutil.which("qs"))

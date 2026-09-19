@@ -261,7 +261,12 @@ class BaseYarn(ABC):
     description: str = "Base Yarn"
     version: str = "1.0.0"
     layer: int = LAYER_BASE
+    contract: Optional[str] = None
     dependencies: List[Dict[str, Any]] = []
+
+    def get_contract(self) -> Optional[str]:
+        """Return the yarn's sealed contract / advisory letter for the AI client."""
+        return getattr(self, "contract", None) or (self.__doc__.strip() if self.__doc__ else None)
 
     @property
     def warp(self):
