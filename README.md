@@ -1,6 +1,6 @@
 # Textile
 
-A Linux desktop intelligence and automation framework. Textile provides a layered runtime dispatch architecture that exposes Linux system subsystems, Wayland compositors, and desktop protocols to AI agents, Model Context Protocol (MCP) clients, and real-time voice companions.
+A modular intelligence and automation framework for Linux. Textile provides a layered runtime dispatch engine and plugin architecture that exposes system capabilities and desktop interfaces to Model Context Protocol (MCP) clients and local tooling.
 
 <p align="center">
   <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 8px;"></video>
@@ -10,26 +10,26 @@ A Linux desktop intelligence and automation framework. Textile provides a layere
 
 ## Architecture Overview
 
-Textile organizes desktop capabilities into modular components with priority-based layer dispatch and worker process isolation:
+Textile organizes system capabilities into modular plugins with priority-based layer dispatch and worker process isolation:
 
-| Concept | Implementation | Description |
+| Concept | Role | Description |
 |---|---|---|
-| **Loom** | Dispatch Engine | Manages runtime tool routing, layer overrides (10 to 150), and subprocess isolation. |
-| **Skein** | Discovery Registry | Scans entrypoints, dynamic plugins, and tracks enable/disable state. |
-| **Yarn** | Capability Module | Modular domain class (e.g. PackageKit, Polkit, Hyprland, D-Bus). |
-| **Strand** | Tool Function | Individual typed function exposed to agents with Pydantic v2 validation. |
-| **Weft** | Stream Interceptor | Regex pattern parser for real-time text and speech streams. |
-| **Warp** | Event Bus | Asynchronous pub/sub broker for system state and UI events. |
-| **Tapestry** | State Blackboard | In-memory key-value ledger for active context and task tracking. |
-| **Twill** | MCP Server | Standard Model Context Protocol (stdio) interface for external AI assistants. |
-| **Seams** | Health Diagnostics | Dependency auditing and PubGrub conflict resolution engine. |
-| **Weave** | Voice Agent | Real-time voice companion integrated with LiveKit and Google Gemini Live API. |
+| **Loom** | Dispatch Engine | Resolves capability priority, routes tool calls, and manages subprocess isolation. |
+| **Skein** | Plugin Registry | Discovers entrypoints, loads dynamic plugins, and manages lifecycle states. |
+| **Yarn** | Capability Module | Base class grouping related system capabilities and protocol implementations. |
+| **Strand** | Tool Definition | Callable function with Pydantic v2 argument validation and capability tiering. |
+| **Weft** | Stream Interceptor | Real-time token pattern matcher for streaming conversational output. |
+| **Warp** | Event Broker | Asynchronous pub/sub event distribution system for system state and UI events. |
+| **Tapestry** | State Store | In-memory key-value ledger for active context, notices, and session state. |
+| **Twill** | MCP Server | Standard Model Context Protocol (stdio) interface for AI assistants. |
+| **Seams** | Health Diagnostics | Dependency resolution, conflict detection, and diagnostic audit engine. |
+| **Weave** | Voice Client | Embedded voice companion implemented as an MCP client powered by LiveKit and Gemini. |
 
 ---
 
 ## Prerequisites
 
-To use all subsystems, configure the following components:
+To use optional voice and UI companion features:
 
 1. **Google Gemini API Key** (required for Weave voice agent):
    ```bash
@@ -42,7 +42,7 @@ To use all subsystems, configure the following components:
    lk cloud auth
    ```
 
-3. **Quickshell** (optional, required for the desktop avatar UI):
+3. **Quickshell** (optional, required for the desktop canvas UI):
    ```bash
    # Arch Linux / AUR
    paru -S quickshell-git
@@ -55,12 +55,12 @@ To use all subsystems, configure the following components:
 ```bash
 # Manage yarn registry and lifecycle
 uv run textile skein
-uv run textile skein disable packagekit
-uv run textile skein enable packagekit
+uv run textile skein disable <yarn_name>
+uv run textile skein enable <yarn_name>
 
 # Inspect active strands, parameter schemas, and layer priority
 uv run textile loom
-uv run textile loom --yarn hyprland
+uv run textile loom --yarn <yarn_name>
 
 # Run dependency audit and system health checks
 uv run textile seams
@@ -71,7 +71,6 @@ uv run textile layers
 # Execute a strand directly
 uv run textile call clipboard_set text="Hello from Textile"
 uv run textile call clipboard_get
-uv run textile call hyprland_focus_workspace workspace="2"
 
 # Control Canvas UI state
 uv run textile canvas launch
@@ -82,7 +81,7 @@ uv run textile canvas close
 # Start the Twill MCP server over stdio
 uv run textile twill
 
-# Launch the Weave real-time voice agent
+# Launch the embedded Weave voice companion
 uv run textile weave
 ```
 
@@ -96,26 +95,26 @@ Custom capability modules subclass `BaseYarn`. Functions decorated with `@strand
 from typing import Optional
 from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
 
-class MediaPlayerYarn(BaseYarn):
+class CustomMediaYarn(BaseYarn):
     publisher = "community"
-    name = "media_player"
+    name = "media_control"
     version = "1.0.0"
     layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
 
     # Optional: declare isolated runtime dependencies
     python_dependencies = ["mpris2>=1.0.2"]
 
-    @strand(description="Toggle media playback.", tier=CapabilityTier.INTERACT)
+    @strand(description="Toggle playback state.", tier=CapabilityTier.INTERACT)
     def toggle_playback(self, player: Optional[str] = None) -> str:
         """Toggle media playback.
 
-        :param player: Optional player identifier (e.g., 'spotify').
+        :param player: Optional player identifier.
         """
         return f"Toggled playback on {player or 'default'}"
 
-    @strand(description="Set audio volume level.", tier=CapabilityTier.INTERACT)
+    @strand(description="Set volume percentage.", tier=CapabilityTier.INTERACT)
     def set_volume(self, level: int) -> str:
-        """Set playback volume level.
+        """Set volume percentage.
 
         :param level: Volume level between 0 and 100.
         """
@@ -126,23 +125,24 @@ Pydantic v2 validates inputs, coerces types, and generates JSON Schema specifica
 
 ---
 
-## Linux Subsystems and Privilege Management
+## Security and Capability Tiers
 
-- **PolicyKit-1 Integration**: Strands can request execution authorization through Polkit rules without spawning interactive dialogs.
-- **AT-SPI Accessibility**: Inspect and interact with desktop application widgets, buttons, menus, and text fields via semantic object paths.
-- **Compositor IPC**: Direct socket communication for Hyprland window placement, workspace routing, monitor layout, and night light configuration.
-- **System and POSIX Primitives**: Safe filesystem operations, kernel inotify directory watches, hardware sensors, and CPU frequency queries.
+Textile enforces origin-blind execution tiers to maintain system integrity:
+
+- **Capability Tiers**: Strands are assigned operational tiers (`OBSERVE`, `INTERACT`, `MUTATE`, `PRIVILEGED`, `SYSTEM_EXEC`). Elevated operations are automatically isolated in dedicated subprocesses.
+- **Privilege Delegation**: Elevated operations interface with system authorization managers and message buses using predefined policy rules.
+- **Accessibility & Protocol Automation**: Non-intrusive semantic interaction with desktop application trees, window managers, and clipboard buffers.
+- **POSIX & Kernel Interfaces**: Safe filesystem transactions, inotify directory monitors, hardware telemetry, and process management.
 
 ---
 
-## Canvas Desktop UI
+## Canvas Desktop Presence
 
-Textile Canvas provides a Wayland overlay UI rendered via QtQuick and Quickshell:
+Textile Canvas is an optional desktop overlay rendered via QtQuick and Quickshell:
 
 - **17 Preset Mood States**: `neutral`, `happy`, `excited`, `celebrating`, `thinking`, `focused`, `listening`, `curious`, `calm`, `shy`, `mischievous`, `confused`, `surprised`, `alert`, `sleepy`, `error`, `glitch`.
-- **Inline Stream Interception**: Weave extracts semantic control tags (`<mood:...>`, `<gaze:x,y>`) from model responses in real time.
-- **State Feedback**: Visual cues for voice activity, speech synthesis, and active background execution.
-- **Standalone Process**: Runs independently through IPC and can be launched or stopped via the CLI.
+- **Stream Interception**: Semantic tokens (`<mood:...>`, `<gaze:x,y>`) are parsed from streaming text in real time to update UI state.
+- **Decoupled Architecture**: Operates as a separate process communicating via IPC, with full CLI control.
 
 ---
 
@@ -164,6 +164,7 @@ uv build
 ## License
 
 Textile is open-source software licensed under the [Apache License 2.0](LICENSE).
+
 
 
 
