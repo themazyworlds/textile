@@ -1,10 +1,10 @@
 # Textile
 
-A modular intelligence and automation framework for Linux. Textile provides a layered runtime dispatch engine and plugin architecture that exposes system capabilities and desktop interfaces to Model Context Protocol (MCP) clients and local tooling.
-
 <p align="center">
   <video src="assets/canvas_showcase.mp4" width="720" controls autoplay loop muted playsinline style="border-radius: 8px;"></video>
 </p>
+
+A modular intelligence and automation framework for Linux. Textile provides a layered runtime dispatch engine and plugin architecture that exposes system capabilities and desktop interfaces to Model Context Protocol (MCP) clients and local tooling.
 
 ---
 
@@ -29,7 +29,7 @@ Textile organizes system capabilities into modular plugins with priority-based l
 
 ## Prerequisites
 
-To use optional voice and UI companion features:
+To run Textile with conversational voice companion (**Weave**) and desktop presence (**Canvas**):
 
 1. **Google Gemini API Key** (required for Weave voice agent):
    ```bash
@@ -42,7 +42,7 @@ To use optional voice and UI companion features:
    lk cloud auth
    ```
 
-3. **Quickshell** (optional, required for the desktop canvas UI):
+3. **Quickshell** (Highly Recommended, for the 60 FPS emotive desktop Canvas Face UI):
    ```bash
    # Arch Linux / AUR
    paru -S quickshell-git
