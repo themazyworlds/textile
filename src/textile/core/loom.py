@@ -5,10 +5,10 @@ Textile Loom - High-Performance Strand Execution, Capability Resolution, and Dis
 import asyncio
 import inspect
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from textile.core.base import BaseYarn, Strand, Weft, LAYER_BASE
-from textile.core.skein import skein, Skein
+from textile.core.base import LAYER_BASE, Yarn, Strand, Weft
+from textile.core.skein import Skein, skein
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 class Loom:
     """Central runtime dispatch engine managing layer-tier capability overriding and execution."""
 
-    def __init__(self, registry: Optional[Skein] = None):
+    def __init__(self, registry: Skein | None = None):
         self._skein = registry or skein
-        self.active_yarns: Dict[str, BaseYarn] = {}
-        self.strands: Dict[str, Strand] = {}
-        self.wefts: List[Weft] = []
-        self._strand_to_yarn: Dict[str, BaseYarn] = {}
-        self._capability_to_strand: Dict[str, Tuple[Strand, BaseYarn]] = {}
+        self.active_yarns: dict[str, Yarn] = {}
+        self.strands: dict[str, Strand] = {}
+        self.wefts: list[Weft] = []
+        self._strand_to_yarn: dict[str, Yarn] = {}
+        self._capability_to_strand: dict[str, tuple[Strand, Yarn]] = {}
         self._initialized: bool = False
 
     def initialize(self) -> None:
@@ -34,10 +34,10 @@ class Loom:
 
     def _rebuild_active(self) -> None:
         new_active = self._skein.get_active_yarns()
-        new_strands: Dict[str, Strand] = {}
-        new_wefts: List[Weft] = []
-        new_strand_map: Dict[str, BaseYarn] = {}
-        new_cap_map: Dict[str, Tuple[Strand, BaseYarn]] = {}
+        new_strands: dict[str, Strand] = {}
+        new_wefts: list[Weft] = []
+        new_strand_map: dict[str, Yarn] = {}
+        new_cap_map: dict[str, tuple[Strand, Yarn]] = {}
 
         # Higher layer yarns override lower layers
         for yarn in sorted(new_active.values(), key=lambda p: getattr(p, "layer", LAYER_BASE)):
@@ -68,29 +68,29 @@ class Loom:
         self.active_yarns, self.strands, self.wefts = new_active, new_strands, new_wefts
         self._strand_to_yarn, self._capability_to_strand = new_strand_map, new_cap_map
 
-    def get_strand_override_status(self, strand: Strand, yarn: BaseYarn) -> Tuple[bool, Optional[str], Optional[str]]:
+    def get_strand_override_status(self, strand: Strand, yarn: Yarn) -> tuple[bool, str | None, str | None]:
         if strand.capability and strand.capability in self._capability_to_strand:
             active_s, active_y = self._capability_to_strand[strand.capability]
             if active_y.name != yarn.name:
                 return True, active_y.name, strand.capability
         return False, None, None
 
-    def get_all_strands(self) -> List[Strand]:
+    def get_all_strands(self) -> list[Strand]:
         self.initialize()
         return [
             s for name, s in self.strands.items()
             if not (self._strand_to_yarn.get(name) and self.get_strand_override_status(s, self._strand_to_yarn[name])[0])
         ]
 
-    def get_strand(self, strand_name: str) -> Optional[Strand]:
+    def get_strand(self, strand_name: str) -> Strand | None:
         self.initialize()
         return self.strands.get(strand_name)
 
-    def get_mcp_definitions(self) -> List[Dict[str, Any]]:
+    def get_mcp_definitions(self) -> list[dict[str, Any]]:
         self.initialize()
         return [strand.to_mcp_definition() for strand in self.get_all_strands()]
 
-    async def execute(self, strand_name: str, args: Dict[str, Any], caller: Optional[str] = None) -> str:
+    async def execute(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
         """Native asynchronous strand execution."""
         self.initialize()
         strand = self.strands.get(strand_name)
@@ -106,8 +106,9 @@ class Loom:
         import os
         import time
         import uuid
+
         from textile.core.tapestry import core_tapestry
-        from textile.core.warp import warp, WarpEvent
+        from textile.core.warp import WarpEvent, warp
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
@@ -129,7 +130,7 @@ class Loom:
             core_tapestry.record_task_end(task_id, success=success, duration_ms=dur, error=err)
             warp.publish(WarpEvent.TOOL_EXECUTION_DONE, {"task_id": task_id, "strand": strand_name, "success": success, "duration_ms": dur, "caller": effective_caller})
 
-    def execute_sync(self, strand_name: str, args: Dict[str, Any], caller: Optional[str] = None) -> str:
+    def execute_sync(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
         """Synchronous bridge for CLI and non-async environments."""
         try:
             loop = asyncio.get_running_loop()
@@ -142,15 +143,15 @@ class Loom:
                 return pool.submit(asyncio.run, self.execute(strand_name, args, caller=caller)).result()
         return asyncio.run(self.execute(strand_name, args, caller=caller))
 
-    def execute_strand(self, strand_name: str, args: Dict[str, Any], caller: Optional[str] = None) -> str:
+    def execute_strand(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
         """Backward-compatible synchronous execution alias."""
         return self.execute_sync(strand_name, args, caller=caller)
 
-    async def execute_strand_async(self, strand_name: str, args: Dict[str, Any], caller: Optional[str] = None) -> str:
+    async def execute_strand_async(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
         """Backward-compatible asynchronous execution alias."""
         return await self.execute(strand_name, args, caller=caller)
 
-    def get_all_wefts(self) -> List[Weft]:
+    def get_all_wefts(self) -> list[Weft]:
         """Return all active Weft attunements sorted by priority."""
         self.initialize()
         return list(self.wefts)

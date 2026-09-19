@@ -6,8 +6,7 @@ Provides rich discovery, parameter schema help, execution routing, and diagnosti
 import argparse
 import difflib
 import json
-import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich import box
 from rich.console import Console
@@ -22,9 +21,9 @@ console = Console()
 
 
 def render_table(
-    title: Optional[str],
-    columns: List[Dict[str, Any]],
-    rows: List[List[Any]],
+    title: str | None,
+    columns: list[dict[str, Any]],
+    rows: list[list[Any]],
 ) -> None:
     """Render a tabular dataset cleanly using Rich Table."""
     if not rows:
@@ -49,7 +48,7 @@ def render_table(
     console.print(table)
 
 
-def _layer_info(layer: int) -> Dict[str, Any]:
+def _layer_info(layer: int) -> dict[str, Any]:
     if layer >= 1000:
         return {"level": 5, "name": "User Override"}
     elif layer >= 150:

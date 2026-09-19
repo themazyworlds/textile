@@ -10,9 +10,8 @@ import logging
 import threading
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
 
-from textile.core.base import BaseYarn
+from textile.core.base import Yarn
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +40,13 @@ BUILTIN_YARNS = [
 class Skein:
     """Manages yarn discovery, configuration, and runtime health."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         self._lock = threading.RLock()
         self._config_dir = config_dir or (Path.home() / ".config" / "textile")
         self._config_file = self._config_dir / "yarns.json"
         self._user_yarns_dir = self._config_dir / "yarns"
-        self.all_yarns: Dict[str, BaseYarn] = {}
-        self._disabled_yarns: Set[str] = set()
+        self.all_yarns: dict[str, Yarn] = {}
+        self._disabled_yarns: set[str] = set()
         self._initialized: bool = False
 
     def initialize(self) -> None:
@@ -60,11 +59,11 @@ class Skein:
             self.load_user_yarns()
             self._initialized = True
 
-    def register_yarn(self, yarn: BaseYarn) -> None:
+    def register_yarn(self, yarn: Yarn) -> None:
         with self._lock:
             self.all_yarns[yarn.name] = yarn
 
-    def unregister_yarn(self, name: str) -> Optional[BaseYarn]:
+    def unregister_yarn(self, name: str) -> Yarn | None:
         with self._lock:
             return self.all_yarns.pop(name, None)
 
@@ -84,7 +83,7 @@ class Skein:
             self._disabled_yarns.discard(name) if enabled else self._disabled_yarns.add(name)
             self._save_config()
 
-    def get_active_yarns(self) -> Dict[str, BaseYarn]:
+    def get_active_yarns(self) -> dict[str, Yarn]:
         self.initialize()
         with self._lock:
             active = {}
@@ -112,7 +111,7 @@ class Skein:
             for ep in entry_points(group="textile.yarns"):
                 try:
                     yarn_cls = ep.load()
-                    if issubclass(yarn_cls, BaseYarn):
+                    if issubclass(yarn_cls, Yarn):
                         instance = yarn_cls()
                         with self._lock:
                             self.all_yarns[instance.name] = instance
@@ -121,7 +120,7 @@ class Skein:
         except Exception:
             pass
 
-    def load_user_yarns(self, yarn_dir: Optional[Path] = None) -> None:
+    def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
         target_dir = yarn_dir or self._user_yarns_dir
         if not target_dir.exists():
             return
@@ -134,7 +133,7 @@ class Skein:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
                     for _, attr in inspect.getmembers(mod, inspect.isclass):
-                        if issubclass(attr, BaseYarn) and attr is not BaseYarn:
+                        if issubclass(attr, Yarn) and attr is not Yarn:
                             instance = attr()
                             with self._lock:
                                 self.all_yarns[instance.name] = instance

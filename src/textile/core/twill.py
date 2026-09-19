@@ -4,9 +4,8 @@ Provides standard MCP stdio JSON-RPC tool/strand dispatching aggregated across a
 """
 
 import asyncio
-from typing import List, Optional
 
-import mcp.types as types
+from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
@@ -20,7 +19,7 @@ def create_twill_server() -> Server:
     app = Server("textile", instructions=instructions)
 
     @app.list_prompts()
-    async def handle_list_prompts() -> List[types.Prompt]:
+    async def handle_list_prompts() -> list[types.Prompt]:
         return [
             types.Prompt(
                 name="textile_system_contract",
@@ -46,8 +45,8 @@ def create_twill_server() -> Server:
         raise ValueError(f"Unknown prompt: {name}")
 
     @app.list_tools()
-    async def handle_list_tools() -> List[types.Tool]:
-        tools: List[types.Tool] = []
+    async def handle_list_tools() -> list[types.Tool]:
+        tools: list[types.Tool] = []
         for strand_def in loom.get_mcp_definitions():
             tools.append(
                 types.Tool(
@@ -59,7 +58,7 @@ def create_twill_server() -> Server:
         return tools
 
     @app.call_tool()
-    async def handle_call_tool(name: str, arguments: dict | None) -> List[types.TextContent]:
+    async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
         try:
             res_text = await loom.execute_strand_async(name, arguments or {})
             return [types.TextContent(type="text", text=str(res_text))]

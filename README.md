@@ -13,7 +13,7 @@ A modular intelligence and automation framework for Linux. Textile provides a la
 - **Model Context Protocol (MCP)**: Native stdio MCP server (`Twill`) connecting external AI assistants (Claude, Cursor, Gemini, OpenCode).
 - **Embedded Voice Companion**: Real-time full-duplex conversational voice agent (`Weave`) integrated with LiveKit and Google Gemini Live.
 - **Type-Safe Plugin System**: Write capability modules (`Yarns`) using simple `@strand` decorators with automated Pydantic v2 schema generation.
-- **Desktop Presence UI**: Optional Wayland avatar overlay (`Canvas`) powered by Quickshell.
+- **Desktop Presence UI**: Optional Wayland desktop presence (`Canvas`) powered by Quickshell.
 
 ---
 
@@ -51,7 +51,7 @@ Start the interactive conversational companion in your terminal:
 uv run textile weave
 ```
 
-### 3. Launch the Desktop Avatar UI
+### 3. Launch the Canvas UI
 Start the reactive desktop presence:
 ```bash
 uv run textile canvas launch
@@ -76,13 +76,13 @@ uv run textile call clipboard_get
 
 ## Authoring Plugins (`Yarns` & `@strand`)
 
-Subclass `BaseYarn` to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
+Subclass `Yarn` to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
 
 ```python
 from typing import Optional
-from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import Yarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
 
-class CustomMediaYarn(BaseYarn):
+class CustomMediaYarn(Yarn):
     publisher = "community"
     name = "media_control"
     version = "1.0.0"

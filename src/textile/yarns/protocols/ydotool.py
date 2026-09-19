@@ -8,11 +8,11 @@ import shutil
 import socket
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
 
 
-class Ydotool(BaseYarn):
+class Ydotool(Yarn):
     name = "ydotool"
     description = "Hardware-level Synthetic Keypress and Mouse Automation via ydotool."
     version = "1.0.0"
@@ -48,7 +48,7 @@ class Ydotool(BaseYarn):
     def is_available(self) -> bool:
         return hasattr(os, "getuid") and (shutil.which("ydotool") is not None or shutil.which("wtype") is not None)
 
-    def _get_env(self) -> Dict[str, str]:
+    def _get_env(self) -> dict[str, str]:
         uid = getattr(os, "getuid", lambda: 1000)()
         env = os.environ.copy()
         env["YDOTOOL_SOCKET"] = f"/run/user/{uid}/.ydotool_socket"
@@ -128,7 +128,7 @@ class Ydotool(BaseYarn):
         return "Error: Virtual keyboard daemon (ydotool) could not connect."
 
     @strand(description="Press a specific keyboard key or hotkey combination.")
-    def press_key(self, key: str, modifiers: Optional[str] = None) -> str:
+    def press_key(self, key: str, modifiers: str | None = None) -> str:
         """Press a specific keyboard key or hotkey combination.
 
         :param key: Key name (e.g. 'enter', 'tab', 'escape', 'up', 'down').
@@ -163,7 +163,7 @@ class Ydotool(BaseYarn):
         return "Error: ydotool is not available."
 
     @strand(description="Paste text or clipboard content into the active focused window.")
-    def paste_text(self, text: Optional[str] = None, is_terminal: Optional[bool] = None, press_enter: bool = False) -> str:
+    def paste_text(self, text: str | None = None, is_terminal: bool | None = None, press_enter: bool = False) -> str:
         """Paste text or clipboard content into the active focused window.
 
         :param text: Text to copy and paste. If omitted, pastes current clipboard.

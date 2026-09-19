@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 import threading
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 try:
     from dbus_fast import BusType, Message, MessageFlag, MessageType, Variant
@@ -17,17 +17,17 @@ try:
 except Exception:
     BusType = Message = MessageFlag = MessageType = Variant = MessageBus = None
 
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
 
 
 class DBusAPI:
     """Universal Dynamic D-Bus Client with persistent background event loop."""
 
     def __init__(self):
-        self._session_bus: Optional[MessageBus] = None
-        self._system_bus: Optional[MessageBus] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
+        self._session_bus: MessageBus | None = None
+        self._system_bus: MessageBus | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
     def _ensure_background_loop(self) -> asyncio.AbstractEventLoop:
@@ -96,13 +96,13 @@ class DBusAPI:
         path: str = "",
         interface: str = "",
         member: str = "",
-        signature: Optional[str] = None,
-        body: Optional[List[Any]] = None,
+        signature: str | None = None,
+        body: list[Any] | None = None,
     ) -> Any:
         msg_bus = await self._get_bus(bus)
         body_args = body or []
 
-        msg_kwargs: Dict[str, Any] = {
+        msg_kwargs: dict[str, Any] = {
             "destination": destination.strip(),
             "path": path.strip(),
             "interface": interface.strip(),
@@ -135,7 +135,7 @@ class DBusAPI:
         destination: str = "",
         path: str = "",
         interface: str = "",
-        property_name: Optional[str] = None,
+        property_name: str | None = None,
     ) -> Any:
         msg_bus = await self._get_bus(bus)
         if property_name and property_name.strip():
@@ -175,7 +175,7 @@ class DBusAPI:
         interface: str = "",
         property_name: str = "",
         value: Any = None,
-        signature: Optional[str] = None,
+        signature: str | None = None,
     ) -> str:
         msg_bus = await self._get_bus(bus)
         val_sig = signature or self._infer_signature(value)
@@ -217,7 +217,7 @@ class DBusAPI:
 dbus_api = DBusAPI()
 
 
-class DBus(BaseYarn):
+class DBus(Yarn):
     name = "dbus_system"
     description = "Universal Dynamic D-Bus Interface for Session and System Bus RPC Calls, Properties, and Introspection."
     version = "2.0.0"
@@ -238,8 +238,8 @@ class DBus(BaseYarn):
         interface: str,
         method: str,
         bus: Literal["session", "system"] = "session",
-        signature: Optional[str] = None,
-        args: Optional[str] = None,
+        signature: str | None = None,
+        args: str | None = None,
     ) -> Any:
         """Call any D-Bus method on the session or system bus.
 
@@ -284,7 +284,7 @@ class DBus(BaseYarn):
         path: str,
         interface: str,
         bus: Literal["session", "system"] = "session",
-        property_name: Optional[str] = None,
+        property_name: str | None = None,
     ) -> Any:
         """Get a single property or all properties (GetAll) from a D-Bus object interface.
 
@@ -318,7 +318,7 @@ class DBus(BaseYarn):
         property_name: str,
         value: str,
         bus: Literal["session", "system"] = "session",
-        signature: Optional[str] = None,
+        signature: str | None = None,
     ) -> str:
         """Set a writable D-Bus property on an object interface.
 

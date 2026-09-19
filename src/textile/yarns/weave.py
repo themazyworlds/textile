@@ -4,22 +4,21 @@ Provides seamless real-time full-duplex voice companion bound to the Textile int
 """
 
 import os
+import re
 import sys
-from typing import Optional
+from collections.abc import AsyncGenerator, AsyncIterable
+from typing import Any
+
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, cli, mcp
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import google
-import asyncio
-import concurrent.futures
-import re
-from textile.core.loom import loom
 
-from typing import Any, AsyncGenerator, AsyncIterable, Optional
+from textile.core.loom import loom
 
 server = AgentServer()
 
 MOOD_TAG_REGEX = re.compile(r"<mood:([a-zA-Z_-]+)>", re.IGNORECASE)
-from textile.core.warp import warp, WarpEvent
+from textile.core.warp import WarpEvent, warp
 
 
 def extract_and_apply_mood_tags(content: str) -> None:

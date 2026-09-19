@@ -13,16 +13,15 @@ import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 try:
     from dbus_fast import Variant
 except Exception:
     Variant = None
 
-from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, CapabilityTier, strand
 from textile.yarns.protocols.dbus_system import dbus_api
-
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +64,10 @@ class PolkitAPI:
     def check_authorization(
         self,
         action_id: str,
-        details: Optional[Dict[str, str]] = None,
+        details: dict[str, str] | None = None,
         allow_user_interaction: bool = False,
-        pid: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        pid: int | None = None,
+    ) -> dict[str, Any]:
         target_pid = pid or os.getpid()
         subject = ("unix-process", {"pid": Variant("u", target_pid) if Variant else target_pid, "start-time": Variant("t", 0) if Variant else 0})
         det = details or {}
@@ -105,7 +104,7 @@ class PolkitAPI:
         except Exception as e:
             return {"success": False, "error": f"Polkit check failed: {e}"}
 
-    def list_actions(self, filter_query: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_actions(self, filter_query: str | None = None) -> list[dict[str, Any]]:
         try:
             res = dbus_api.run_sync(
                 dbus_api.call(
@@ -188,11 +187,11 @@ class PolkitAPI:
 
     def generate_policy(
         self,
-        actions: List[Dict[str, Any]],
+        actions: list[dict[str, Any]],
         vendor: str = "Textile Desktop Intelligence",
         vendor_url: str = "https://github.com/textile",
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         root = ET.Element("policyconfig")
         v_elem = ET.SubElement(root, "vendor")
         v_elem.text = vendor
@@ -231,11 +230,11 @@ class PolkitAPI:
         self,
         rule_name: str,
         action_pattern: str,
-        users: Optional[List[str]] = None,
-        groups: Optional[List[str]] = None,
+        users: list[str] | None = None,
+        groups: list[str] | None = None,
         result: str = "yes",
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         res_enum = f"polkit.Result.{result.upper()}"
         users_list = [f'"{u}"' for u in (users or [])]
         groups_list = [f'"{g}"' for g in (groups or [])]
@@ -274,11 +273,11 @@ polkit.addRule(function(action, subject) {{
 
     def pkexec(
         self,
-        command: str | List[str],
+        command: str | list[str],
         user: str = "root",
-        env: Optional[Dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         timeout_seconds: float = 30.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         pkexec_bin = shutil.which("pkexec")
         if not pkexec_bin:
             return {"success": False, "error": "pkexec binary not found."}
@@ -319,7 +318,7 @@ polkit.addRule(function(action, subject) {{
 polkit_api = PolkitAPI()
 
 
-class Polkit(BaseYarn):
+class Polkit(Yarn):
     name = "polkit"
     description = "Linux PolicyKit-1 Authority Check, .policy XML Generation, .rules Rule Creation, and pkexec Elevation."
     version = "1.0.0"
@@ -339,9 +338,9 @@ class Polkit(BaseYarn):
     def polkit_check_auth(
         self,
         action_id: str,
-        details: Optional[str] = None,
+        details: str | None = None,
         allow_user_interaction: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check authorization for a Polkit action ID against org.freedesktop.PolicyKit1.Authority.
 
         :param action_id: Polkit action ID.
@@ -359,7 +358,7 @@ class Polkit(BaseYarn):
         return polkit_api.check_authorization(action_id=act_id, details=det, allow_user_interaction=allow_user_interaction)
 
     @strand(description="List and search registered Polkit action definitions.", tier=CapabilityTier.OBSERVE)
-    def polkit_list_actions(self, filter_query: Optional[str] = None) -> Dict[str, Any]:
+    def polkit_list_actions(self, filter_query: str | None = None) -> dict[str, Any]:
         """List and search registered Polkit action definitions.
 
         :param filter_query: Search term.
@@ -376,8 +375,8 @@ class Polkit(BaseYarn):
         actions: str,
         vendor: str = "Textile Desktop Intelligence",
         vendor_url: str = "https://github.com/textile",
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Generate standards-compliant .policy XML definitions for custom actions.
 
         :param actions: JSON array of action definitions.
@@ -402,11 +401,11 @@ class Polkit(BaseYarn):
         self,
         rule_name: str,
         action_pattern: str,
-        users: Optional[str] = None,
-        groups: Optional[str] = None,
+        users: str | None = None,
+        groups: str | None = None,
         result: Literal["yes", "no", "auth_admin", "auth_admin_keep", "auth_self", "auth_self_keep"] = "yes",
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Generate a Polkit-1 JavaScript rule (.rules) for pre-authorizing specific actions.
 
         :param rule_name: Descriptive rule name.
@@ -451,7 +450,7 @@ class Polkit(BaseYarn):
         command: str,
         user: str = "root",
         timeout_seconds: float = 30.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute a command with elevated privileges using pkexec CLI escalation.
 
         :param command: Command string to execute.

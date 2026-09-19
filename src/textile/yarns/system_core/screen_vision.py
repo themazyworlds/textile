@@ -7,9 +7,8 @@ Layer 10 (Core POSIX).
 import io
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional
 
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+from textile.core.base import LAYER_BASE, Yarn, strand
 
 
 class ScreenVisionEngine:
@@ -26,7 +25,7 @@ class ScreenVisionEngine:
                 self._sct = None
         return self._sct
 
-    def capture_jpeg(self, max_dimension: int = 1280, quality: int = 70) -> Optional[bytes]:
+    def capture_jpeg(self, max_dimension: int = 1280, quality: int = 70) -> bytes | None:
         from PIL import Image
 
         if self._has_grim:
@@ -65,7 +64,7 @@ class ScreenVisionEngine:
 vision_engine = ScreenVisionEngine()
 
 
-class ScreenVision(BaseYarn):
+class ScreenVision(Yarn):
     name = "screen_vision"
     description = "Multimodal Screen Frame Capture Provider."
     version = "1.0.0"
@@ -75,7 +74,7 @@ class ScreenVision(BaseYarn):
         return True
 
     @strand(description="Capture a high-resolution screenshot snapshot of the active screen and windows.")
-    def capture_screen(self, purpose: Optional[str] = None) -> str:
+    def capture_screen(self, purpose: str | None = None) -> str:
         """Capture a high-resolution screenshot snapshot of the active screen and windows.
 
         :param purpose: Optional reason for capturing screen.

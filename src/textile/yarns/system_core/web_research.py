@@ -9,11 +9,11 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+
+from textile.core.base import LAYER_BASE, Yarn, strand
 
 
-def _search_ddg_lite(query: str, max_results: int = 8) -> List[Tuple[str, str, str]]:
+def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, str]]:
     """Query DuckDuckGo Lite endpoint using text browser headers."""
     url = "https://lite.duckduckgo.com/lite/"
     data = urllib.parse.urlencode({"q": query}).encode("utf-8")
@@ -56,7 +56,7 @@ def _search_ddg_lite(query: str, max_results: int = 8) -> List[Tuple[str, str, s
     return results
 
 
-def _search_ddg_instant_and_wiki(query: str) -> List[Tuple[str, str, str]]:
+def _search_ddg_instant_and_wiki(query: str) -> list[tuple[str, str, str]]:
     """Fallback search using DuckDuckGo Instant Answer API and Wikipedia Full-Text Search API."""
     results = []
     # 1. DuckDuckGo Instant Answer API
@@ -101,7 +101,7 @@ def search_web(query: str) -> str:
     if not query_clean:
         return "Error: Empty search query."
 
-    items: List[Tuple[str, str, str]] = []
+    items: list[tuple[str, str, str]] = []
     try:
         items = _search_ddg_lite(query_clean, max_results=8)
     except Exception:
@@ -159,7 +159,7 @@ def fetch_webpage(url: str) -> str:
         return f"Error fetching webpage '{url_clean}': {e}"
 
 
-class WebResearch(BaseYarn):
+class WebResearch(Yarn):
     name = "web_research"
     description = "Live Internet Search and Web Page Content Fetcher."
     version = "1.0.0"

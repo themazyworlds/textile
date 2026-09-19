@@ -6,19 +6,18 @@ Layer 50 (Desktop Protocol).
 """
 
 import logging
-from typing import Any, Dict, List
 
 try:
     import pyxclip
 except Exception:
     pyxclip = None
 
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
 
 logger = logging.getLogger(__name__)
 
 
-class Clipboard(BaseYarn):
+class Clipboard(Yarn):
     """Universal System Clipboard Capability Yarn via Native pyxclip."""
 
     name = "clipboard"

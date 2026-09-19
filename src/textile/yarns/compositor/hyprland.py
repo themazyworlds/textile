@@ -10,9 +10,9 @@ import shutil
 import socket
 import subprocess
 import time
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Literal
 
-from textile.core.base import BaseYarn, strand, LAYER_COMPOSITOR_DE
+from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand
 
 
 class HyprlandIPC:
@@ -111,7 +111,7 @@ class HyprlandIPC:
         return self.dispatch("hl.dsp.exit()")
 
     @staticmethod
-    def _get_self_ancestor_pids() -> Set[int]:
+    def _get_self_ancestor_pids() -> set[int]:
         ancestors = set()
         try:
             pid = os.getpid()
@@ -124,12 +124,12 @@ class HyprlandIPC:
             pass
         return ancestors
 
-    def _get_window_descendants(self, root_pid: int) -> List[str]:
+    def _get_window_descendants(self, root_pid: int) -> list[str]:
         if not root_pid or root_pid <= 1:
             return []
-        parent_map: Dict[int, List[int]] = {}
-        proc_info: Dict[int, str] = {}
-        proc_cmdlines: Dict[int, str] = {}
+        parent_map: dict[int, list[int]] = {}
+        proc_info: dict[int, str] = {}
+        proc_cmdlines: dict[int, str] = {}
         try:
             import glob
             for p_dir in glob.glob("/proc/[0-9]*"):
@@ -166,7 +166,7 @@ class HyprlandIPC:
                     queue.append(ch)
         return descendants
 
-    def get_self_window(self) -> Optional[Dict[str, Any]]:
+    def get_self_window(self) -> dict[str, Any] | None:
         ancestors = self._get_self_ancestor_pids()
         clients = self.get_clients()
         for c in clients:
@@ -174,7 +174,7 @@ class HyprlandIPC:
                 return c
         return None
 
-    def resolve_window(self, target: str) -> Optional[Dict[str, Any]]:
+    def resolve_window(self, target: str) -> dict[str, Any] | None:
         target_clean = str(target).strip()
         if not target_clean:
             return None
@@ -295,7 +295,7 @@ class HyprlandIPC:
             return self.dispatch(f'hl.dsp.focus({{ window = "address:{win["address"]}" }})')
         return f"Error: No open window found matching '{target_clean}'."
 
-    def close_window(self, target: Optional[str] = None) -> str:
+    def close_window(self, target: str | None = None) -> str:
         if target and str(target).strip():
             target_clean = str(target).strip()
             win = self.resolve_window(target_clean)
@@ -304,7 +304,7 @@ class HyprlandIPC:
             return f"Error: No open window found matching '{target_clean}'."
         return self.dispatch("hl.dsp.window.close()")
 
-    def move_to_workspace(self, workspace: str, target: Optional[str] = None, silent: bool = False) -> str:
+    def move_to_workspace(self, workspace: str, target: str | None = None, silent: bool = False) -> str:
         ws_str = str(workspace).strip()
         current_ws = None
         if silent:
@@ -326,7 +326,7 @@ class HyprlandIPC:
             self.focus_workspace(str(current_ws))
         return res
 
-    def window_action(self, action: str, target: Optional[str] = None) -> str:
+    def window_action(self, action: str, target: str | None = None) -> str:
         act = action.lower().strip()
         if act in ("close", "kill"):
             return self.close_window(target=target)
@@ -362,9 +362,9 @@ class HyprlandIPC:
         self,
         delta_x: int = 0,
         delta_y: int = 0,
-        direction: Optional[str] = None,
+        direction: str | None = None,
         relative: bool = True,
-        target: Optional[str] = None,
+        target: str | None = None,
     ) -> str:
         rel_str = "true" if relative else "false"
         win_param = ""
@@ -381,7 +381,7 @@ class HyprlandIPC:
 
         return self.dispatch(f'hl.dsp.window.move({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})')
 
-    def resize_window(self, delta_x: int = 0, delta_y: int = 0, relative: bool = True, target: Optional[str] = None) -> str:
+    def resize_window(self, delta_x: int = 0, delta_y: int = 0, relative: bool = True, target: str | None = None) -> str:
         rel_str = "true" if relative else "false"
         win_param = ""
         if target and str(target).strip():
@@ -392,7 +392,7 @@ class HyprlandIPC:
             win_param = f', window = "address:{win["address"]}"'
         return self.dispatch(f'hl.dsp.window.resize({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})')
 
-    def exec_app(self, app: str, is_tui: bool = False, title: Optional[str] = None) -> str:
+    def exec_app(self, app: str, is_tui: bool = False, title: str | None = None) -> str:
         app_clean = app.strip()
         if is_tui:
             term = self._detect_terminal()
@@ -413,19 +413,19 @@ class HyprlandIPC:
         escaped_cmd = cmd.replace('\\', '\\\\').replace('"', '\\"')
         return self.dispatch(f'hl.dsp.exec_cmd("{escaped_cmd}")')
 
-    def get_active_workspace(self) -> Dict[str, Any]:
+    def get_active_workspace(self) -> dict[str, Any]:
         res = self.send_json("j/activeworkspace")
         return res if isinstance(res, dict) else {}
 
-    def get_workspaces(self) -> List[Dict[str, Any]]:
+    def get_workspaces(self) -> list[dict[str, Any]]:
         res = self.send_json("j/workspaces")
         return res if isinstance(res, list) else []
 
-    def get_active_window(self) -> Dict[str, Any]:
+    def get_active_window(self) -> dict[str, Any]:
         res = self.send_json("j/activewindow")
         return res if isinstance(res, dict) else {}
 
-    def get_clients(self) -> List[Dict[str, Any]]:
+    def get_clients(self) -> list[dict[str, Any]]:
         res = self.send_json("j/clients")
         return res if isinstance(res, list) else []
 
@@ -440,11 +440,11 @@ class HyprlandIPC:
         res = self.eval_lua(code)
         return f"Monitor '{out_clean}' configured to {mode_clean} at {pos_clean} (scale {scale}): {res}"
 
-    def get_monitors(self) -> List[Dict[str, Any]]:
+    def get_monitors(self) -> list[dict[str, Any]]:
         res = self.send_json("j/monitors")
         return res if isinstance(res, list) else []
 
-    def read_events(self, timeout: float = 0.1, max_events: int = 20) -> List[Dict[str, str]]:
+    def read_events(self, timeout: float = 0.1, max_events: int = 20) -> list[dict[str, str]]:
         import select
         sock_path = self._get_event_socket_path()
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -482,7 +482,7 @@ class HyprlandIPC:
                     r, _, _ = select.select([sock], [], [], 0.02)
                     if not r:
                         break
-                except (BlockingIOError, socket.error):
+                except (OSError, BlockingIOError):
                     break
         except Exception as e:
             if not events:
@@ -494,15 +494,15 @@ class HyprlandIPC:
     def set_night_light(
         self,
         temperature: int | str | None = None,
-        gamma: Optional[float] = None,
+        gamma: float | None = None,
         identity: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         hyprsunset_bin = shutil.which("hyprsunset")
         wlsunset_bin = shutil.which("wlsunset")
         if not hyprsunset_bin and not wlsunset_bin:
             return {"success": False, "error": "Neither hyprsunset nor wlsunset is installed."}
 
-        temp_val: Optional[int] = None
+        temp_val: int | None = None
         is_ident = identity
 
         if isinstance(temperature, str):
@@ -556,7 +556,7 @@ class HyprlandIPC:
             except Exception as e:
                 return {"success": False, "error": f"Failed to spawn wlsunset: {e}"}
 
-    def get_night_light_status(self) -> Dict[str, Any]:
+    def get_night_light_status(self) -> dict[str, Any]:
         res_hypr = subprocess.run(["pgrep", "-la", "hyprsunset"], stdout=subprocess.PIPE, text=True)
         res_wl = subprocess.run(["pgrep", "-la", "wlsunset"], stdout=subprocess.PIPE, text=True)
         is_running = bool(res_hypr.stdout.strip() or res_wl.stdout.strip())
@@ -578,7 +578,7 @@ class HyprlandIPC:
 hyprland_ipc = HyprlandIPC()
 
 
-class Hyprland(BaseYarn):
+class Hyprland(Yarn):
     name = "hyprland"
     description = "Direct UNIX Domain Socket IPC for Hyprland Compositor."
     version = "1.1.0"
@@ -593,7 +593,7 @@ class Hyprland(BaseYarn):
         hypr_dir = os.path.join(runtime, "hypr")
         return os.path.exists(hypr_dir) and bool(os.listdir(hypr_dir)) if os.path.exists(hypr_dir) else False
 
-    def _parse_workspace_target(self, target: str) -> tuple[str, Optional[str]]:
+    def _parse_workspace_target(self, target: str) -> tuple[str, str | None]:
         tokens = target.split()
         if len(tokens) >= 2 and tokens[-1].lstrip("-+").isdigit():
             ws = tokens[-1]
@@ -621,7 +621,7 @@ class Hyprland(BaseYarn):
     def hyprland_move_window_to_workspace(
         self,
         workspace: str,
-        target: Optional[str] = None,
+        target: str | None = None,
         silent: bool = False,
     ) -> str:
         """Move target or active window to specified workspace.
@@ -634,7 +634,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.move_to_workspace(ws, win_q, silent=silent)
 
     @strand(description="Close a window by query, address, or active window.")
-    def hyprland_close_window(self, target: Optional[str] = None) -> str:
+    def hyprland_close_window(self, target: str | None = None) -> str:
         """Close a window by query, address, or active window.
 
         :param target: Window query or address. Omit to close active window.
@@ -642,7 +642,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.close_window(target=target)
 
     @strand(description="Toggle floating state for active or specified window.")
-    def hyprland_toggle_float(self, target: Optional[str] = None) -> str:
+    def hyprland_toggle_float(self, target: str | None = None) -> str:
         """Toggle floating state for active or specified window.
 
         :param target: Target window query or address.
@@ -650,7 +650,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.window_action("float", target=target)
 
     @strand(description="Toggle fullscreen mode for active or specified window.")
-    def hyprland_toggle_fullscreen(self, target: Optional[str] = None) -> str:
+    def hyprland_toggle_fullscreen(self, target: str | None = None) -> str:
         """Toggle fullscreen mode for active or specified window.
 
         :param target: Target window query or address.
@@ -658,7 +658,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.window_action("fullscreen", target=target)
 
     @strand(description="Pin window to show across all workspaces.")
-    def hyprland_pin_window(self, target: Optional[str] = None) -> str:
+    def hyprland_pin_window(self, target: str | None = None) -> str:
         """Pin window to show across all workspaces.
 
         :param target: Target window query or address.
@@ -666,7 +666,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.window_action("pin", target=target)
 
     @strand(description="Center floating window on screen.")
-    def hyprland_center_window(self, target: Optional[str] = None) -> str:
+    def hyprland_center_window(self, target: str | None = None) -> str:
         """Center floating window on screen.
 
         :param target: Target window query or address.
@@ -678,8 +678,8 @@ class Hyprland(BaseYarn):
         self,
         delta_x: int = 0,
         delta_y: int = 0,
-        direction: Optional[Literal["left", "right", "up", "down"]] = None,
-        target: Optional[str] = None,
+        direction: Literal["left", "right", "up", "down"] | None = None,
+        target: str | None = None,
     ) -> str:
         """Move active or specified window by pixel offset (delta_x, delta_y) or in direction (left, right, up, down).
 
@@ -700,7 +700,7 @@ class Hyprland(BaseYarn):
         self,
         delta_x: int,
         delta_y: int,
-        target: Optional[str] = None,
+        target: str | None = None,
     ) -> str:
         """Resize active or specified window by delta X and delta Y.
 
@@ -727,7 +727,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.focus_direction(direction)
 
     @strand(description="Set color temperature for night light / Hyprsunset.")
-    def hyprland_set_night_light(self, temperature: int = 4000) -> Dict[str, Any]:
+    def hyprland_set_night_light(self, temperature: int = 4000) -> dict[str, Any]:
         """Set color temperature for night light / Hyprsunset.
 
         :param temperature: Color temperature in Kelvin (e.g. 3500, 4000, 6500).
@@ -735,7 +735,7 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.set_night_light(temperature=int(temperature))
 
     @strand(description="Get current night light color temperature and process status.")
-    def hyprland_get_night_light(self) -> Dict[str, Any]:
+    def hyprland_get_night_light(self) -> dict[str, Any]:
         """Get current night light color temperature and process status."""
         return hyprland_ipc.get_night_light_status()
 
@@ -762,27 +762,27 @@ class Hyprland(BaseYarn):
         )
 
     @strand(description="Get details of currently active workspace.")
-    def hyprland_get_active_workspace(self) -> Dict[str, Any]:
+    def hyprland_get_active_workspace(self) -> dict[str, Any]:
         """Get details of currently active workspace."""
         return hyprland_ipc.get_active_workspace()
 
     @strand(description="Get details of currently focused window.")
-    def hyprland_get_active_window(self) -> Dict[str, Any]:
+    def hyprland_get_active_window(self) -> dict[str, Any]:
         """Get details of currently focused window."""
         return hyprland_ipc.get_active_window()
 
     @strand(description="Get window details for the calling Textile / CLI process.")
-    def hyprland_get_self_window(self) -> Optional[Dict[str, Any]]:
+    def hyprland_get_self_window(self) -> dict[str, Any] | None:
         """Get window details for the calling Textile / CLI process."""
         return hyprland_ipc.get_self_window()
 
     @strand(description="List all active Hyprland workspaces.")
-    def hyprland_get_workspaces(self) -> List[Dict[str, Any]]:
+    def hyprland_get_workspaces(self) -> list[dict[str, Any]]:
         """List all active Hyprland workspaces."""
         return hyprland_ipc.get_workspaces()
 
     @strand(description="Get window details by title, class, address, or query.")
-    def hyprland_get_window(self, target: str) -> Dict[str, Any]:
+    def hyprland_get_window(self, target: str) -> dict[str, Any]:
         """Get window details by title, class, address, or query.
 
         :param target: Window title, class, or address.
@@ -790,12 +790,12 @@ class Hyprland(BaseYarn):
         return hyprland_ipc.resolve_window(target) or {"error": f"Window '{target}' not found"}
 
     @strand(description="List all open windows / clients in Hyprland.")
-    def hyprland_get_windows(self) -> List[Dict[str, Any]]:
+    def hyprland_get_windows(self) -> list[dict[str, Any]]:
         """List all open windows / clients in Hyprland."""
         return hyprland_ipc.get_clients()
 
     @strand(description="List connected monitors and layout geometry.")
-    def hyprland_get_monitors(self) -> List[Dict[str, Any]]:
+    def hyprland_get_monitors(self) -> list[dict[str, Any]]:
         """List connected monitors and layout geometry."""
         return hyprland_ipc.get_monitors()
 

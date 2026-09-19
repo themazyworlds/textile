@@ -9,8 +9,9 @@ import json
 import os
 import shutil
 import subprocess
-from typing import Any, Dict, List, Literal, Optional
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+from typing import Any, Literal
+
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
 
 PRIORITY_NAMES = {
     0: "emerg",
@@ -26,7 +27,7 @@ PRIORITY_NAMES = {
 OUTPUT_FIELDS = "__REALTIME_TIMESTAMP,PRIORITY,_SYSTEMD_USER_UNIT,_SYSTEMD_UNIT,SYSLOG_IDENTIFIER,_COMM,_PID,MESSAGE"
 
 
-def _normalize_time_spec(spec: Optional[str]) -> Optional[str]:
+def _normalize_time_spec(spec: str | None) -> str | None:
     if not spec:
         return None
     s = str(spec).strip()
@@ -45,7 +46,7 @@ def _normalize_time_spec(spec: Optional[str]) -> Optional[str]:
     return s
 
 
-def _parse_entry(obj: Dict[str, Any], is_kernel: bool = False) -> Dict[str, Any]:
+def _parse_entry(obj: dict[str, Any], is_kernel: bool = False) -> dict[str, Any]:
     """Safely parse a single journalctl JSON line object."""
     ts_us = int(obj.get("__REALTIME_TIMESTAMP", 0)) if str(obj.get("__REALTIME_TIMESTAMP", "")).isdigit() else 0
     ts_str = ""
@@ -89,14 +90,14 @@ class JournalAPI:
     """Systemd Journal Query & Diagnostic Engine."""
 
     def __init__(self):
-        self._journalctl_bin: Optional[str] = shutil.which("journalctl")
+        self._journalctl_bin: str | None = shutil.which("journalctl")
 
     def is_available(self) -> bool:
         if not self._journalctl_bin:
             return False
         return os.path.exists("/run/systemd/journal") or os.path.exists("/var/log/journal")
 
-    def _exec_journal(self, cmd: List[str]) -> List[Dict[str, Any]]:
+    def _exec_journal(self, cmd: list[str]) -> list[dict[str, Any]]:
         """Run journalctl command and return parsed log records."""
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=10)
@@ -124,17 +125,17 @@ class JournalAPI:
 
     def query_logs(
         self,
-        unit: Optional[str] = None,
-        user_unit: Optional[str] = None,
-        priority: Optional[str] = None,
-        since: Optional[str] = None,
-        until: Optional[str] = None,
+        unit: str | None = None,
+        user_unit: str | None = None,
+        priority: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
         lines: int = 25,
         kernel: bool = False,
-        grep: Optional[str] = None,
-        boot: Optional[int] = None,
+        grep: str | None = None,
+        boot: int | None = None,
         user: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not self.is_available():
             return [{"error": "systemd journalctl is not available."}]
 
@@ -190,17 +191,17 @@ class JournalAPI:
 
         return self._exec_journal(base_cmd)
 
-    def get_errors(self, since: str = "-1h", lines: int = 25) -> List[Dict[str, Any]]:
+    def get_errors(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         return self.query_logs(priority="err", since=since, lines=lines, boot=0)
 
-    def get_kernel_logs(self, since: str = "-1h", lines: int = 25) -> List[Dict[str, Any]]:
+    def get_kernel_logs(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         return self.query_logs(kernel=True, since=since, lines=lines, boot=0)
 
 
 journal_api = JournalAPI()
 
 
-class Journal(BaseYarn):
+class Journal(Yarn):
     name = "journal"
     description = "Systemd Journal Log Querying, Service Unit Inspection, Kernel Logs, and Crash Diagnostics."
     version = "1.0.0"
@@ -212,17 +213,17 @@ class Journal(BaseYarn):
     @strand(description="Query systemd journal logs with structured filtering by unit, priority, time range, or grep.")
     def journal_query(
         self,
-        unit: Optional[str] = None,
-        user_unit: Optional[str] = None,
-        priority: Optional[Literal["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"]] = None,
-        since: Optional[str] = "-1h",
-        until: Optional[str] = None,
+        unit: str | None = None,
+        user_unit: str | None = None,
+        priority: Literal["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"] | None = None,
+        since: str | None = "-1h",
+        until: str | None = None,
         lines: int = 25,
         kernel: bool = False,
-        grep: Optional[str] = None,
-        boot: Optional[int] = None,
+        grep: str | None = None,
+        boot: int | None = None,
         user: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query systemd journal logs with structured filtering by unit, priority, time range, or grep.
 
         :param unit: Filter by service name (automatically searches system and user units).
@@ -250,7 +251,7 @@ class Journal(BaseYarn):
         )
 
     @strand(description="Fast diagnostic tool to retrieve recent system and user error logs.")
-    def journal_get_errors(self, since: str = "-1h", lines: int = 25) -> List[Dict[str, Any]]:
+    def journal_get_errors(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Fast diagnostic tool to retrieve recent system and user error logs.
 
         :param since: Time window (default '-1h').
@@ -259,7 +260,7 @@ class Journal(BaseYarn):
         return journal_api.get_errors(since=since, lines=lines)
 
     @strand(description="Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.")
-    def journal_get_kernel(self, since: str = "-1h", lines: int = 25) -> List[Dict[str, Any]]:
+    def journal_get_kernel(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.
 
         :param since: Time window (default '-1h').

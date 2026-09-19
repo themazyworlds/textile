@@ -3,8 +3,9 @@ Textile Warp - Universal Real-Time Pub/Sub Sensory & Event Bus.
 """
 
 import logging
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class Warp:
     """Universal string-and-enum Pub/Sub Event Bus for desktop sensory streaming."""
 
     def __init__(self):
-        self._subscribers: Dict[str, List[Callable[[Any], None]]] = {}
+        self._subscribers: dict[str, list[Callable[[Any], None]]] = {}
 
     def _normalize_topic(self, topic: Topic) -> str:
         return topic.value if isinstance(topic, WarpEvent) else str(topic).strip()

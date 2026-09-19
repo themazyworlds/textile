@@ -4,16 +4,14 @@ Provides system timing delays, state inspection, and integrity checks.
 Layer 10 (Core POSIX).
 """
 
-import json
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+from textile.core.base import LAYER_BASE, Yarn, strand
 from textile.core.seams import seams
-from textile.core.tapestry import core_tapestry, sensory_tapestry, tapestry
+from textile.core.tapestry import core_tapestry, sensory_tapestry
 
 
-class Basics(BaseYarn):
+class Basics(Yarn):
     """General System Timing & Integrity Basics Yarn."""
 
     name = "basics"
@@ -25,17 +23,17 @@ class Basics(BaseYarn):
         return True
 
     @strand(description="Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts).")
-    def textile_get_sensory_state(self) -> Dict[str, Any]:
+    def textile_get_sensory_state(self) -> dict[str, Any]:
         """Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts)."""
         return sensory_tapestry.get_state()
 
     @strand(description="Get full snapshot of the sensory blackboard state slots and notices.")
-    def textile_get_state(self) -> Dict[str, Any]:
+    def textile_get_state(self) -> dict[str, Any]:
         """Get full snapshot of the sensory blackboard state slots and notices."""
         return sensory_tapestry.get_state()
 
     @strand(description="Get the core engine execution state (active running tasks and execution history).")
-    def textile_get_engine_state(self) -> Dict[str, Any]:
+    def textile_get_engine_state(self) -> dict[str, Any]:
         """Get the core engine execution state (active running tasks and execution history)."""
         return core_tapestry.get_state()
 
@@ -48,7 +46,7 @@ class Basics(BaseYarn):
         return core_tapestry.cancel_task(strand_name)
 
     @strand(description="Audit system-wide yarn health, runtime dependencies, layer overrides, and schemas.")
-    def audit_yarn_integrity(self) -> Dict[str, Any]:
+    def audit_yarn_integrity(self) -> dict[str, Any]:
         """Audit system-wide yarn health, runtime dependencies, layer overrides, and schemas."""
         return seams.audit_all()
 

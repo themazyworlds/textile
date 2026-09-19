@@ -5,15 +5,14 @@ via D-Bus a11y hierarchy.
 Layer 50 (Desktop Protocol).
 """
 
-import json
 import logging
 import os
 import sys
 import time
 import warnings
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from textile.core.base import BaseYarn, strand, LAYER_DESKTOP_PROTOCOL
+from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
 
 logger = logging.getLogger("textile.yarns.protocols.atspi")
 
@@ -35,6 +34,7 @@ for _p in [
 
 try:
     import warnings
+
     import gi
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*unix_signal_add_full.*")
@@ -64,7 +64,7 @@ try:
 except Exception:
     _GDK_KEYVAL_FUNC = None
 
-KNOWN_KEYVALS: Dict[str, int] = {
+KNOWN_KEYVALS: dict[str, int] = {
     "enter": 65293, "return": 65293, "tab": 65289, "escape": 65307, "esc": 65307,
     "backspace": 65288, "delete": 65535, "del": 65535, "insert": 65379, "space": 32,
     "spacebar": 32, "up": 65362, "down": 65364, "left": 65361, "right": 65363,
@@ -103,7 +103,7 @@ def _safe_child_count(acc: Any) -> int:
         return 0
 
 
-def _safe_get_child(acc: Any, index: int) -> Optional[Any]:
+def _safe_get_child(acc: Any, index: int) -> Any | None:
     try:
         return acc.get_child_at_index(index)
     except Exception:
@@ -123,7 +123,7 @@ class AtspiAPI:
             return False
         if not _ATSPI_INITIALIZED:
             try:
-                if hasattr(Atspi, "init") and callable(getattr(Atspi, "init")):
+                if hasattr(Atspi, "init") and callable(Atspi.init):
                     Atspi.init()
                 _ATSPI_INITIALIZED = True
             except Exception as e:
@@ -134,7 +134,7 @@ class AtspiAPI:
     def is_available(self) -> bool:
         return _ATSPI_AVAILABLE and self._ensure_init()
 
-    def _get_active_state_nicks(self, acc: Any) -> List[str]:
+    def _get_active_state_nicks(self, acc: Any) -> list[str]:
         try:
             stateset = acc.get_state_set()
             states_list = stateset.get_states()
@@ -149,7 +149,7 @@ class AtspiAPI:
         except Exception:
             return []
 
-    def _get_bounds(self, acc: Any) -> Optional[Dict[str, int]]:
+    def _get_bounds(self, acc: Any) -> dict[str, int] | None:
         try:
             if not acc.is_component():
                 return None
@@ -170,7 +170,7 @@ class AtspiAPI:
             pass
         return None
 
-    def _get_actions(self, acc: Any) -> List[str]:
+    def _get_actions(self, acc: Any) -> list[str]:
         actions = []
         if not acc.is_action():
             return actions
@@ -189,7 +189,7 @@ class AtspiAPI:
             pass
         return actions
 
-    def _get_text(self, acc: Any) -> Optional[str]:
+    def _get_text(self, acc: Any) -> str | None:
         try:
             if not acc.is_text():
                 return None
@@ -200,7 +200,7 @@ class AtspiAPI:
             pass
         return None
 
-    def _get_value_info(self, acc: Any) -> Optional[Dict[str, Any]]:
+    def _get_value_info(self, acc: Any) -> dict[str, Any] | None:
         try:
             if not acc.is_value():
                 return None
@@ -247,7 +247,7 @@ class AtspiAPI:
 
     def _serialize_element(
         self, acc: Any, path: str = "", include_bounds: bool = True, include_actions: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         name = _safe_get_name(acc)
         role = _safe_get_role(acc)
         description = _safe_get_description(acc)
@@ -263,7 +263,7 @@ class AtspiAPI:
                 elif labeled_by:
                     name = labeled_by
 
-        data: Dict[str, Any] = {"name": name, "role": role, "path": path, "states": states}
+        data: dict[str, Any] = {"name": name, "role": role, "path": path, "states": states}
         if labeled_by:
             data["labeled_by"] = labeled_by
         if section:
@@ -290,7 +290,7 @@ class AtspiAPI:
             data["is_selected"] = "selected" in states
         return data
 
-    def list_applications(self) -> List[Dict[str, Any]]:
+    def list_applications(self) -> list[dict[str, Any]]:
         if not self.is_available():
             return []
         apps = []
@@ -318,7 +318,7 @@ class AtspiAPI:
             logger.error(f"Error listing AT-SPI applications: {e}")
         return apps
 
-    def _find_app(self, app_name_or_index: Any) -> Optional[Any]:
+    def _find_app(self, app_name_or_index: Any) -> Any | None:
         if not self.is_available():
             return None
         desktop = Atspi.get_desktop(0)
@@ -339,7 +339,7 @@ class AtspiAPI:
                     return app
         return None
 
-    def get_tree(self, app_name: Optional[str] = None, max_depth: int = 3, include_bounds: bool = True) -> Dict[str, Any]:
+    def get_tree(self, app_name: str | None = None, max_depth: int = 3, include_bounds: bool = True) -> dict[str, Any]:
         if not self.is_available():
             return {"error": "AT-SPI is not available."}
         if app_name:
@@ -353,7 +353,7 @@ class AtspiAPI:
                 return {"error": "Could not access AT-SPI desktop."}
             root_path = "0"
 
-        def _traverse(node: Any, current_path: str, depth: int) -> Dict[str, Any]:
+        def _traverse(node: Any, current_path: str, depth: int) -> dict[str, Any]:
             node_dict = self._serialize_element(node, path=current_path, include_bounds=include_bounds, include_actions=True)
             if depth < max_depth:
                 children = []
@@ -372,11 +372,11 @@ class AtspiAPI:
         return _traverse(target_node, root_path, depth=0)
 
     def find_elements(
-        self, query: Optional[str] = None, role: Optional[str] = None, app_name: Optional[str] = None, state: Optional[str] = None, max_results: int = 50, max_depth: int = 15
-    ) -> List[Dict[str, Any]]:
+        self, query: str | None = None, role: str | None = None, app_name: str | None = None, state: str | None = None, max_results: int = 50, max_depth: int = 15
+    ) -> list[dict[str, Any]]:
         if not self.is_available():
             return []
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         target_root = self._find_app(app_name) if app_name else Atspi.get_desktop(0)
         if not target_root:
             return []
@@ -432,7 +432,7 @@ class AtspiAPI:
         _search(target_root, root_label, depth=0)
         return results
 
-    def _resolve_element_by_path(self, path: str) -> Optional[Any]:
+    def _resolve_element_by_path(self, path: str) -> Any | None:
         if not self.is_available() or not path:
             return None
         parts = path.strip().split("/")
@@ -461,7 +461,7 @@ class AtspiAPI:
                 return None
         return current
 
-    def get_focused_element(self) -> Optional[Dict[str, Any]]:
+    def get_focused_element(self) -> dict[str, Any] | None:
         matches = self.find_elements(state="focused", max_results=1)
         if matches:
             return matches[0]
@@ -471,8 +471,8 @@ class AtspiAPI:
         return None
 
     def _resolve_target(
-        self, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None, preferred_role: Optional[str] = None
-    ) -> Optional[Any]:
+        self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, preferred_role: str | None = None
+    ) -> Any | None:
         if element_path:
             target = self._resolve_element_by_path(element_path)
             if target:
@@ -510,8 +510,8 @@ class AtspiAPI:
         return None
 
     def do_action(
-        self, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None, action_name: Optional[str] = None, action_index: int = 0
-    ) -> Dict[str, Any]:
+        self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, action_name: str | None = None, action_index: int = 0
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -557,7 +557,7 @@ class AtspiAPI:
         except Exception as e:
             return {"success": False, "error": f"Error performing action: {e}"}
 
-    def select_element(self, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None, index: Optional[int] = None) -> Dict[str, Any]:
+    def select_element(self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, index: int | None = None) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -579,7 +579,7 @@ class AtspiAPI:
         except Exception as e:
             return {"success": False, "error": f"Selection error: {e}"}
 
-    def set_value(self, value: float, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None) -> Dict[str, Any]:
+    def set_value(self, value: float, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -592,8 +592,8 @@ class AtspiAPI:
             return {"success": False, "error": f"Failed setting value: {e}"}
 
     def set_text(
-        self, text: str, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None, use_focused: bool = True, press_enter: bool = False
-    ) -> Dict[str, Any]:
+        self, text: str, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, use_focused: bool = True, press_enter: bool = False
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -617,7 +617,7 @@ class AtspiAPI:
         except Exception as e:
             return {"success": False, "error": f"Failed setting text: {e}"}
 
-    def insert_text(self, text: str, position: int = -1, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None) -> Dict[str, Any]:
+    def insert_text(self, text: str, position: int = -1, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -702,7 +702,7 @@ class AtspiAPI:
         except Exception:
             return False
 
-    def click_element(self, element_path: Optional[str] = None, app_name: Optional[str] = None, element_name: Optional[str] = None, button: str = "left", double_click: bool = False) -> Dict[str, Any]:
+    def click_element(self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, button: str = "left", double_click: bool = False) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -720,7 +720,7 @@ class AtspiAPI:
 atspi_api = AtspiAPI()
 
 
-class Atspi(BaseYarn):
+class Atspi(Yarn):
     name = "atspi_a11y"
     description = "Linux AT-SPI Accessibility Interface for semantic UI inspection, native widget actions, and direct text input."
     version = "1.1.0"
@@ -734,7 +734,7 @@ class Atspi(BaseYarn):
         return atspi_api.is_available()
 
     @strand(description="List all running graphical applications on the Linux AT-SPI accessibility bus.")
-    def atspi_list_apps(self) -> Dict[str, Any]:
+    def atspi_list_apps(self) -> dict[str, Any]:
         """List all running graphical applications on the Linux AT-SPI accessibility bus."""
         apps = atspi_api.list_applications()
         return {"count": len(apps), "applications": apps}
@@ -742,10 +742,10 @@ class Atspi(BaseYarn):
     @strand(description="Retrieve the semantic accessibility element tree of a target application.")
     def atspi_get_tree(
         self,
-        app_name: Optional[str] = None,
+        app_name: str | None = None,
         max_depth: int = 3,
         include_bounds: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Retrieve the semantic accessibility element tree of a target application.
 
         :param app_name: Application name or substring.
@@ -757,12 +757,12 @@ class Atspi(BaseYarn):
     @strand(description="Search for accessible UI elements matching name, role, text content, or state.")
     def atspi_find_elements(
         self,
-        query: Optional[str] = None,
-        role: Optional[str] = None,
-        app_name: Optional[str] = None,
-        state: Optional[str] = None,
+        query: str | None = None,
+        role: str | None = None,
+        app_name: str | None = None,
+        state: str | None = None,
         max_results: int = 15,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search for accessible UI elements matching name, role, text content, or state.
 
         :param query: Search string.
@@ -777,7 +777,7 @@ class Atspi(BaseYarn):
         return {"matches_count": len(elements), "elements": elements}
 
     @strand(description="Get the currently focused accessible UI widget.")
-    def atspi_get_focused(self) -> Dict[str, Any]:
+    def atspi_get_focused(self) -> dict[str, Any]:
         """Get the currently focused accessible UI widget."""
         focused = atspi_api.get_focused_element()
         return {"focused_element": focused}
@@ -785,12 +785,12 @@ class Atspi(BaseYarn):
     @strand(description="Execute a native accessible action (click, press, activate, toggle) on a widget.")
     def atspi_do_action(
         self,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
-        action_name: Optional[str] = None,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        action_name: str | None = None,
         action_index: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute a native accessible action (click, press, activate, toggle) on a widget.
 
         :param element_path: AT-SPI element path.
@@ -810,11 +810,11 @@ class Atspi(BaseYarn):
     @strand(description="Select a tab, radio button, or item from a list.")
     def atspi_select(
         self,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
-        index: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        index: int | None = None,
+    ) -> dict[str, Any]:
         """Select a tab, radio button, or item from a list.
 
         :param element_path: Element path.
@@ -830,12 +830,12 @@ class Atspi(BaseYarn):
     def atspi_set_text(
         self,
         text: str,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
         use_focused: bool = True,
         press_enter: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Directly set or replace the text contents of an editable UI field.
 
         :param text: Text content to set.
@@ -859,10 +859,10 @@ class Atspi(BaseYarn):
         self,
         text: str,
         position: int = -1,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+    ) -> dict[str, Any]:
         """Insert text at a character offset in an editable widget.
 
         :param text: String to insert.
@@ -883,10 +883,10 @@ class Atspi(BaseYarn):
     def atspi_set_value(
         self,
         value: float,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+    ) -> dict[str, Any]:
         """Set the numerical value of a slider, progress bar, or spin box.
 
         :param value: Numerical value to set.
@@ -904,11 +904,11 @@ class Atspi(BaseYarn):
     @strand(description="Synthesize keyboard text, single named keys, or hotkey combinations.")
     def atspi_generate_key(
         self,
-        text: Optional[str] = None,
-        key: Optional[str] = None,
-        combo: Optional[str] = None,
+        text: str | None = None,
+        key: str | None = None,
+        combo: str | None = None,
         press_enter: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Synthesize keyboard text, single named keys, or hotkey combinations.
 
         :param text: Text string.
@@ -930,12 +930,12 @@ class Atspi(BaseYarn):
     @strand(description="Click on an accessible UI element by dispatching a mouse event to its coordinates.")
     def atspi_click_element(
         self,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
         button: Literal["left", "right", "middle"] = "left",
         double_click: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Click on an accessible UI element by dispatching a mouse event to its coordinates.
 
         :param element_path: Element path.
@@ -955,10 +955,10 @@ class Atspi(BaseYarn):
     @strand(description="Get exact screen bounding rectangle for any accessible UI element.")
     def atspi_get_element_bounds(
         self,
-        element_path: Optional[str] = None,
-        app_name: Optional[str] = None,
-        element_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+    ) -> dict[str, Any]:
         """Get exact screen bounding rectangle for any accessible UI element.
 
         :param element_path: Element path.

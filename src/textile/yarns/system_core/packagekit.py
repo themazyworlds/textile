@@ -6,10 +6,9 @@ Layer 10 (Core POSIX / System Lifecycle).
 """
 
 import asyncio
-import json
 import logging
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 try:
     from dbus_fast import BusType, Variant
@@ -17,12 +16,12 @@ try:
 except Exception:
     BusType = Variant = MessageBus = None
 
-from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_BASE
+from textile.core.base import LAYER_BASE, Yarn, CapabilityTier, strand
 
 logger = logging.getLogger(__name__)
 
 
-def parse_package_id(package_id: str) -> Dict[str, str]:
+def parse_package_id(package_id: str) -> dict[str, str]:
     """Parse a standard PackageKit package_id string (name;version;arch;data)."""
     pkg_id = package_id
     parts = pkg_id.split(";")
@@ -50,16 +49,16 @@ class PackageKitDBusClient:
     """High-speed native D-Bus client for org.freedesktop.PackageKit."""
 
     def __init__(self):
-        self._system_bus: Optional[MessageBus] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
+        self._system_bus: MessageBus | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
-        self._updates_cache: Optional[List[Dict[str, Any]]] = None
+        self._updates_cache: list[dict[str, Any]] | None = None
         self._updates_cache_time: float = 0.0
         self._updates_in_progress: bool = False
-        self._updates_event: Optional[asyncio.Event] = None
+        self._updates_event: asyncio.Event | None = None
         self._refresh_in_progress: bool = False
-        self._refresh_event: Optional[asyncio.Event] = None
+        self._refresh_event: asyncio.Event | None = None
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         with self._lock:
@@ -79,7 +78,7 @@ class PackageKitDBusClient:
             self._system_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         return self._system_bus
 
-    async def _create_transaction(self) -> Tuple[Any, Any]:
+    async def _create_transaction(self) -> tuple[Any, Any]:
         """Create a transient PackageKit transaction and return (proxy, interface)."""
         bus = await self._get_bus()
         intro = await bus.introspect("org.freedesktop.PackageKit", "/org/freedesktop/PackageKit")
@@ -91,11 +90,11 @@ class PackageKitDBusClient:
         tx_iface = tx_proxy.get_interface("org.freedesktop.PackageKit.Transaction")
         return tx_proxy, tx_iface
 
-    async def search_names(self, query: str, limit: int = 25) -> List[Dict[str, Any]]:
+    async def search_names(self, query: str, limit: int = 25) -> list[dict[str, Any]]:
         """Search packages via direct D-Bus Transaction SearchNames."""
         _, tx = await self._create_transaction()
-        results: List[Dict[str, Any]] = []
-        errors: List[str] = []
+        results: list[dict[str, Any]] = []
+        errors: list[str] = []
         finished = asyncio.Event()
 
         def on_package(info: int, pkg_id: str, summary: str):
@@ -121,10 +120,10 @@ class PackageKitDBusClient:
             return [{"error": e} for e in errors]
         return results[:limit]
 
-    async def resolve(self, package_names: List[str]) -> List[Dict[str, Any]]:
+    async def resolve(self, package_names: list[str]) -> list[dict[str, Any]]:
         """Resolve package names to PackageKit package_ids."""
         _, tx = await self._create_transaction()
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         finished = asyncio.Event()
 
         def on_package(info: int, pkg_id: str, summary: str):
@@ -142,7 +141,7 @@ class PackageKitDBusClient:
         await asyncio.wait_for(finished.wait(), timeout=20.0)
         return results
 
-    async def get_details(self, package_name: str) -> Dict[str, Any]:
+    async def get_details(self, package_name: str) -> dict[str, Any]:
         """Retrieve package metadata via D-Bus GetDetails."""
         resolved = await self.resolve([package_name])
         if not resolved:
@@ -154,7 +153,7 @@ class PackageKitDBusClient:
             pkg_id = resolved[0]["id"]
 
         _, tx = await self._create_transaction()
-        details_map: Dict[str, Any] = {"package": package_name, "id": pkg_id}
+        details_map: dict[str, Any] = {"package": package_name, "id": pkg_id}
         finished = asyncio.Event()
 
         def on_details(raw_dict: Any):
@@ -177,7 +176,7 @@ class PackageKitDBusClient:
         try:
             import time
             _, tx = await self._create_transaction()
-            updates: List[Dict[str, Any]] = []
+            updates: list[dict[str, Any]] = []
             finished = asyncio.Event()
 
             def on_package(info: int, pkg_id: str, summary: str):
@@ -206,7 +205,7 @@ class PackageKitDBusClient:
             if self._updates_event:
                 self._updates_event.set()
 
-    async def get_updates(self, max_wait: float = 2.5) -> List[Dict[str, Any]]:
+    async def get_updates(self, max_wait: float = 2.5) -> list[dict[str, Any]]:
         """Check for pending updates with background caching and MCP timeout protection."""
         import time
         now = time.time()
@@ -227,7 +226,7 @@ class PackageKitDBusClient:
                 await asyncio.wait_for(self._updates_event.wait(), timeout=max_wait)
                 if self._updates_cache is not None:
                     return self._updates_cache
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 pass
 
         # If scan took longer than max_wait: return cached updates if available, or informative progress state
@@ -242,7 +241,7 @@ class PackageKitDBusClient:
     async def what_provides(self, file_path: str) -> str:
         """Find packages providing a capability or file."""
         _, tx = await self._create_transaction()
-        providers: List[str] = []
+        providers: list[str] = []
         finished = asyncio.Event()
 
         def on_package(info: int, pkg_id: str, summary: str):
@@ -289,12 +288,12 @@ class PackageKitDBusClient:
             try:
                 await asyncio.wait_for(self._refresh_event.wait(), timeout=max_wait)
                 return "Package repository cache refreshed successfully via PackageKit D-Bus."
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 pass
 
         return "Package repository cache refresh initiated in background. You can check updates once complete."
 
-    async def install_packages(self, package_names: List[str]) -> str:
+    async def install_packages(self, package_names: list[str]) -> str:
         """Install packages via D-Bus InstallPackages."""
         resolved = await self.resolve(package_names)
         if not resolved:
@@ -302,7 +301,7 @@ class PackageKitDBusClient:
 
         pkg_ids = [r["id"] for r in resolved]
         _, tx = await self._create_transaction()
-        errors: List[str] = []
+        errors: list[str] = []
         finished = asyncio.Event()
 
         def on_error(code: int, details: str):
@@ -321,7 +320,7 @@ class PackageKitDBusClient:
             return f"Installation error: {'; '.join(errors)}"
         return f"Successfully installed: {', '.join(package_names)}"
 
-    async def remove_packages(self, package_names: List[str], autoremove: bool = False) -> str:
+    async def remove_packages(self, package_names: list[str], autoremove: bool = False) -> str:
         """Remove packages via D-Bus RemovePackages."""
         resolved = await self.resolve(package_names)
         if not resolved:
@@ -329,7 +328,7 @@ class PackageKitDBusClient:
 
         pkg_ids = [r["id"] for r in resolved]
         _, tx = await self._create_transaction()
-        errors: List[str] = []
+        errors: list[str] = []
         finished = asyncio.Event()
 
         def on_error(code: int, details: str):
@@ -358,7 +357,7 @@ class PackageKitController:
     def is_available(self) -> bool:
         return self.client is not None
 
-    def search(self, query: str, limit: int = 25) -> List[Dict[str, Any]]:
+    def search(self, query: str, limit: int = 25) -> list[dict[str, Any]]:
         if not self.is_available():
             return [{"error": "PackageKit D-Bus client is not available."}]
         clean_query = query.strip()
@@ -369,7 +368,7 @@ class PackageKitController:
         except Exception as e:
             return [{"error": f"PackageKit D-Bus search error: {e}"}]
 
-    def install(self, packages: List[str]) -> str:
+    def install(self, packages: list[str]) -> str:
         if not self.is_available():
             return "Error: PackageKit D-Bus client is not available."
         if not packages:
@@ -379,7 +378,7 @@ class PackageKitController:
         except Exception as e:
             return f"PackageKit D-Bus install error: {e}"
 
-    def remove(self, packages: List[str], autoremove: bool = False) -> str:
+    def remove(self, packages: list[str], autoremove: bool = False) -> str:
         if not self.is_available():
             return "Error: PackageKit D-Bus client is not available."
         if not packages:
@@ -389,7 +388,7 @@ class PackageKitController:
         except Exception as e:
             return f"PackageKit D-Bus remove error: {e}"
 
-    def get_details(self, package: str) -> Dict[str, Any]:
+    def get_details(self, package: str) -> dict[str, Any]:
         if not self.is_available():
             return {"error": "PackageKit D-Bus client is not available."}
         pkg_name = package.strip()
@@ -398,7 +397,7 @@ class PackageKitController:
         except Exception as e:
             return {"error": f"PackageKit D-Bus get_details error: {e}"}
 
-    def check_updates(self) -> List[Dict[str, Any]]:
+    def check_updates(self) -> list[dict[str, Any]]:
         if not self.is_available():
             return [{"error": "PackageKit D-Bus client is not available."}]
         try:
@@ -426,7 +425,7 @@ class PackageKitController:
 packagekit_ctl = PackageKitController()
 
 
-class PackageKit(BaseYarn):
+class PackageKit(Yarn):
     """Universal Linux Package Management Capability Yarn via PackageKit D-Bus IPC."""
 
     name = "packagekit"
@@ -445,7 +444,7 @@ class PackageKit(BaseYarn):
         description="Search for available or installed packages across distribution repositories via PackageKit D-Bus.",
         tier=CapabilityTier.OBSERVE,
     )
-    def packagekit_search(self, query: str = "", limit: int = 25) -> List[Dict[str, Any]]:
+    def packagekit_search(self, query: str = "", limit: int = 25) -> list[dict[str, Any]]:
         """Search packages by name or keyword across distribution repositories.
 
         :param query: Package name or search keyword (e.g. 'neovim', 'ripgrep', 'htop').
@@ -482,7 +481,7 @@ class PackageKit(BaseYarn):
         description="Get detailed metadata, description, license, and repository info for a package via PackageKit D-Bus.",
         tier=CapabilityTier.OBSERVE,
     )
-    def packagekit_get_details(self, package: str) -> Dict[str, Any]:
+    def packagekit_get_details(self, package: str) -> dict[str, Any]:
         """Get detailed metadata for a package.
 
         :param package: Name of package to inspect (e.g. 'firefox', 'python').
@@ -493,7 +492,7 @@ class PackageKit(BaseYarn):
         description="Check for pending package and system software updates via PackageKit D-Bus.",
         tier=CapabilityTier.OBSERVE,
     )
-    def packagekit_check_updates(self) -> List[Dict[str, Any]]:
+    def packagekit_check_updates(self) -> list[dict[str, Any]]:
         """Check for pending system updates."""
         return packagekit_ctl.check_updates()
 

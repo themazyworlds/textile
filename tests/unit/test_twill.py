@@ -1,20 +1,21 @@
 import asyncio
 import sys
 import unittest
-from textile.core.cli import _layer_info
+
 from textile.core.base import (
     LAYER_BASE,
-    LAYER_DESKTOP_PROTOCOL,
     LAYER_COMPOSITOR_DE,
+    LAYER_DESKTOP_PROTOCOL,
     LAYER_SESSION_MANAGER,
     LAYER_USER_OVERRIDE,
 )
+from textile.core.cli import _layer_info
 from textile.core.loom import loom
 from textile.core.twill import create_twill_server
 
 try:
-    from mcp.client.stdio import StdioServerParameters, stdio_client
     from mcp import ClientSession
+    from mcp.client.stdio import StdioServerParameters, stdio_client
     MCP_CLIENT_AVAILABLE = True
 except ImportError:
     MCP_CLIENT_AVAILABLE = False

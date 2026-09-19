@@ -5,8 +5,8 @@ Layer 100 (Compositor / DE).
 
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional
-from textile.core.base import BaseYarn, strand, LAYER_COMPOSITOR_DE
+
+from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand
 
 
 class CaelestiaIPC:
@@ -68,7 +68,7 @@ class CaelestiaIPC:
 caelestia_ipc = CaelestiaIPC()
 
 
-class Caelestia(BaseYarn):
+class Caelestia(Yarn):
     name = "caelestia"
     description = "Caelestia Shell Drawers, Special Workspaces, and Desktop Utilities."
     version = "1.0.0"
@@ -123,7 +123,7 @@ class Caelestia(BaseYarn):
         return caelestia_ipc.record(audio=audio, region=region)
 
     @strand(description="Call raw Caelestia Quickshell IPC target and method.")
-    def caelestia_call_ipc(self, target: str, method: str, args: Optional[List[str]] = None) -> str:
+    def caelestia_call_ipc(self, target: str, method: str, args: list[str] | None = None) -> str:
         """Call raw Caelestia Quickshell IPC target and method.
 
         :param target: Target IPC module (e.g. 'drawers', 'notifs', 'lock').

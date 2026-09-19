@@ -8,12 +8,12 @@ import ctypes
 import ctypes.util
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any
 
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+from textile.core.base import LAYER_BASE, Yarn, strand
 
 
 class SensorsAPI:
@@ -49,7 +49,7 @@ class SensorsAPI:
             return True
         return os.path.exists("/sys/class/hwmon")
 
-    def get_sensor_data(self) -> Dict[str, Any]:
+    def get_sensor_data(self) -> dict[str, Any]:
         if shutil.which("sensors"):
             try:
                 res = subprocess.run(["sensors", "-j"], capture_output=True, text=True, timeout=3)
@@ -63,8 +63,8 @@ class SensorsAPI:
                 pass
         return self._read_sysfs_hwmon()
 
-    def _format_sensors_json(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"cpu": {}, "gpu": {}, "fans": {}, "battery": {}, "other": {}, "raw": raw_data}
+    def _format_sensors_json(self, raw_data: dict[str, Any]) -> dict[str, Any]:
+        result: dict[str, Any] = {"cpu": {}, "gpu": {}, "fans": {}, "battery": {}, "other": {}, "raw": raw_data}
         max_cpu_temp = 0.0
 
         for chip_name, chip_info in raw_data.items():
@@ -83,8 +83,7 @@ class SensorsAPI:
                         val_c = round(float(sub_val), 1)
                         if "coretemp" in chip_name or "k10temp" in chip_name or "cpu" in feat_lower:
                             result["cpu"][f"{chip_name} {feature}"] = f"{val_c}°C"
-                            if val_c > max_cpu_temp:
-                                max_cpu_temp = val_c
+                            max_cpu_temp = max(max_cpu_temp, val_c)
                         elif "amdgpu" in chip_name or "nouveau" in chip_name or "nvidia" in chip_name:
                             result["gpu"][f"{chip_name} {feature}"] = f"{val_c}°C"
                         else:
@@ -100,12 +99,12 @@ class SensorsAPI:
             result["max_cpu_temp"] = f"{max_cpu_temp}°C"
         return result
 
-    def _read_sysfs_hwmon(self) -> Dict[str, Any]:
+    def _read_sysfs_hwmon(self) -> dict[str, Any]:
         hwmon_path = Path("/sys/class/hwmon")
         if not hwmon_path.exists():
             return {"error": "/sys/class/hwmon not found"}
 
-        data: Dict[str, Any] = {"temperatures": {}, "fans": {}}
+        data: dict[str, Any] = {"temperatures": {}, "fans": {}}
         for hw_dir in hwmon_path.glob("hwmon*"):
             name_file = hw_dir / "name"
             name = name_file.read_text().strip() if name_file.exists() else hw_dir.name
@@ -129,7 +128,7 @@ class SensorsAPI:
                     pass
         return data
 
-    def get_cpu_frequencies(self) -> List[Dict[str, Any]]:
+    def get_cpu_frequencies(self) -> list[dict[str, Any]]:
         cpu_dir = Path("/sys/devices/system/cpu")
         freqs = []
         if not cpu_dir.exists():
@@ -150,7 +149,7 @@ class SensorsAPI:
 sensors_api = SensorsAPI()
 
 
-class Sensors(BaseYarn):
+class Sensors(Yarn):
     name = "sensors"
     description = "Hardware Telemetry: Real-Time CPU/GPU Temperatures, Fan Speeds, and Core Frequencies."
     version = "1.0.0"
@@ -160,11 +159,11 @@ class Sensors(BaseYarn):
         return sensors_api.is_available()
 
     @strand(description="Retrieve hardware telemetry (temperatures, fans, voltages, power) via lm_sensors / sysfs.")
-    def sensors_get_telemetry(self) -> Dict[str, Any]:
+    def sensors_get_telemetry(self) -> dict[str, Any]:
         """Retrieve hardware telemetry (temperatures, fans, voltages, power) via lm_sensors / sysfs."""
         return sensors_api.get_sensor_data()
 
     @strand(description="Retrieve live CPU core frequencies (MHz) and scaling governors across CPU cores.")
-    def sensors_get_cpu_freqs(self) -> List[Dict[str, Any]]:
+    def sensors_get_cpu_freqs(self) -> list[dict[str, Any]]:
         """Retrieve live CPU core frequencies (MHz) and scaling governors across CPU cores."""
         return sensors_api.get_cpu_frequencies()

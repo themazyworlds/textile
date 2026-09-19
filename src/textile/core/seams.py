@@ -3,14 +3,13 @@ Textile Seams - Integrity, diagnostics, dependency resolution, and health engine
 """
 
 import importlib
-import json
 import logging
 import os
 import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +52,8 @@ class StrandIntegrityReport:
     genai_compatible: bool
     mcp_compatible: bool
     is_active_provider: bool
-    overridden_by: Optional[str] = None
-    validation_errors: List[str] = field(default_factory=list)
+    overridden_by: str | None = None
+    validation_errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -66,18 +65,18 @@ class YarnIntegrityReport:
     is_enabled: bool
     is_available: bool
     health_status: HealthStatus
-    dependencies: List[DependencyCheck] = field(default_factory=list)
-    strands_report: List[StrandIntegrityReport] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    dependencies: list[DependencyCheck] = field(default_factory=list)
+    strands_report: list[StrandIntegrityReport] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class SeamOrchestrator:
     """Orchestrator monitoring yarn health, system dependencies, and runtime contract compliance."""
 
-    def __init__(self, loom_instance: Optional[Any] = None):
+    def __init__(self, loom_instance: Any | None = None):
         self._loom = loom_instance
-        self._failure_counts: Dict[str, int] = {}
+        self._failure_counts: dict[str, int] = {}
         self._max_consecutive_failures = 3
 
     def set_loom(self, loom_instance: Any) -> None:
@@ -97,14 +96,13 @@ class SeamOrchestrator:
 
     def check_dbus_service(self, service_name: str, bus_type: str = "session", optional: bool = False) -> DependencyCheck:
         try:
-            from dbus_fast.aio import MessageBus
             from dbus_fast import BusType
             bt = BusType.SYSTEM if bus_type == "system" else BusType.SESSION
             return DependencyCheck(
                 dep_type=DependencyType.DBUS_SERVICE,
                 target=f"{bus_type}:{service_name}",
                 is_satisfied=True,
-                details=f"D-Bus interface available for probe",
+                details="D-Bus interface available for probe",
                 is_optional=optional,
             )
         except Exception as e:
@@ -213,8 +211,8 @@ class SeamOrchestrator:
             is_optional=optional,
         )
 
-    def evaluate_dependencies(self, yarn: Any) -> List[DependencyCheck]:
-        results: List[DependencyCheck] = []
+    def evaluate_dependencies(self, yarn: Any) -> list[DependencyCheck]:
+        results: list[DependencyCheck] = []
         for dep in yarn.get_dependencies():
             dtype = dep.get("type")
             target = dep.get("target", "")
@@ -272,8 +270,8 @@ class SeamOrchestrator:
         from textile.core.skein import skein
         s_inst = skein_inst or skein
         l_inst = loom_inst or self._loom or loom
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         is_enabled = s_inst.is_enabled(yarn.name)
         is_avail = False
@@ -290,7 +288,7 @@ class SeamOrchestrator:
                 else:
                     errors.append(f"Required dependency unsatisfied: {dc.details}")
 
-        strands_report: List[StrandIntegrityReport] = []
+        strands_report: list[StrandIntegrityReport] = []
         try:
             for s in yarn.get_strands():
                 strands_report.append(self.audit_strand(s, yarn, l_inst))
@@ -318,14 +316,14 @@ class SeamOrchestrator:
             warnings=warnings,
         )
 
-    def audit_all(self, loom_inst: Optional[Any] = None, skein_inst: Optional[Any] = None) -> Dict[str, Any]:
+    def audit_all(self, loom_inst: Any | None = None, skein_inst: Any | None = None) -> dict[str, Any]:
         from textile.core.loom import loom
         from textile.core.skein import skein
         s_inst = skein_inst or skein
         l_inst = loom_inst or self._loom or loom
         l_inst.initialize()
 
-        reports: List[YarnIntegrityReport] = []
+        reports: list[YarnIntegrityReport] = []
         for name, yarn in s_inst.all_yarns.items():
             reports.append(self.audit_yarn(yarn, s_inst, l_inst))
 
@@ -362,7 +360,7 @@ class SeamOrchestrator:
             ]
         }
 
-    def record_strand_execution(self, strand_name: str, success: bool, error: Optional[str] = None) -> None:
+    def record_strand_execution(self, strand_name: str, success: bool, error: str | None = None) -> None:
         if success:
             self._failure_counts[strand_name] = 0
             return

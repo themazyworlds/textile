@@ -7,19 +7,18 @@ Layer 10 (Core POSIX).
 import ctypes
 import ctypes.util
 import fnmatch
-import json
 import logging
 import os
-from pathlib import Path
 import select
 import shutil
 import stat
 import struct
 import tempfile
 import time
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple
+from pathlib import Path
+from typing import Any, Literal
 
-from textile.core.base import BaseYarn, strand, LAYER_BASE
+from textile.core.base import LAYER_BASE, Yarn, strand
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +81,9 @@ class InotifyAPI:
 
     def __init__(self) -> None:
         self._libc = None
-        self._fd: Optional[int] = None
-        self._watches: Dict[int, str] = {}
-        self._path_to_wd: Dict[str, int] = {}
+        self._fd: int | None = None
+        self._watches: dict[int, str] = {}
+        self._path_to_wd: dict[str, int] = {}
         self._initialized: bool = False
         self._init_libc()
 
@@ -120,7 +119,7 @@ class InotifyAPI:
     def _resolve_path(self, path: str) -> str:
         return str(Path(os.path.expanduser(path.strip() or ".")).resolve())
 
-    def _parse_mask(self, mask: int | str | List[str]) -> int:
+    def _parse_mask(self, mask: int | str | list[str]) -> int:
         if isinstance(mask, int):
             return mask
         if isinstance(mask, str):
@@ -145,7 +144,7 @@ class InotifyAPI:
                         break
         return result_mask if result_mask > 0 else IN_ALL_EVENTS
 
-    def add_watch(self, path: str, events: int | str | List[str] = "all", recursive: bool = False) -> Dict[str, Any]:
+    def add_watch(self, path: str, events: int | str | list[str] = "all", recursive: bool = False) -> dict[str, Any]:
         fd = self._ensure_fd()
         target_path = self._resolve_path(path)
         if not os.path.exists(target_path):
@@ -172,7 +171,7 @@ class InotifyAPI:
 
         return {"success": True, "root_path": target_path, "watches_count": len(added_watches), "watches": added_watches}
 
-    def remove_watch(self, watch: int | str) -> Dict[str, Any]:
+    def remove_watch(self, watch: int | str) -> dict[str, Any]:
         if self._fd is None:
             return {"success": False, "error": "No active inotify session."}
         if isinstance(watch, int) or (isinstance(watch, str) and watch.isdigit()):
@@ -194,10 +193,10 @@ class InotifyAPI:
         self._path_to_wd.pop(path, None)
         return {"success": True, "removed_watch_id": wd, "path": path}
 
-    def list_watches(self) -> List[Dict[str, Any]]:
+    def list_watches(self) -> list[dict[str, Any]]:
         return [{"watch_id": wd, "path": p, "is_dir": os.path.isdir(p) if os.path.exists(p) else False, "exists": os.path.exists(p)} for wd, p in self._watches.items()]
 
-    def read_events(self, timeout_ms: int = 100, max_events: int = 100) -> List[Dict[str, Any]]:
+    def read_events(self, timeout_ms: int = 100, max_events: int = 100) -> list[dict[str, Any]]:
         if self._fd is None:
             return []
         timeout_sec = max(0.0, timeout_ms / 1000.0)
@@ -220,7 +219,7 @@ class InotifyAPI:
 
                 event_flags = [flag_name for bit, flag_name in EVENT_NAME_MAP.items() if mask & bit]
                 primary_event = event_flags[0] if event_flags else "UNKNOWN"
-                primary_name = primary_event[3:] if primary_event.startswith("IN_") else primary_event
+                primary_name = primary_event.removeprefix("IN_")
 
                 watch_path = self._watches.get(wd, "")
                 full_path = os.path.join(watch_path, name) if watch_path and name else (watch_path or name)
@@ -234,7 +233,7 @@ class InotifyAPI:
             pass
         return events
 
-    def wait_for_event(self, path: str, events: int | str | List[str] = "all", timeout_seconds: float = 5.0) -> Dict[str, Any]:
+    def wait_for_event(self, path: str, events: int | str | list[str] = "all", timeout_seconds: float = 5.0) -> dict[str, Any]:
         target_path = self._resolve_path(path)
         is_already_watched = target_path in self._path_to_wd
         _ = self.read_events(timeout_ms=0, max_events=100)
@@ -292,7 +291,7 @@ class FileIO:
         except Exception as e:
             return f"Error changing directory: {e}"
 
-    def stat(self, path: str) -> Dict[str, Any]:
+    def stat(self, path: str) -> dict[str, Any]:
         file_path = self._resolve(path)
         if not file_path.exists():
             return {"error": f"Path '{file_path}' does not exist."}
@@ -325,7 +324,7 @@ class FileIO:
         except Exception as e:
             return f"Error changing permissions: {e}"
 
-    def disk_usage(self, path: str = ".") -> Dict[str, Any]:
+    def disk_usage(self, path: str = ".") -> dict[str, Any]:
         target = self._resolve(path)
         try:
             usage = shutil.disk_usage(target)
@@ -349,7 +348,7 @@ class FileIO:
         except Exception as e:
             return {"error": f"Error querying disk usage: {e}"}
 
-    def list_mounts(self) -> List[Dict[str, Any]]:
+    def list_mounts(self) -> list[dict[str, Any]]:
         mounts_path = Path("/proc/mounts")
         if not mounts_path.exists():
             return []
@@ -367,7 +366,7 @@ class FileIO:
             pass
         return mounts
 
-    def get_all_disks(self) -> Dict[str, Any]:
+    def get_all_disks(self) -> dict[str, Any]:
         mounts = self.list_mounts()
         disk_overview = []
         seen = set()
@@ -382,7 +381,7 @@ class FileIO:
                 disk_overview.append(usage)
         return {"mounted_disks": disk_overview, "total_mounts_scanned": len(disk_overview)}
 
-    def read(self, path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> str:
+    def read(self, path: str, start_line: int | None = None, end_line: int | None = None) -> str:
         file_path = self._resolve(path)
         if not file_path.exists():
             return f"Error: File '{file_path}' does not exist."
@@ -431,7 +430,7 @@ class FileIO:
         except Exception as e:
             return f"Error replacing in file: {e}"
 
-    def list_dir(self, path: str = ".", recursive: bool = False, max_items: int = 50) -> List[Dict[str, Any]]:
+    def list_dir(self, path: str = ".", recursive: bool = False, max_items: int = 50) -> list[dict[str, Any]]:
         dir_path = self._resolve(path)
         if not dir_path.exists() or not dir_path.is_dir():
             return [{"error": f"Directory '{dir_path}' does not exist."}]
@@ -454,7 +453,7 @@ class FileIO:
         except Exception as e:
             return [{"error": str(e)}]
 
-    def find(self, directory: str, pattern: str, max_results: int = 30) -> List[str]:
+    def find(self, directory: str, pattern: str, max_results: int = 30) -> list[str]:
         dir_path = self._resolve(directory)
         matches = []
         try:
@@ -472,7 +471,7 @@ class FileIO:
 file_io = FileIO()
 
 
-class FilesystemStorage(BaseYarn):
+class FilesystemStorage(Yarn):
     name = "filesystem_storage"
     description = "File Operations and Linux Kernel inotify Real-Time Event Monitoring."
     version = "1.3.0"
@@ -482,7 +481,7 @@ class FilesystemStorage(BaseYarn):
         return True
 
     @strand(description="Read contents of a text file with optional start and end line ranges.")
-    def file_read(self, path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> str:
+    def file_read(self, path: str, start_line: int | None = None, end_line: int | None = None) -> str:
         """Read contents of a text file with optional start and end line ranges.
 
         :param path: Target file path.
@@ -511,7 +510,7 @@ class FilesystemStorage(BaseYarn):
         return file_io.replace(path, target=target, replacement=replacement)
 
     @strand(description="List files and directories within a target directory path.")
-    def file_list(self, path: str = ".") -> List[Dict[str, Any]]:
+    def file_list(self, path: str = ".") -> list[dict[str, Any]]:
         """List files and directories within a target directory path.
 
         :param path: Target directory path (default: current directory).
@@ -519,7 +518,7 @@ class FilesystemStorage(BaseYarn):
         return file_io.list_dir(path or ".")
 
     @strand(description="Search for files matching a glob pattern in a directory path.")
-    def file_find(self, path: str = ".", pattern: str = "*") -> List[str]:
+    def file_find(self, path: str = ".", pattern: str = "*") -> list[str]:
         """Search for files matching a glob pattern in a directory path.
 
         :param path: Search root directory path.
@@ -528,7 +527,7 @@ class FilesystemStorage(BaseYarn):
         return file_io.find(path or ".", pattern=pattern or "*")
 
     @strand(description="Get stat metadata, permissions, size, and timestamps for a file path.")
-    def file_stat(self, path: str) -> Dict[str, Any]:
+    def file_stat(self, path: str) -> dict[str, Any]:
         """Get stat metadata, permissions, size, and timestamps for a file path.
 
         :param path: Target file or directory path.
@@ -545,7 +544,7 @@ class FilesystemStorage(BaseYarn):
         return file_io.chmod(path, mode=mode)
 
     @strand(description="Get total, used, and available disk usage for a storage path.")
-    def storage_disk_usage(self, path: str = "/") -> Dict[str, Any]:
+    def storage_disk_usage(self, path: str = "/") -> dict[str, Any]:
         """Get total, used, and available disk usage for a storage path.
 
         :param path: Mount or directory path.
@@ -553,7 +552,7 @@ class FilesystemStorage(BaseYarn):
         return file_io.disk_usage(path or "/")
 
     @strand(description="List mounted filesystems and storage devices.")
-    def storage_list_mounts(self) -> List[Dict[str, Any]]:
+    def storage_list_mounts(self) -> list[dict[str, Any]]:
         """List mounted filesystems and storage devices."""
         return file_io.list_mounts()
 
@@ -565,15 +564,15 @@ class FilesystemStorage(BaseYarn):
             "stat", "chmod", "disk_usage", "list_mounts", "get_all_disks",
             "watch", "unwatch", "list_watches", "read_events", "wait_event"
         ],
-        path: Optional[str] = None,
-        content: Optional[str] = None,
-        target: Optional[str] = None,
-        replacement: Optional[str] = "",
-        mode: Optional[str] = None,
-        start_line: Optional[int] = None,
-        end_line: Optional[int] = None,
-        pattern: Optional[str] = "*",
-        events: Optional[str] = "all",
+        path: str | None = None,
+        content: str | None = None,
+        target: str | None = None,
+        replacement: str | None = "",
+        mode: str | None = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        pattern: str | None = "*",
+        events: str | None = "all",
         recursive: bool = False,
         timeout_seconds: float = 5.0,
     ) -> Any:
@@ -639,7 +638,7 @@ class FilesystemStorage(BaseYarn):
             return f"Unknown file operation '{op}'."
 
     @strand(description="Add a Linux inotify kernel watch on a file or directory.")
-    def inotify_watch(self, path: str, events: str = "all", recursive: bool = False) -> Dict[str, Any]:
+    def inotify_watch(self, path: str, events: str = "all", recursive: bool = False) -> dict[str, Any]:
         """Add a Linux inotify kernel watch on a file or directory.
 
         :param path: Target path.
@@ -649,7 +648,7 @@ class FilesystemStorage(BaseYarn):
         return inotify_api.add_watch(path.strip(), events=events, recursive=recursive)
 
     @strand(description="Wait synchronously for a specific filesystem event on a path.")
-    def inotify_wait_event(self, path: str, events: str = "all", timeout_seconds: float = 5.0) -> Dict[str, Any]:
+    def inotify_wait_event(self, path: str, events: str = "all", timeout_seconds: float = 5.0) -> dict[str, Any]:
         """Wait synchronously for a specific filesystem event on a path.
 
         :param path: Target path.
@@ -659,7 +658,7 @@ class FilesystemStorage(BaseYarn):
         return inotify_api.wait_for_event(path.strip(), events=events, timeout_seconds=timeout_seconds)
 
     @strand(description="Poll and read available inotify kernel events from active watches.")
-    def inotify_read_events(self, timeout_ms: int = 100, max_events: int = 50) -> List[Dict[str, Any]]:
+    def inotify_read_events(self, timeout_ms: int = 100, max_events: int = 50) -> list[dict[str, Any]]:
         """Poll and read available inotify kernel events from active watches.
 
         :param timeout_ms: Timeout in ms.
@@ -668,7 +667,7 @@ class FilesystemStorage(BaseYarn):
         return inotify_api.read_events(timeout_ms=timeout_ms, max_events=max_events)
 
     @strand(description="Remove an active inotify watch by descriptor ID or path.")
-    def inotify_unwatch(self, watch: str) -> Dict[str, Any]:
+    def inotify_unwatch(self, watch: str) -> dict[str, Any]:
         """Remove an active inotify watch by descriptor ID or path.
 
         :param watch: Watch descriptor ID or path.
@@ -676,6 +675,6 @@ class FilesystemStorage(BaseYarn):
         return inotify_api.remove_watch(watch)
 
     @strand(description="List all active inotify watch descriptors and paths.")
-    def inotify_list_watches(self) -> List[Dict[str, Any]]:
+    def inotify_list_watches(self) -> list[dict[str, Any]]:
         """List all active inotify watch descriptors and paths."""
         return inotify_api.list_watches()

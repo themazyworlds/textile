@@ -6,7 +6,7 @@ Invoked via `uv run --isolated` for ephemeral, dependency-isolated strand execut
 import importlib
 import json
 import sys
-from typing import Any, Dict
+from typing import Any
 
 
 def main():
@@ -20,7 +20,7 @@ def main():
     args_json = sys.argv[4]
 
     try:
-        args: Dict[str, Any] = json.loads(args_json) if args_json else {}
+        args: dict[str, Any] = json.loads(args_json) if args_json else {}
     except Exception as e:
         print(json.dumps({"success": False, "error": f"Failed to parse arguments JSON: {e}"}))
         sys.exit(1)

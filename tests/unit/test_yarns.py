@@ -1,19 +1,20 @@
 import os
 import unittest
-from textile.core.base import BaseYarn, Strand
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from textile.core.base import Yarn, Strand
 from textile.core.loom import loom
 from textile.core.skein import skein
 
-
-from typing import Literal
-from pydantic import BaseModel, Field
 
 class CustomPydanticModel(BaseModel):
     message: str = Field(..., description="Message string")
     priority: Literal["low", "high"] = Field("low", description="Priority")
 
 
-class DummyYarn(BaseYarn):
+class DummyYarn(Yarn):
     name = "dummy"
 
     def is_available(self) -> bool:
@@ -106,14 +107,14 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertIn("message", mcp_def["inputSchema"]["properties"])
 
     def test_capability_based_overrides(self):
-        class LowCapYarn(BaseYarn):
+        class LowCapYarn(Yarn):
             name = "low_cap_yarn"
             layer = 10
             def is_available(self): return True
             def get_strands(self):
                 return [self.build_strand("low_app", "Low App", lambda args: "low_out", capability="test.launcher")]
 
-        class HighCapYarn(BaseYarn):
+        class HighCapYarn(Yarn):
             name = "high_cap_yarn"
             layer = 100
             def is_available(self): return True
@@ -142,14 +143,14 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(res, "high_out")
 
     def test_name_collision_without_capability_not_overridden(self):
-        class YarnNoCapA(BaseYarn):
+        class YarnNoCapA(Yarn):
             name = "nocap_a"
             layer = 10
             def is_available(self): return True
             def get_strands(self):
                 return [self.build_strand("same_name", "Same Name A", lambda args: "a")]
 
-        class YarnNoCapB(BaseYarn):
+        class YarnNoCapB(Yarn):
             name = "nocap_b"
             layer = 100
             def is_available(self): return True
@@ -190,7 +191,7 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_capability_tiers_and_auto_isolation(self):
         from textile.core.base import CapabilityTier, strand
 
-        class TierTestYarn(BaseYarn):
+        class TierTestYarn(Yarn):
             name = "tier_test"
             def is_available(self): return True
 
@@ -223,7 +224,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         events_received = []
 
-        class WeftTestYarn(BaseYarn):
+        class WeftTestYarn(Yarn):
             name = "weft_test"
             def is_available(self): return True
 
@@ -253,11 +254,12 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_weave_mood_tag_parsing(self):
         import time
+
+        from textile.core.loom import loom
+        from textile.core.skein import skein
+        from textile.core.tapestry import tapestry
         from textile.yarns.compositor.canvas import Canvas
         from textile.yarns.weave import extract_and_apply_mood_tags
-        from textile.core.tapestry import tapestry
-        from textile.core.skein import skein
-        from textile.core.loom import loom
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -275,11 +277,12 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_weave_streaming_transcription_node(self):
         import asyncio
         import time
+
+        from textile.core.loom import loom
+        from textile.core.skein import skein
+        from textile.core.tapestry import tapestry
         from textile.yarns.compositor.canvas import Canvas
         from textile.yarns.weave import WeaveAgent
-        from textile.core.tapestry import tapestry
-        from textile.core.skein import skein
-        from textile.core.loom import loom
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -311,8 +314,13 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(clean_text, " What shall we investigate next?")
 
     def test_packagekit_pure_dbus_yarn(self):
-        from textile.yarns.system_core.packagekit import PackageKit, parse_package_id, unwrap_variant
         from dbus_fast import Variant
+
+        from textile.yarns.system_core.packagekit import (
+            PackageKit,
+            parse_package_id,
+            unwrap_variant,
+        )
 
         pk = PackageKit()
         self.assertEqual(pk.name, "packagekit")

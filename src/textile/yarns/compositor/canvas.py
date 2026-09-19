@@ -10,9 +10,9 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from textile.core.base import BaseYarn, strand, weft, LAYER_COMPOSITOR_DE
+from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand, weft
 from textile.core.tapestry import tapestry
 from textile.core.warp import WarpEvent
 
@@ -35,7 +35,7 @@ class CanvasController:
     """Controller for Quickshell Canvas subprocess and IPC."""
 
     def __init__(self):
-        self._proc: Optional[subprocess.Popen] = None
+        self._proc: subprocess.Popen | None = None
 
     def get_qml_path(self) -> str:
         return _get_qml_path()
@@ -141,7 +141,7 @@ class CanvasController:
 canvas_ctl = CanvasController()
 
 
-class Canvas(BaseYarn):
+class Canvas(Yarn):
     """Quickshell Emotive Canvas & Mood System Yarn.
 
     The Canvas avatar is your physical, visual face on the Linux desktop.
@@ -317,7 +317,7 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         return f"Canvas colors updated ({res})"
 
     @strand(description="Get full real-time mood and canvas face state.")
-    def canvas_get_state(self) -> Dict[str, Any]:
+    def canvas_get_state(self) -> dict[str, Any]:
         """Get full real-time mood and canvas face state."""
         state = {
             "mood": self.get_slot("canvas.mood", "neutral"),

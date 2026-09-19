@@ -1,6 +1,7 @@
 import threading
 import unittest
-from textile.core.tapestry import CoreTapestry, SensoryTapestry, NoticeLevel
+
+from textile.core.tapestry import CoreTapestry, NoticeLevel, SensoryTapestry
 
 
 class TestTapestry(unittest.TestCase):

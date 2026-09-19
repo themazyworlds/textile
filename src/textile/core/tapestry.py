@@ -4,9 +4,10 @@ Textile Tapestry - Core Task Ledger & Open Sensory Blackboard.
 
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -21,11 +22,11 @@ class NoticeLevel(str, Enum):
 
 class Notice(BaseModel):
     """A structured sensory/system notice stitched into Sensory Tapestry."""
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     level: NoticeLevel = NoticeLevel.INFO
     source: str
     message: str
-    data: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskRecord(BaseModel):
@@ -33,10 +34,10 @@ class TaskRecord(BaseModel):
     task_id: str
     strand_name: str
     start_time: str
-    args: Dict[str, Any] = Field(default_factory=dict)
-    duration_ms: Optional[float] = None
-    success: Optional[bool] = None
-    error: Optional[str] = None
+    args: dict[str, Any] = Field(default_factory=dict)
+    duration_ms: float | None = None
+    success: bool | None = None
+    error: str | None = None
 
 
 class CoreTapestry:
@@ -48,14 +49,14 @@ class CoreTapestry:
     def __init__(self, max_history: int = 50):
         self._max_history = max_history
         self._lock = threading.Lock()
-        self._active_tasks: Dict[str, TaskRecord] = {}
+        self._active_tasks: dict[str, TaskRecord] = {}
         self._task_history: deque[TaskRecord] = deque(maxlen=max_history)
 
-    def record_task_start(self, task_id: str, strand_name: str, args: Optional[Dict[str, Any]] = None) -> TaskRecord:
+    def record_task_start(self, task_id: str, strand_name: str, args: dict[str, Any] | None = None) -> TaskRecord:
         record = TaskRecord(
             task_id=task_id,
             strand_name=strand_name,
-            start_time=datetime.now(timezone.utc).isoformat(),
+            start_time=datetime.now(UTC).isoformat(),
             args=args or {},
         )
         with self._lock:
@@ -67,8 +68,8 @@ class CoreTapestry:
         task_id: str,
         success: bool = True,
         duration_ms: float = 0.0,
-        error: Optional[str] = None,
-    ) -> Optional[TaskRecord]:
+        error: str | None = None,
+    ) -> TaskRecord | None:
         with self._lock:
             record = self._active_tasks.pop(task_id, None)
             if record:
@@ -90,16 +91,16 @@ class CoreTapestry:
                     return f"Successfully cancelled active task '{task.strand_name}' (ID: {tid})."
         return f"No active task matching '{clean_id}' currently running."
 
-    def get_active_tasks(self) -> List[Dict[str, Any]]:
+    def get_active_tasks(self) -> list[dict[str, Any]]:
         with self._lock:
             return [t.model_dump() for t in self._active_tasks.values()]
 
-    def get_task_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_task_history(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._lock:
             items = list(self._task_history)
         return [t.model_dump() for t in items[-limit:]]
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         """Return snapshot of running engine tasks and recent execution history."""
         return {
             "active_tasks": self.get_active_tasks(),
@@ -116,15 +117,15 @@ class SensoryTapestry:
     def __init__(self, max_notices: int = 100):
         self._max_notices = max_notices
         self._lock = threading.Lock()
-        self._slots: Dict[str, Any] = {}
+        self._slots: dict[str, Any] = {}
         self._notices: deque[Notice] = deque(maxlen=max_notices)
 
     def stitch(
         self,
-        level: Union[str, NoticeLevel],
+        level: str | NoticeLevel,
         source: str,
         message: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
     ) -> Notice:
         """Stitch a structured notice or alert into the sensory Tapestry blackboard."""
         if isinstance(level, str):
@@ -155,10 +156,10 @@ class SensoryTapestry:
 
     def bind(
         self,
-        level: Union[str, NoticeLevel],
+        level: str | NoticeLevel,
         source: str,
         message: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
     ) -> Notice:
         """Alias for stitch()."""
         return self.stitch(level, source, message, data)
@@ -175,12 +176,12 @@ class SensoryTapestry:
 
     def get_notices(
         self,
-        level: Optional[Union[str, NoticeLevel]] = None,
-        source: Optional[str] = None,
+        level: str | NoticeLevel | None = None,
+        source: str | None = None,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve recent notices with optional level and source filtering."""
-        target_lvl: Optional[NoticeLevel] = None
+        target_lvl: NoticeLevel | None = None
         if level:
             if isinstance(level, str):
                 try:
@@ -202,7 +203,7 @@ class SensoryTapestry:
             filtered.append(n.model_dump())
         return filtered[-limit:]
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         """Return snapshot of sensory state slots and recent stitched notices."""
         with self._lock:
             slots_copy = dict(self._slots)

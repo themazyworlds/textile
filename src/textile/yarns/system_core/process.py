@@ -4,19 +4,17 @@ Provides POSIX signals, process inspection, system load monitoring, and backgrou
 Layer 10 (Core POSIX).
 """
 
-import json
 import os
-import signal
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
-from textile.core.base import BaseYarn, strand, LAYER_BASE
-from textile.core.loom import loom
+from typing import Any
 
-BACKGROUND_JOBS: Dict[int, Dict[str, Any]] = {}
+from textile.core.base import LAYER_BASE, Yarn, strand
+
+BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}
 
 
-class ProcessControl(BaseYarn):
+class ProcessControl(Yarn):
     name = "process_control"
     description = "POSIX Process Management, Inspection, Signals, Load Averages, and Background Jobs."
     version = "1.2.0"
@@ -53,7 +51,7 @@ class ProcessControl(BaseYarn):
             return f"Error launching application: {e}"
 
     @strand(description="List running system processes with PID, CPU/memory usage, user, and command line.")
-    def process_list(self, filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    def process_list(self, filter: str | None = None) -> list[dict[str, Any]]:
         """List running system processes with PID, CPU/memory usage, user, and command line.
 
         :param filter: Optional filter string for process name or command.
@@ -103,7 +101,7 @@ class ProcessControl(BaseYarn):
             return f"Error sending signal: {e}"
 
     @strand(description="List background jobs spawned and tracked by Textile.")
-    def process_list_bg_jobs(self) -> Dict[str, Any]:
+    def process_list_bg_jobs(self) -> dict[str, Any]:
         """List background jobs spawned and tracked by Textile."""
         now = time.time()
         active_jobs = []
@@ -121,7 +119,7 @@ class ProcessControl(BaseYarn):
         return {"active_bg_jobs_count": len(active_jobs), "jobs": active_jobs}
 
     @strand(description="Get CPU 1, 5, and 15-minute load averages and CPU core counts.")
-    def process_get_loadavg(self) -> Dict[str, Any]:
+    def process_get_loadavg(self) -> dict[str, Any]:
         """Get CPU 1, 5, and 15-minute load averages and CPU core counts."""
         try:
             if hasattr(os, "getloadavg"):

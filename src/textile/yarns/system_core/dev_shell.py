@@ -6,12 +6,11 @@ Layer 10 (Core POSIX).
 
 import os
 import subprocess
-import time
-from typing import Any, Dict, List, Optional
-from textile.core.base import BaseYarn, CapabilityTier, strand, LAYER_BASE
+
+from textile.core.base import LAYER_BASE, Yarn, CapabilityTier, strand
 
 
-class DevShell(BaseYarn):
+class DevShell(Yarn):
     name = "dev_shell"
     description = "Non-interactive POSIX shell execution."
     version = "1.2.0"
@@ -45,7 +44,7 @@ class DevShell(BaseYarn):
                     pass
                 return f"[Started in background (PID {proc.pid})]: {cmd}"
             except Exception as e:
-                return f"Error starting background command: {str(e)}"
+                return f"Error starting background command: {e!s}"
 
         try:
             res = subprocess.run(
@@ -66,4 +65,4 @@ class DevShell(BaseYarn):
         except subprocess.TimeoutExpired:
             return f"Error: Command '{cmd[:40]}' timed out after 25 seconds."
         except Exception as e:
-            return f"Error executing command: {str(e)}"
+            return f"Error executing command: {e!s}"

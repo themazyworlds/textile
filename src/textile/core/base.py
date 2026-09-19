@@ -11,9 +11,10 @@ import pwd
 import re
 import shutil
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError, create_model
 
@@ -53,7 +54,7 @@ def detects_native_ffi(target: Any) -> bool:
     return False
 
 
-def resolve_terminal_and_shell() -> Tuple[str, str]:
+def resolve_terminal_and_shell() -> tuple[str, str]:
     term = os.environ.get("TERM", "xterm-256color")
     shell_path = pwd.getpwuid(os.getuid()).pw_shell
     if not (os.path.isfile(shell_path) and os.access(shell_path, os.X_OK)):
@@ -61,9 +62,9 @@ def resolve_terminal_and_shell() -> Tuple[str, str]:
     return term, shell_path
 
 
-def schema_to_model(strand_name: str, parameters: Dict[str, Any], required: List[str]) -> Type[BaseModel]:
+def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list[str]) -> type[BaseModel]:
     """Dynamically synthesize a Pydantic BaseModel from JSON schema parameters."""
-    fields: Dict[str, Any] = {}
+    fields: dict[str, Any] = {}
     type_map = {"string": str, "integer": int, "number": float, "boolean": bool, "array": list, "object": dict}
     for p_name, p_spec in (parameters or {}).items():
         desc = p_spec.get("description", "")
@@ -82,16 +83,16 @@ class Strand:
 
     name: str
     description: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    handler: Optional[Callable[[Dict[str, Any]], str]] = None
-    required: List[str] = field(default_factory=list)
-    raw_handler: Optional[Callable[[Dict[str, Any]], Any]] = None
-    capability: Optional[str] = None
-    args_schema: Optional[Type[BaseModel]] = None
+    parameters: dict[str, Any] = field(default_factory=dict)
+    handler: Callable[[dict[str, Any]], str] | None = None
+    required: list[str] = field(default_factory=list)
+    raw_handler: Callable[[dict[str, Any]], Any] | None = None
+    capability: str | None = None
+    args_schema: type[BaseModel] | None = None
     tier: CapabilityTier = CapabilityTier.INTERACT
     isolated: bool = False
 
-    def to_mcp_definition(self) -> Dict[str, Any]:
+    def to_mcp_definition(self) -> dict[str, Any]:
         """Convert strand schema into Model Context Protocol format."""
         if self.args_schema:
             return {
@@ -120,14 +121,14 @@ class Weft:
     description: str
     strip: bool = True
     priority: int = 100
-    handler: Optional[Callable[..., Any]] = None
-    raw_handler: Optional[Callable[..., Any]] = None
-    args_schema: Optional[Type[BaseModel]] = None
-    param_names: List[str] = field(default_factory=list)
+    handler: Callable[..., Any] | None = None
+    raw_handler: Callable[..., Any] | None = None
+    args_schema: type[BaseModel] | None = None
+    param_names: list[str] = field(default_factory=list)
 
     def execute_match(self, match: re.Match) -> Any:
         """Execute weft attunement handler with regex match extracted arguments coerced with Pydantic."""
-        raw_kwargs: Dict[str, Any] = {}
+        raw_kwargs: dict[str, Any] = {}
         named = {k: v for k, v in match.groupdict().items() if v is not None}
         if named:
             raw_kwargs = named
@@ -151,7 +152,7 @@ class Weft:
         return None
 
 
-def _isolated_worker(module_name: str, class_name: str, strand_name: str, args: Dict[str, Any], conn: Any) -> None:
+def _isolated_worker(module_name: str, class_name: str, strand_name: str, args: dict[str, Any], conn: Any) -> None:
     try:
         import importlib
         mod = importlib.import_module(module_name)
@@ -167,7 +168,7 @@ def _isolated_worker(module_name: str, class_name: str, strand_name: str, args: 
             pass
 
 
-def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> List[str]:
+def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> list[str]:
     errors = []
     if not isinstance(parameters, dict):
         return [f"Strand '{strand_name}' parameters must be a dictionary."]
@@ -184,11 +185,11 @@ def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> 
 
 def validate_strand_arguments(
     strand_name: str,
-    args: Dict[str, Any],
-    schema_model: Optional[Type[BaseModel]] = None,
-    parameters: Optional[Dict[str, Any]] = None,
-    required: Optional[List[str]] = None,
-) -> Tuple[Optional[str], Dict[str, Any]]:
+    args: dict[str, Any],
+    schema_model: type[BaseModel] | None = None,
+    parameters: dict[str, Any] | None = None,
+    required: list[str] | None = None,
+) -> tuple[str | None, dict[str, Any]]:
     """Strictly validates arguments using Pydantic v2."""
     if not schema_model:
         if parameters:
@@ -222,7 +223,7 @@ def validate_strand_arguments(
         return f"Validation Hint: Strand '{strand_name}' parameter '{loc}' validation failed: {err['msg']}.", args
 
 
-def _extract_docstring_info(doc: Optional[str]) -> Tuple[str, Dict[str, str]]:
+def _extract_docstring_info(doc: str | None) -> tuple[str, dict[str, str]]:
     if not doc:
         return "", {}
     desc_lines, param_docs = [], {}
@@ -237,16 +238,16 @@ def _extract_docstring_info(doc: Optional[str]) -> Tuple[str, Dict[str, str]]:
 
 
 def strand(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-    capability: Optional[str] = None,
-    tier: Union[CapabilityTier, str] = CapabilityTier.INTERACT,
-    isolated: Optional[bool] = None,
+    name: str | None = None,
+    description: str | None = None,
+    capability: str | None = None,
+    tier: CapabilityTier | str = CapabilityTier.INTERACT,
+    isolated: bool | None = None,
     timeout: float = 30.0,
 ):
-    """Decorator marking a BaseYarn method as an executable Desktop Strand."""
+    """Decorator marking a Yarn method as an executable Desktop Strand."""
     def decorator(fn: Callable) -> Callable:
         fn._is_strand = True
         fn._strand_name = name or fn.__name__
@@ -261,15 +262,15 @@ def strand(
 
 
 def weft(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
-    pattern: Union[str, re.Pattern],
-    name: Optional[str] = None,
-    description: Optional[str] = None,
+    pattern: str | re.Pattern,
+    name: str | None = None,
+    description: str | None = None,
     strip: bool = True,
     priority: int = 100,
 ):
-    """Decorator marking a BaseYarn method as a real-time streaming token Weft attunement."""
+    """Decorator marking a Yarn method as a real-time streaming token Weft attunement."""
     compiled_pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
 
     def decorator(fn: Callable) -> Callable:
@@ -283,8 +284,7 @@ def weft(
 
     return decorator(func) if func is not None else decorator
 
-
-class BaseYarn(ABC):
+class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
     publisher: str = ""
@@ -292,15 +292,15 @@ class BaseYarn(ABC):
     description: str = "Base Yarn"
     version: str = "1.0.0"
     layer: int = LAYER_BASE
-    contract: Optional[str] = None
-    dependencies: List[Dict[str, Any]] = []
-    python_dependencies: List[str] = []
+    contract: str | None = None
+    dependencies: list[dict[str, Any]] = []
+    python_dependencies: list[str] = []
 
-    def get_contract(self) -> Optional[str]:
+    def get_contract(self) -> str | None:
         """Return the yarn's sealed contract / advisory letter for the AI client."""
         return getattr(self, "contract", None) or (self.__doc__.strip() if self.__doc__ else None)
 
-    def get_python_dependencies(self) -> List[str]:
+    def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""
         return list(getattr(self, "python_dependencies", []) or [])
 
@@ -320,11 +320,11 @@ class BaseYarn(ABC):
         """Publish a real-time streaming event to Warp."""
         self.warp.publish(topic, data)
 
-    def stitch(self, level: str, message: str, data: Optional[Dict[str, Any]] = None) -> Any:
+    def stitch(self, level: str, message: str, data: dict[str, Any] | None = None) -> Any:
         """Stitch a structured notice/alert into the Tapestry sensory blackboard."""
         return self.tapestry.stitch(level=level, source=self.name, message=message, data=data)
 
-    def bind(self, level: str, message: str, data: Optional[Dict[str, Any]] = None) -> Any:
+    def bind(self, level: str, message: str, data: dict[str, Any] | None = None) -> Any:
         """Alias for stitch()."""
         return self.stitch(level=level, message=message, data=data)
 
@@ -336,14 +336,14 @@ class BaseYarn(ABC):
         """Get a retained domain state slot from the Tapestry blackboard."""
         return self.tapestry.get_slot(key, default)
 
-    def get_dependencies(self) -> List[Dict[str, Any]]:
+    def get_dependencies(self) -> list[dict[str, Any]]:
         return getattr(self, "dependencies", [])
 
     @abstractmethod
     def is_available(self) -> bool:
         return True
 
-    def get_strands(self) -> List[Strand]:
+    def get_strands(self) -> list[Strand]:
         """Automatically discovers all @strand decorated methods on the class."""
         discovered = []
         for attr_name in dir(self):
@@ -357,7 +357,7 @@ class BaseYarn(ABC):
                 discovered.append(self._method_to_strand(attr))
         return discovered
 
-    def get_wefts(self) -> List[Weft]:
+    def get_wefts(self) -> list[Weft]:
         """Automatically discovers all @weft decorated methods on the class."""
         discovered = []
         for attr_name in dir(self):
@@ -374,7 +374,7 @@ class BaseYarn(ABC):
     def _method_to_weft(self, method: Callable) -> Weft:
         sig = inspect.signature(method)
         weft_name = getattr(method, "_weft_name", method.__name__)
-        weft_pattern = getattr(method, "_weft_pattern")
+        weft_pattern = method._weft_pattern
         weft_desc = getattr(method, "_weft_description", None) or inspect.getdoc(method) or weft_name
         weft_strip = getattr(method, "_weft_strip", True)
         weft_priority = getattr(method, "_weft_priority", 100)
@@ -434,11 +434,7 @@ class BaseYarn(ABC):
             # 1. External PyPI package dependencies declared
             # 2. Privileged or SYSTEM_EXEC capability tier (protecting system integrity)
             # 3. Native C-FFI (ctypes/cffi) usage detected (protecting against memory crashes/segfaults)
-            if self.get_python_dependencies():
-                isolated = True
-            elif tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
-                isolated = True
-            elif detects_native_ffi(self):
+            if self.get_python_dependencies() or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) or detects_native_ffi(self):
                 isolated = True
             else:
                 isolated = False
@@ -468,7 +464,7 @@ class BaseYarn(ABC):
         params, req_list = schema.get("properties", {}), schema.get("required", [])
 
         if is_async:
-            async def _async_invoker(args: Dict[str, Any]) -> str:
+            async def _async_invoker(args: dict[str, Any]) -> str:
                 val_err, coerced = validate_strand_arguments(strand_name, args, schema_model=args_model, parameters=params, required=req_list)
                 if val_err:
                     return val_err
@@ -479,7 +475,7 @@ class BaseYarn(ABC):
                     return f"Error executing strand '{strand_name}': {e}"
             invoker = _async_invoker
         else:
-            def _sync_invoker(args: Dict[str, Any]) -> str:
+            def _sync_invoker(args: dict[str, Any]) -> str:
                 val_err, coerced = validate_strand_arguments(strand_name, args, schema_model=args_model, parameters=params, required=req_list)
                 if val_err:
                     return val_err
@@ -509,14 +505,14 @@ class BaseYarn(ABC):
         self,
         name: str,
         description: str,
-        handler: Callable[[Dict[str, Any]], Any],
-        args_schema: Optional[Type[BaseModel]] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-        required: Optional[List[str]] = None,
-        isolated: Optional[bool] = None,
+        handler: Callable[[dict[str, Any]], Any],
+        args_schema: type[BaseModel] | None = None,
+        parameters: dict[str, Any] | None = None,
+        required: list[str] | None = None,
+        isolated: bool | None = None,
         timeout: float = 30.0,
-        capability: Optional[str] = None,
-        tier: Union[CapabilityTier, str] = CapabilityTier.INTERACT,
+        capability: str | None = None,
+        tier: CapabilityTier | str = CapabilityTier.INTERACT,
     ) -> Strand:
         """Helper to build a Strand dynamically."""
         if isinstance(tier, CapabilityTier):
@@ -532,11 +528,7 @@ class BaseYarn(ABC):
         if isolated is not None:
             is_isolated = bool(isolated)
         else:
-            if self.get_python_dependencies():
-                is_isolated = True
-            elif tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
-                is_isolated = True
-            elif detects_native_ffi(self):
+            if self.get_python_dependencies() or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) or detects_native_ffi(self):
                 is_isolated = True
             else:
                 is_isolated = False
@@ -545,7 +537,7 @@ class BaseYarn(ABC):
         schema = schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
         params, req_list = (schema.get("properties", {}), schema.get("required", []) if schema_model else (parameters or {}, required or []))
 
-        def _safe_handler(args: Dict[str, Any]) -> str:
+        def _safe_handler(args: dict[str, Any]) -> str:
             val_err, coerced = validate_strand_arguments(name, args, schema_model=schema_model, parameters=params, required=req_list)
             if val_err:
                 return val_err
@@ -570,7 +562,7 @@ class BaseYarn(ABC):
             isolated=is_isolated,
         )
 
-    def _run_isolated(self, strand_name: str, args: Dict[str, Any], timeout: float = 30.0) -> str:
+    def _run_isolated(self, strand_name: str, args: dict[str, Any], timeout: float = 30.0) -> str:
         """Run strand in an isolated ephemeral subprocess using `uv` (if external deps declared) or multiprocessing spawn."""
         deps = self.get_python_dependencies()
         uv_bin = shutil.which("uv")
@@ -637,14 +629,14 @@ class BaseYarn(ABC):
             return f"Error: Strand '{strand_name}' isolated worker process crashed (exit code {proc.exitcode}). Host process preserved."
         return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
 
-    def _execute_direct(self, strand_name: str, args: Dict[str, Any]) -> str:
+    def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():
             if s.name == strand_name:
                 h = s.raw_handler or s.handler
                 return h(args) if h else "ok"
         return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
-    def execute_strand(self, strand_name: str, args: Dict[str, Any]) -> str:
+    def execute_strand(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():
             if s.name == strand_name and s.handler is not None:
                 return s.handler(args)
@@ -653,4 +645,3 @@ class BaseYarn(ABC):
     def on_load(self) -> None: pass
     def on_unload(self) -> None: pass
     def start_event_stream(self, publish_cb: Callable[[str], None], stop_event: Any) -> None: pass
-
