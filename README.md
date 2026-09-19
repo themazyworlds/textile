@@ -1,5 +1,9 @@
 # Textile • Linux Desktop Intelligence & Automation Fabric
 
+<p align="center">
+  <img src="assets/canvas_showcase.gif" alt="Textile Canvas Emotive Desktop Avatar" width="720" style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);" />
+</p>
+
 Textile is a high-performance, protocol-first desktop intelligence and automation subsystem for Linux. Powered by a decoupled microkernel architecture, it seamlessly connects AI agents, full-duplex voice companions, and local CLI tools to the Linux desktop across all compositor, session, protocol, and kernel layers.
 
 ---
@@ -120,6 +124,18 @@ Textile owns its privilege lifecycle cleanly through **Linux PolicyKit-1 (`polki
 
 ---
 
+## 🎨 Textile Canvas • 60 FPS Emotive Desktop Avatar
+
+Textile Canvas is a hardware-accelerated, real-time emotive desktop presence powered by [Quickshell](https://quickshell.outfoxxed.me/) and QtQuick. It gives voice AI companions and autonomous agents a lively, organic face on the Linux desktop:
+
+- **17 Rich Mood Palettes**: `neutral`, `happy`, `excited`, `celebrating`, `thinking`, `focused`, `listening`, `curious`, `calm`, `shy`, `mischievous`, `confused`, `surprised`, `alert`, `sleepy`, `error`, `glitch`.
+- **Zero-Latency Semantic Stream Attunement**: Weave and connected AI models emit inline semantic tags (e.g., `<mood:curious>`, `<gaze:8.0,-5.0>`) directly inside conversational streams.
+- **Harmonic Forehead Gem Ripple Mechanics**: Automatically pulses with harmonic water ripples whenever an autonomous agent initiates system automation or tool calls.
+- **Organic Micro-Saccades & Physics**: Smooth 60 FPS mouth phoneme interpolation, biological eye micro-saccades, reactive head tilt inertia, and interactive elastic click bounce.
+- **Self-Contained & Modular**: Packaged directly within the compositor yarn (`src/textile/yarns/compositor/canvas.qml`), auto-launching on startup with full CLI and IPC controls.
+
+---
+
 ## 🧪 Testing & Verification
 
 ```bash
@@ -132,3 +148,10 @@ uv run python tests/run_all_tests.py
 # Build distribution wheel and source package
 uv build
 ```
+
+---
+
+## 📄 License
+
+Textile is open-source software licensed under the [Apache License 2.0](LICENSE).
+

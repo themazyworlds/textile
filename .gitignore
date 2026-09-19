@@ -15,4 +15,5 @@ htmlcov/
 # Virtual environments & IDE
 .venv/
 .env
+scratch/
 
