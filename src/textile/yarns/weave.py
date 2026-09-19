@@ -83,6 +83,7 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         llm=realtime_model,
+        turn_detection="realtime_llm",
     )
 
     # Event handlers connecting LiveKit voice stream to Textile Canvas UI asynchronously via Warp pub/sub
