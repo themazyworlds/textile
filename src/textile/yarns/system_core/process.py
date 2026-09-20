@@ -5,21 +5,17 @@ Layer 10 (Core POSIX).
 """
 
 import os
+import signal as sig_mod
 import subprocess
 import time
 from typing import Any
 
-from textile.core.base import LAYER_BASE, Yarn, strand
+from textile import Yarn, strand
 
 BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}
 
 
 class ProcessControl(Yarn):
-    name = "process_control"
-    description = "POSIX Process Management, Inspection, Signals, Load Averages, and Background Jobs."
-    version = "1.2.0"
-    layer = LAYER_BASE  # Layer 10
-
     def is_available(self) -> bool:
         return True
 
@@ -30,10 +26,13 @@ class ProcessControl(Yarn):
             "command": command,
             "type": job_type,
             "start_time": time.time(),
-            "status": "running"
+            "status": "running",
         }
 
-    @strand(description="Launch a desktop application or background command (routed through UWSM scope if active).", capability="desktop.app_launcher")
+    @strand(
+        description="Launch a desktop application or background command (routed through UWSM scope if active).",
+        capability="desktop.app_launcher",
+    )
     def launch_app(self, app: str, is_tui: bool = False) -> str:
         """Launch a desktop application or background command (routed through UWSM scope if active).
 
@@ -65,7 +64,7 @@ class ProcessControl(Yarn):
                     comm_path = os.path.join(entry.path, "comm")
                     if os.path.exists(comm_path):
                         try:
-                            with open(comm_path, "r", encoding="utf-8", errors="replace") as f:
+                            with open(comm_path, encoding="utf-8", errors="replace") as f:
                                 pname = f.read().strip()
                             if filter_name and filter_name not in pname.lower():
                                 continue
@@ -87,7 +86,6 @@ class ProcessControl(Yarn):
         """
         sig_name = str(signal or "SIGTERM").strip().upper()
         try:
-            import signal as sig_mod
             sig_num = getattr(sig_mod, sig_name, sig_mod.SIGTERM)
             os.kill(int(pid), sig_num)
             BACKGROUND_JOBS.pop(int(pid), None)
@@ -124,7 +122,12 @@ class ProcessControl(Yarn):
         try:
             if hasattr(os, "getloadavg"):
                 l1, l5, l15 = os.getloadavg()
-                return {"1_min_load": round(l1, 2), "5_min_load": round(l5, 2), "15_min_load": round(l15, 2), "cpu_cores": os.cpu_count() or 1}
+                return {
+                    "1_min_load": round(l1, 2),
+                    "5_min_load": round(l5, 2),
+                    "15_min_load": round(l15, 2),
+                    "cpu_cores": os.cpu_count() or 1,
+                }
             return {"cpu_cores": os.cpu_count() or 1, "notice": "Load average metric not supported platform."}
         except Exception as e:
             return {"error": f"Error reading load average: {e}"}
