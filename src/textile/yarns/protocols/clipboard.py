@@ -6,10 +6,11 @@ Layer 50 (Desktop Protocol).
 """
 
 import logging
+import os
 
 try:
     import pyxclip
-except Exception:
+except (ImportError, AttributeError, OSError):
     pyxclip = None
 
 from textile.core.base import Yarn, strand
@@ -23,7 +24,6 @@ class Clipboard(Yarn):
     def is_available(self) -> bool:
         if pyxclip is None:
             return False
-        import os
         return bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
 
     @strand(description="Read the current text content from the system clipboard.")
@@ -34,7 +34,7 @@ class Clipboard(Yarn):
         try:
             val = pyxclip.paste()
             return str(val) if val else ""
-        except Exception as e:
+        except (AttributeError, OSError, RuntimeError, ValueError, TypeError) as e:
             if "empty" in str(e).lower():
                 return ""
             return f"Error reading clipboard: {e}"
@@ -50,7 +50,7 @@ class Clipboard(Yarn):
         try:
             pyxclip.copy(text)
             return f"Successfully copied {len(text)} characters to clipboard."
-        except Exception as e:
+        except (AttributeError, OSError, RuntimeError, ValueError, TypeError) as e:
             return f"Error writing to clipboard: {e}"
 
     @strand(description="Clear all content from the system clipboard.")
@@ -61,5 +61,5 @@ class Clipboard(Yarn):
         try:
             pyxclip.clear()
             return "Clipboard cleared successfully."
-        except Exception as e:
+        except (AttributeError, OSError, RuntimeError, ValueError, TypeError) as e:
             return f"Error clearing clipboard: {e}"

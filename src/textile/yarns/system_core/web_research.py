@@ -4,13 +4,17 @@ Provides search query execution and webpage content fetching.
 Layer 10 (Core POSIX).
 """
 
+import contextlib
 import html
 import json
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
 from textile.core.base import Yarn, strand
+
+MAX_WEBPAGE_BODY_CHARS = 12000
 
 
 def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, str]]:
@@ -27,7 +31,7 @@ def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, s
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
-    with urllib.request.urlopen(req, timeout=6) as resp:
+    with urllib.request.urlopen(req, timeout=6) as resp:  # noqa: S310
         content = resp.read().decode("utf-8", errors="replace")
 
     pattern = re.compile(
@@ -60,10 +64,10 @@ def _search_ddg_instant_and_wiki(query: str) -> list[tuple[str, str, str]]:
     """Fallback search using DuckDuckGo Instant Answer API and Wikipedia Full-Text Search API."""
     results = []
     # 1. DuckDuckGo Instant Answer API
-    try:
+    with contextlib.suppress(urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
         api_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_html=1&skip_disambig=1"
         req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0 (Linux)"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
             abstract = data.get("AbstractText")
             source_url = data.get("AbstractURL")
@@ -73,14 +77,12 @@ def _search_ddg_instant_and_wiki(query: str) -> list[tuple[str, str, str]]:
             for topic in data.get("RelatedTopics", [])[:3]:
                 if isinstance(topic, dict) and topic.get("Text") and topic.get("FirstURL"):
                     results.append((topic["Text"][:60] + "...", topic["FirstURL"], topic["Text"]))
-    except Exception:
-        pass
 
     # 2. Wikipedia Full-Text Search API
-    try:
+    with contextlib.suppress(urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
         wiki_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(query)}&utf8=&format=json&srlimit=5"
         req = urllib.request.Request(wiki_url, headers={"User-Agent": "TextileAgent/1.0 (Universal Linux Desktop)"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
             search_items = data.get("query", {}).get("search", [])
             for item in search_items:
@@ -89,8 +91,6 @@ def _search_ddg_instant_and_wiki(query: str) -> list[tuple[str, str, str]]:
                 page_url = "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_"))
                 if title and page_url:
                     results.append((title, page_url, snippet))
-    except Exception:
-        pass
 
     return results
 
@@ -102,16 +102,12 @@ def search_web(query: str) -> str:
         return "Error: Empty search query."
 
     items: list[tuple[str, str, str]] = []
-    try:
+    with contextlib.suppress(urllib.error.URLError, OSError, ValueError):
         items = _search_ddg_lite(query_clean, max_results=8)
-    except Exception:
-        pass
 
     if not items:
-        try:
+        with contextlib.suppress(urllib.error.URLError, OSError, ValueError):
             items = _search_ddg_instant_and_wiki(query_clean)
-        except Exception:
-            pass
 
     if not items:
         return f"No web search results found for '{query_clean}'."
@@ -130,11 +126,11 @@ def fetch_webpage(url: str) -> str:
         url_clean = "https://" + url_clean
 
     try:
-        req = urllib.request.Request(
+        req = urllib.request.Request(  # noqa: S310
             url_clean,
             headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"},
         )
-        with urllib.request.urlopen(req, timeout=12) as response:
+        with urllib.request.urlopen(req, timeout=12) as response:  # noqa: S310
             response.headers.get("Content-Type", "")
             raw_data = response.read()
 
@@ -151,11 +147,11 @@ def fetch_webpage(url: str) -> str:
         lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
         body = "\n".join(lines)
 
-        if len(body) > 12000:
-            body = body[:12000] + "\n\n...[Content Truncated]"
+        if len(body) > MAX_WEBPAGE_BODY_CHARS:
+            body = body[:MAX_WEBPAGE_BODY_CHARS] + "\n\n...[Content Truncated]"
 
         return f"## Web Page Content for {url_clean}:\n\n{body}"
-    except Exception as e:
+    except (urllib.error.URLError, OSError, ValueError, UnicodeDecodeError) as e:
         return f"Error fetching webpage '{url_clean}': {e}"
 
 
@@ -163,9 +159,9 @@ class WebResearch(Yarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(description="Search the live internet for documentation, code examples, API references, library versions, or error solutions.")
+    @strand(description="Search the internet for documentation, API references, or error solutions.")
     def search_web(self, query: str) -> str:
-        """Search the live internet for documentation, code examples, API references, library versions, or error solutions.
+        """Search the internet for documentation, code examples, API references, or solutions.
 
         :param query: Search query terms.
         """

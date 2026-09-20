@@ -7,6 +7,7 @@ Layer 50 (Desktop Protocol).
 import datetime
 import json
 import os
+import re
 import shutil
 import subprocess
 from typing import Any, Literal
@@ -35,7 +36,6 @@ def _normalize_time_spec(spec: str | None) -> str | None:
         return None
     if s.startswith("-") or s.lower() in ("today", "yesterday", "now"):
         return s
-    import re
     if re.match(r"^\d+[smhdw]$", s, re.IGNORECASE):
         return f"-{s}"
     match = re.match(r"^(\d+)\s*(sec|min|hour|day|week)s?\s*ago$", s, re.IGNORECASE)
@@ -53,7 +53,7 @@ def _parse_entry(obj: dict[str, Any], is_kernel: bool = False) -> dict[str, Any]
     if ts_us:
         try:
             ts_str = datetime.datetime.fromtimestamp(ts_us / 1_000_000).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
+        except (ValueError, TypeError, OverflowError, OSError):
             ts_str = str(ts_us)
 
     prio_raw = obj.get("PRIORITY", 6)
@@ -72,7 +72,7 @@ def _parse_entry(obj: dict[str, Any], is_kernel: bool = False) -> dict[str, Any]
     if isinstance(raw_msg, list):
         try:
             msg = bytes(raw_msg).decode("utf-8", errors="replace").strip()
-        except Exception:
+        except (UnicodeDecodeError, TypeError, ValueError, AttributeError):
             msg = str(raw_msg)
     else:
         msg = str(raw_msg).strip()
@@ -100,27 +100,29 @@ class JournalAPI:
     def _exec_journal(self, cmd: list[str]) -> list[dict[str, Any]]:
         """Run journalctl command and return parsed log records."""
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=10)
+            res = subprocess.run(
+                cmd, capture_output=True, text=True, errors="replace", timeout=10, check=False
+            )
             if res.returncode != 0 and not res.stdout:
                 err = res.stderr.strip()
                 return [{"error": f"journalctl error ({res.returncode}): {err}"}]
 
             parsed = []
             is_kernel = "-k" in cmd
-            for raw_line in res.stdout.splitlines():
-                raw_line = raw_line.strip()
-                if not raw_line:
+            for line in res.stdout.splitlines():
+                line_str = line.strip()
+                if not line_str:
                     continue
                 try:
-                    obj = json.loads(raw_line)
+                    obj = json.loads(line_str)
                     parsed.append(_parse_entry(obj, is_kernel=is_kernel))
-                except Exception:
+                except (json.JSONDecodeError, ValueError, TypeError):
                     continue
 
             return parsed
         except subprocess.TimeoutExpired:
             return [{"error": "journalctl query timed out."}]
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return [{"error": f"Error executing journalctl: {e}"}]
 
     def query_logs(

@@ -24,12 +24,17 @@ class UWSM(Yarn):
         if target:
             cmd.append(target)
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=5)
+            res = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=5, check=False
+            )
             return res.stdout
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error running UWSM action: {e}"
 
-    @strand(description="Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.", capability="desktop.app_launcher")
+    @strand(
+        description="Launch a desktop application in a systemd scope via UWSM.",
+        capability="desktop.app_launcher",
+    )
     def launch_app(self, command: str, is_tui: bool = False, args: list[str] | None = None) -> str:
         """Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.
 
@@ -60,7 +65,7 @@ class UWSM(Yarn):
             )
             mode_str = " (TUI terminal scope)" if is_tui else ""
             return f"Successfully launched '{cmd}' via UWSM cgroup scope{mode_str} (PID {proc.pid})."
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching app via UWSM: {e}"
 
     @strand(description="Check UWSM session status and systemd user unit hierarchy.")

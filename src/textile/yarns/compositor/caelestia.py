@@ -13,11 +13,12 @@ class CaelestiaIPC:
     """Caelestia Shell IPC Controller."""
 
     def call_ipc(self, target: str, method: str, *args: str) -> str:
-        cmd = ["qs", "-c", "caelestia", "ipc", "call", target, method, *args]
+        qs_bin = shutil.which("qs") or "qs"
+        cmd = [qs_bin, "-c", "caelestia", "ipc", "call", target, method, *args]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
             return res.stdout.strip()
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error calling Caelestia IPC: {e}"
 
     def toggle_drawer(self, drawer: str) -> str:
@@ -27,10 +28,11 @@ class CaelestiaIPC:
 
     def toggle_special(self, workspace: str) -> str:
         ws_clean = workspace.lower().strip()
+        bin_path = shutil.which("caelestia") or "caelestia"
         try:
-            subprocess.run(["caelestia", "toggle", ws_clean], capture_output=True, text=True, timeout=5)
+            subprocess.run([bin_path, "toggle", ws_clean], capture_output=True, text=True, timeout=5, check=False)
             return f"Toggled special workspace: {ws_clean}"
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error toggling special workspace: {e}"
 
     def clear_notifications(self) -> str:
@@ -46,14 +48,16 @@ class CaelestiaIPC:
         return "Locked screen."
 
     def screenshot(self) -> str:
+        bin_path = shutil.which("caelestia") or "caelestia"
         try:
-            subprocess.Popen(["caelestia", "screenshot"])
+            subprocess.Popen([bin_path, "screenshot"])
             return "Screenshot tool launched."
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error taking screenshot: {e}"
 
     def record(self, audio: bool = False, region: bool = False) -> str:
-        args = ["caelestia", "record"]
+        bin_path = shutil.which("caelestia") or "caelestia"
+        args = [bin_path, "record"]
         if audio:
             args.append("-s")
         if region:
@@ -61,7 +65,7 @@ class CaelestiaIPC:
         try:
             subprocess.Popen(args)
             return "Screen recording triggered."
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error starting recording: {e}"
 
 

@@ -5,6 +5,7 @@ via D-Bus a11y hierarchy.
 Layer 50 (Desktop Protocol).
 """
 
+import contextlib
 import logging
 import os
 import sys
@@ -32,38 +33,36 @@ for _p in [
     if os.path.exists(_p) and _p not in sys.path:
         sys.path.append(_p)
 
+gi: Any = None
 GiAtspi: Any = None
 try:
-    import warnings
-
-    import gi
+    import gi  # type: ignore[import-not-found]
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*unix_signal_add_full.*")
         warnings.filterwarnings("ignore", message=".*GLib.*deprecated.*")
         gi.require_version("Atspi", "2.0")
-        from gi.repository import Atspi as GiAtspi  # type: ignore
+        from gi.repository import Atspi as GiAtspi  # type: ignore[import-not-found]
     _ATSPI_AVAILABLE = True
-except Exception as e:
+except (ImportError, OSError, AttributeError, ValueError, TypeError) as e:
+    gi = None
     GiAtspi = None
     _ATSPI_AVAILABLE = False
     logger.debug(f"AT-SPI not available on this environment: {e}")
 
 _GDK_KEYVAL_FUNC = None
 try:
-    if _ATSPI_AVAILABLE:
+    if _ATSPI_AVAILABLE and gi is not None:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message=".*unix_signal_add_full.*")
             warnings.filterwarnings("ignore", message=".*GLib.*deprecated.*")
             try:
                 gi.require_version("Gdk", "4.0")
-            except Exception:
-                try:
+            except (ImportError, ValueError, AttributeError):
+                with contextlib.suppress(ImportError, ValueError, AttributeError):
                     gi.require_version("Gdk", "3.0")
-                except Exception:
-                    pass
-            from gi.repository import Gdk
+            from gi.repository import Gdk  # type: ignore[import-not-found]
             _GDK_KEYVAL_FUNC = Gdk.keyval_from_name
-except Exception:
+except (ImportError, OSError, AttributeError, ValueError, TypeError):
     _GDK_KEYVAL_FUNC = None
 
 KNOWN_KEYVALS: dict[str, int] = {
@@ -80,58 +79,59 @@ KNOWN_KEYVALS: dict[str, int] = {
 def _safe_get_name(acc: Any) -> str:
     try:
         return acc.get_name() or ""
-    except Exception:
+    except (OSError, AttributeError, ValueError, TypeError):
         return ""
 
 
 def _safe_get_role(acc: Any) -> str:
     try:
         return acc.get_role_name() or "unknown"
-    except Exception:
+    except (OSError, AttributeError, ValueError, TypeError):
         return "unknown"
 
 
 def _safe_get_description(acc: Any) -> str:
     try:
         return acc.get_description() or ""
-    except Exception:
+    except (OSError, AttributeError, ValueError, TypeError):
         return ""
 
 
 def _safe_child_count(acc: Any) -> int:
     try:
         return acc.get_child_count()
-    except Exception:
+    except (OSError, AttributeError, ValueError, TypeError):
         return 0
 
 
 def _safe_get_child(acc: Any, index: int) -> Any | None:
     try:
         return acc.get_child_at_index(index)
-    except Exception:
+    except (OSError, AttributeError, ValueError, TypeError):
         return None
 
 
 class AtspiAPI:
     """Native AT-SPI Accessibility API Controller."""
 
+    _atspi_initialized: bool = False
+
     def __init__(self):
         # Lazy initialization; do not connect to accessibility daemon at module import time
         pass
 
     def _ensure_init(self) -> bool:
-        global _ATSPI_INITIALIZED
         if not _ATSPI_AVAILABLE:
             return False
-        if not _ATSPI_INITIALIZED:
+        if not AtspiAPI._atspi_initialized:
             try:
                 if hasattr(GiAtspi, "init") and callable(GiAtspi.init):
                     GiAtspi.init()
-                _ATSPI_INITIALIZED = True
-            except Exception as e:
+                AtspiAPI._atspi_initialized = True
+            except (OSError, AttributeError, ValueError, TypeError) as e:
                 logger.debug(f"Failed to initialize AT-SPI: {e}")
                 return False
-        return _ATSPI_INITIALIZED
+        return AtspiAPI._atspi_initialized
 
     def is_available(self) -> bool:
         return _ATSPI_AVAILABLE and self._ensure_init()
@@ -142,13 +142,11 @@ class AtspiAPI:
             states_list = stateset.get_states()
             nicks = []
             for st in states_list:
-                try:
+                with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                     nick = st.value_nick if hasattr(st, "value_nick") else str(st).split(".")[-1].lower()
                     nicks.append(nick)
-                except Exception:
-                    pass
             return nicks
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             return []
 
     def _get_bounds(self, acc: Any) -> dict[str, Any] | None:
@@ -156,19 +154,28 @@ class AtspiAPI:
             if not acc.is_component():
                 return None
             rect = acc.get_extents(GiAtspi.CoordType.SCREEN)
-            if rect.x != 0 or rect.y != 0 or (rect.width > 0 and rect.height > 0):
-                if rect.width > 0 and rect.height > 0:
-                    return {
-                        "x": int(rect.x), "y": int(rect.y), "width": int(rect.width), "height": int(rect.height),
-                        "center_x": int(rect.x + rect.width / 2), "center_y": int(rect.y + rect.height / 2), "coord_type": "screen"
-                    }
+            if rect.width > 0 and rect.height > 0:
+                return {
+                    "x": int(rect.x),
+                    "y": int(rect.y),
+                    "width": int(rect.width),
+                    "height": int(rect.height),
+                    "center_x": int(rect.x + rect.width / 2),
+                    "center_y": int(rect.y + rect.height / 2),
+                    "coord_type": "screen",
+                }
             rect_w = acc.get_extents(GiAtspi.CoordType.WINDOW)
             if rect_w.width > 0 and rect_w.height > 0:
                 return {
-                    "x": int(rect_w.x), "y": int(rect_w.y), "width": int(rect_w.width), "height": int(rect_w.height),
-                    "center_x": int(rect_w.x + rect_w.width / 2), "center_y": int(rect_w.y + rect_w.height / 2), "coord_type": "window"
+                    "x": int(rect_w.x),
+                    "y": int(rect_w.y),
+                    "width": int(rect_w.width),
+                    "height": int(rect_w.height),
+                    "center_x": int(rect_w.x + rect_w.width / 2),
+                    "center_y": int(rect_w.y + rect_w.height / 2),
+                    "coord_type": "window",
                 }
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             pass
         return None
 
@@ -179,15 +186,13 @@ class AtspiAPI:
         try:
             n_actions = acc.get_n_actions()
             for i in range(n_actions):
-                try:
+                with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore", DeprecationWarning)
                         name = acc.get_action_name(i)
                     if name:
                         actions.append(name)
-                except Exception:
-                    pass
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             pass
         return actions
 
@@ -198,7 +203,7 @@ class AtspiAPI:
             char_count = acc.get_character_count()
             if char_count > 0:
                 return GiAtspi.Text.get_text(acc, 0, min(char_count, 2000))
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             pass
         return None
 
@@ -212,13 +217,13 @@ class AtspiAPI:
                 "maximum": float(acc.get_maximum_value()),
                 "step": float(acc.get_minimum_increment()),
             }
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             pass
         return None
 
     def _infer_context(self, acc: Any) -> tuple[str, str]:
         label_text, section_text = "", ""
-        try:
+        with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
             parent = acc.get_parent()
             if parent:
                 idx = acc.get_index_in_parent()
@@ -243,8 +248,6 @@ class AtspiAPI:
                     if section_text:
                         break
                     curr = curr.get_parent()
-        except Exception:
-            pass
         return label_text, section_text
 
     def _serialize_element(
@@ -311,12 +314,18 @@ class AtspiAPI:
                     child_count = _safe_child_count(app)
                     try:
                         toolkit = app.get_toolkit_name() or "unknown"
-                    except Exception:
+                    except (OSError, AttributeError, ValueError, TypeError):
                         toolkit = "unknown"
-                    apps.append({"index": i, "name": name, "process_id": pid, "windows_count": child_count, "toolkit": toolkit})
-                except Exception:
+                    apps.append({
+                        "index": i,
+                        "name": name,
+                        "process_id": pid,
+                        "windows_count": child_count,
+                        "toolkit": toolkit,
+                    })
+                except (OSError, AttributeError, ValueError, TypeError):
                     continue
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             logger.error(f"Error listing AT-SPI applications: {e}")
         return apps
 
@@ -341,7 +350,12 @@ class AtspiAPI:
                     return app
         return None
 
-    def get_tree(self, app_name: str | None = None, max_depth: int = 3, include_bounds: bool = True) -> dict[str, Any]:
+    def get_tree(
+        self,
+        app_name: str | None = None,
+        max_depth: int = 3,
+        include_bounds: bool = True,
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"error": "AT-SPI is not available."}
         if app_name:
@@ -356,17 +370,17 @@ class AtspiAPI:
             root_path = "0"
 
         def _traverse(node: Any, current_path: str, depth: int) -> dict[str, Any]:
-            node_dict = self._serialize_element(node, path=current_path, include_bounds=include_bounds, include_actions=True)
+            node_dict = self._serialize_element(
+                node, path=current_path, include_bounds=include_bounds, include_actions=True
+            )
             if depth < max_depth:
                 children = []
-                try:
+                with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                     c_count = _safe_child_count(node)
                     for c_idx in range(c_count):
                         child = _safe_get_child(node, c_idx)
                         if child:
                             children.append(_traverse(child, f"{current_path}/{c_idx}", depth + 1))
-                except Exception:
-                    pass
                 if children:
                     node_dict["children"] = children
             return node_dict
@@ -374,7 +388,13 @@ class AtspiAPI:
         return _traverse(target_node, root_path, depth=0)
 
     def find_elements(
-        self, query: str | None = None, role: str | None = None, app_name: str | None = None, state: str | None = None, max_results: int = 50, max_depth: int = 15
+        self,
+        query: str | None = None,
+        role: str | None = None,
+        app_name: str | None = None,
+        state: str | None = None,
+        max_results: int = 50,
+        max_depth: int = 15,
     ) -> list[dict[str, Any]]:
         if not self.is_available():
             return []
@@ -390,7 +410,7 @@ class AtspiAPI:
         def _search(node: Any, path: str, depth: int):
             if len(results) >= max_results or depth > max_depth:
                 return
-            try:
+            with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                 serialized = self._serialize_element(node, path=path, include_bounds=True, include_actions=True)
                 s_name = (serialized.get("name") or "").lower()
                 s_role = (serialized.get("role") or "").lower()
@@ -427,8 +447,6 @@ class AtspiAPI:
                         _search(child, f"{path}/{i}", depth + 1)
                         if len(results) >= max_results:
                             break
-            except Exception:
-                pass
 
         root_label = f"app:{_safe_get_name(target_root)}" if app_name else "0"
         _search(target_root, root_label, depth=0)
@@ -473,7 +491,11 @@ class AtspiAPI:
         return None
 
     def _resolve_target(
-        self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, preferred_role: str | None = None
+        self,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        preferred_role: str | None = None,
     ) -> Any | None:
         if element_path:
             target = self._resolve_element_by_path(element_path)
@@ -493,13 +515,13 @@ class AtspiAPI:
                     m_name = (m.get("name") or "").strip().lower()
                     m_lbl = (m.get("labeled_by") or "").strip().lower()
                     m_role = (m.get("role") or "").strip().lower()
-                    if (m_name == e_name_clean or m_lbl == e_name_clean) and m_role in INTERACTIVE_ROLES:
+                    if (e_name_clean in (m_name, m_lbl)) and m_role in INTERACTIVE_ROLES:
                         return self._resolve_element_by_path(m["path"])
 
                 for m in matches:
                     m_name = (m.get("name") or "").strip().lower()
                     m_lbl = (m.get("labeled_by") or "").strip().lower()
-                    if m_name == e_name_clean or m_lbl == e_name_clean:
+                    if e_name_clean in (m_name, m_lbl):
                         return self._resolve_element_by_path(m["path"])
 
                 for m in matches:
@@ -512,7 +534,12 @@ class AtspiAPI:
         return None
 
     def do_action(
-        self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, action_name: str | None = None, action_index: int = 0
+        self,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        action_name: str | None = None,
+        action_index: int = 0,
     ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
@@ -537,29 +564,48 @@ class AtspiAPI:
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore", DeprecationWarning)
                         action_performed = target.get_action_name(chosen_index)
-                    return {"success": bool(success), "element": _safe_get_name(target), "role": _safe_get_role(target), "action": action_performed}
+                    return {
+                        "success": bool(success),
+                        "element": _safe_get_name(target),
+                        "role": _safe_get_role(target),
+                        "action": action_performed,
+                    }
 
-            try:
+            with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                 parent = target.get_parent()
                 if parent and parent.is_selection():
                     idx = target.get_index_in_parent()
                     res = parent.select_child(idx)
-                    return {"success": bool(res), "element": _safe_get_name(target), "role": _safe_get_role(target), "action": "select_child"}
-            except Exception:
-                pass
+                    return {
+                        "success": bool(res),
+                        "element": _safe_get_name(target),
+                        "role": _safe_get_role(target),
+                        "action": "select_child",
+                    }
 
             if target.is_component():
                 bounds = self._get_bounds(target)
                 if bounds and bounds.get("width", 0) > 0:
                     cx, cy = bounds["center_x"], bounds["center_y"]
                     mouse_res = self.generate_mouse_event(cx, cy, "b1c")
-                    return {"success": bool(mouse_res), "element": _safe_get_name(target), "role": _safe_get_role(target), "action": "click"}
+                    return {
+                        "success": bool(mouse_res),
+                        "element": _safe_get_name(target),
+                        "role": _safe_get_role(target),
+                        "action": "click",
+                    }
 
             return {"success": False, "error": f"Element '{_safe_get_name(target)}' has no actions."}
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             return {"success": False, "error": f"Error performing action: {e}"}
 
-    def select_element(self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, index: int | None = None) -> dict[str, Any]:
+    def select_element(
+        self,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        index: int | None = None,
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -569,19 +615,23 @@ class AtspiAPI:
             if target.is_selection() and index is not None:
                 res = target.select_child(int(index))
                 return {"success": bool(res), "element": _safe_get_name(target), "selected_index": index}
-            try:
+            with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                 parent = target.get_parent()
                 if parent and parent.is_selection():
                     idx = target.get_index_in_parent()
                     res = parent.select_child(idx)
                     return {"success": bool(res), "element": _safe_get_name(target), "index_in_parent": idx}
-            except Exception:
-                pass
             return self.do_action(element_path=element_path, app_name=app_name, element_name=element_name)
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             return {"success": False, "error": f"Selection error: {e}"}
 
-    def set_value(self, value: float, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None) -> dict[str, Any]:
+    def set_value(
+        self,
+        value: float,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -589,12 +639,22 @@ class AtspiAPI:
             return {"success": False, "error": "Element does not implement Value interface."}
         try:
             res = target.set_current_value(float(value))
-            return {"success": bool(res) if res is not None else True, "element": _safe_get_name(target), "value_set": float(value)}
-        except Exception as e:
+            return {
+                "success": bool(res) if res is not None else True,
+                "element": _safe_get_name(target),
+                "value_set": float(value),
+            }
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             return {"success": False, "error": f"Failed setting value: {e}"}
 
     def set_text(
-        self, text: str, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, use_focused: bool = True, press_enter: bool = False
+        self,
+        text: str,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        use_focused: bool = True,
+        press_enter: bool = False,
     ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
@@ -615,11 +675,23 @@ class AtspiAPI:
                 method_used = "synthesized_keyboard_input"
             if press_enter:
                 self.generate_key_event(65293, "pressrelease")
-            return {"success": bool(res) if res is not None else True, "element": _safe_get_name(target), "text_length": len(text), "method": method_used}
-        except Exception as e:
+            return {
+                "success": bool(res) if res is not None else True,
+                "element": _safe_get_name(target),
+                "text_length": len(text),
+                "method": method_used,
+            }
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             return {"success": False, "error": f"Failed setting text: {e}"}
 
-    def insert_text(self, text: str, position: int = -1, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None) -> dict[str, Any]:
+    def insert_text(
+        self,
+        text: str,
+        position: int = -1,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -629,8 +701,12 @@ class AtspiAPI:
             if position < 0:
                 position = target.get_character_count() if target.is_text() else 0
             res = target.insert_text(position, text, len(text))
-            return {"success": bool(res) if res is not None else True, "element": _safe_get_name(target), "inserted_at": position}
-        except Exception as e:
+            return {
+                "success": bool(res) if res is not None else True,
+                "element": _safe_get_name(target),
+                "inserted_at": position,
+            }
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             return {"success": False, "error": f"Failed inserting text: {e}"}
 
     def resolve_keyval(self, key_name_or_val: str | int) -> int:
@@ -643,12 +719,10 @@ class AtspiAPI:
         if k_lower in KNOWN_KEYVALS:
             return KNOWN_KEYVALS[k_lower]
         if _GDK_KEYVAL_FUNC:
-            try:
+            with contextlib.suppress(OSError, AttributeError, ValueError, TypeError):
                 kv = _GDK_KEYVAL_FUNC(k_str)
                 if kv:
                     return kv
-            except Exception:
-                pass
         return ord(k_str) if len(k_str) == 1 else 0
 
     def generate_keyboard_string(self, text: str, press_enter: bool = False) -> bool:
@@ -660,7 +734,7 @@ class AtspiAPI:
                 time.sleep(0.05)
                 self.generate_key_event(65293, "pressrelease")
             return bool(res)
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             return False
 
     def generate_key_event(self, key_name_or_val: str | int, event_type: str = "pressrelease") -> bool:
@@ -669,10 +743,16 @@ class AtspiAPI:
         keyval = self.resolve_keyval(key_name_or_val)
         if keyval == 0:
             return False
-        type_map = {"press": GiAtspi.KeySynthType.PRESS, "release": GiAtspi.KeySynthType.RELEASE, "pressrelease": GiAtspi.KeySynthType.PRESSRELEASE, "sym": GiAtspi.KeySynthType.SYM}
+        type_map = {
+            "press": GiAtspi.KeySynthType.PRESS,
+            "release": GiAtspi.KeySynthType.RELEASE,
+            "pressrelease": GiAtspi.KeySynthType.PRESSRELEASE,
+            "sym": GiAtspi.KeySynthType.SYM,
+        }
         try:
-            return bool(GiAtspi.generate_keyboard_event(keyval, None, type_map.get(event_type.lower(), GiAtspi.KeySynthType.PRESSRELEASE)))
-        except Exception:
+            synth_type = type_map.get(event_type.lower(), GiAtspi.KeySynthType.PRESSRELEASE)
+            return bool(GiAtspi.generate_keyboard_event(keyval, None, synth_type))
+        except (OSError, AttributeError, ValueError, TypeError):
             return False
 
     def generate_key_combo(self, combo: str) -> bool:
@@ -693,7 +773,7 @@ class AtspiAPI:
                 GiAtspi.generate_keyboard_event(mod, None, GiAtspi.KeySynthType.RELEASE)
                 time.sleep(0.01)
             return True
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             return False
 
     def generate_mouse_event(self, x: int, y: int, event_name: str = "b1c") -> bool:
@@ -701,10 +781,17 @@ class AtspiAPI:
             return False
         try:
             return bool(GiAtspi.generate_mouse_event(int(x), int(y), event_name))
-        except Exception:
+        except (OSError, AttributeError, ValueError, TypeError):
             return False
 
-    def click_element(self, element_path: str | None = None, app_name: str | None = None, element_name: str | None = None, button: str = "left", double_click: bool = False) -> dict[str, Any]:
+    def click_element(
+        self,
+        element_path: str | None = None,
+        app_name: str | None = None,
+        element_name: str | None = None,
+        button: str = "left",
+        double_click: bool = False,
+    ) -> dict[str, Any]:
         if not self.is_available():
             return {"success": False, "error": "AT-SPI is not available."}
         target = self._resolve_target(element_path, app_name, element_name)
@@ -714,15 +801,23 @@ class AtspiAPI:
         if not bounds or bounds.get("width", 0) <= 0:
             return self.do_action(element_path=element_path, app_name=app_name, element_name=element_name)
 
-        btn_code = "b3c" if button == "right" else ("b2c" if button == "middle" else ("b1d" if double_click else "b1c"))
+        btn_code = (
+            "b3c"
+            if button == "right"
+            else ("b2c" if button == "middle" else ("b1d" if double_click else "b1c"))
+        )
         res = self.generate_mouse_event(bounds["center_x"], bounds["center_y"], btn_code)
-        return {"success": bool(res), "element": _safe_get_name(target), "coordinates": {"x": bounds["center_x"], "y": bounds["center_y"]}}
+        return {
+            "success": bool(res),
+            "element": _safe_get_name(target),
+            "coordinates": {"x": bounds["center_x"], "y": bounds["center_y"]},
+        }
 
 
 atspi_api = AtspiAPI()
 
 
-class Atspi(Yarn):
+class AtspiAccessibility(Yarn):
     def is_available(self) -> bool:
         return atspi_api.is_available()
 

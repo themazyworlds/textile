@@ -5,24 +5,32 @@ across Session and System Busses without subprocess wrappers.
 Layer 50 (Desktop Protocol).
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os
 import threading
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-try:
+if TYPE_CHECKING:
     from dbus_fast import BusType, Message, MessageFlag, MessageType, Variant
     from dbus_fast.aio import MessageBus
-except ImportError:
-    BusType: Any = None
-    Message: Any = None
-    MessageFlag: Any = None
-    MessageType: Any = None
-    Variant: Any = None
-    MessageBus: Any = None
+else:
+    try:
+        from dbus_fast import BusType, Message, MessageFlag, MessageType, Variant
+        from dbus_fast.aio import MessageBus
+    except ImportError:
+        BusType = Any
+        Message = Any
+        MessageFlag = Any
+        MessageType = Any
+        Variant = Any
+        MessageBus = Any
 
 from textile.core.base import Yarn, strand
+
+MAX_INT_32_BITS = 31
 
 
 class DBusAPI:
@@ -81,7 +89,7 @@ class DBusAPI:
         if isinstance(val, bool):
             return "b"
         elif isinstance(val, int):
-            return "x" if val.bit_length() > 31 else "i"
+            return "x" if val.bit_length() > MAX_INT_32_BITS else "i"
         elif isinstance(val, float):
             return "d"
         elif isinstance(val, str):
@@ -260,7 +268,7 @@ class DBus(Yarn):
             try:
                 parsed = json.loads(args)
                 call_args = parsed if isinstance(parsed, list) else [parsed]
-            except Exception:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 call_args = [args.strip()]
 
         if not dest or not p or not iface or not m:
@@ -270,7 +278,7 @@ class DBus(Yarn):
             return dbus_api.run_sync(dbus_api.call(
                 bus=b, destination=dest, path=p, interface=iface, member=m, signature=signature, body=call_args
             ))
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error executing D-Bus call: {e}"
 
     @strand(description="Get a single property or all properties (GetAll) from a D-Bus object interface.")
@@ -302,7 +310,7 @@ class DBus(Yarn):
             return dbus_api.run_sync(dbus_api.get_property(
                 bus=b, destination=dest, path=p, interface=iface, property_name=property_name
             ))
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error reading D-Bus property: {e}"
 
     @strand(description="Set a writable D-Bus property on an object interface.")
@@ -349,7 +357,7 @@ class DBus(Yarn):
             return dbus_api.run_sync(dbus_api.set_property(
                 bus=b, destination=dest, path=p, interface=iface, property_name=prop, value=val, signature=signature
             ))
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error setting D-Bus property: {e}"
 
     @strand(description="Introspect a D-Bus node to discover available interfaces, methods, signals, and properties.")
@@ -374,5 +382,5 @@ class DBus(Yarn):
 
         try:
             return dbus_api.run_sync(dbus_api.introspect(bus=b, destination=dest, path=p))
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error introspecting D-Bus node: {e}"

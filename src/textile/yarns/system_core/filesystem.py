@@ -4,6 +4,7 @@ Provides file operations, atomic writes, and Linux kernel inotify real-time even
 Layer 10 (Core POSIX).
 """
 
+import contextlib
 import ctypes
 import ctypes.util
 import fnmatch
@@ -30,11 +31,9 @@ IN_MODIFY = 0x00000002
 IN_ATTRIB = 0x00000004
 IN_CLOSE_WRITE = 0x00000008
 IN_CLOSE_NOWRITE = 0x00000010
-IN_CLOSE = (IN_CLOSE_WRITE | IN_CLOSE_NOWRITE)
 IN_OPEN = 0x00000020
 IN_MOVED_FROM = 0x00000040
 IN_MOVED_TO = 0x00000080
-IN_MOVE = (IN_MOVED_FROM | IN_MOVED_TO)
 IN_CREATE = 0x00000100
 IN_DELETE = 0x00000200
 IN_DELETE_SELF = 0x00000400
@@ -50,6 +49,8 @@ IN_MASK_ADD = 0x20000000
 IN_ISDIR = 0x40000000
 IN_ONESHOT = 0x80000000
 
+IN_CLOSE = (IN_CLOSE_WRITE | IN_CLOSE_NOWRITE)
+IN_MOVE = (IN_MOVED_FROM | IN_MOVED_TO)
 IN_ALL_EVENTS = (
     IN_ACCESS | IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE
     | IN_OPEN | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELETE
@@ -60,37 +61,48 @@ IN_CLOEXEC = 0o2000000
 IN_NONBLOCK = 0o4000
 
 EVENT_NAME_MAP = {
-    IN_ACCESS: "IN_ACCESS", IN_MODIFY: "IN_MODIFY", IN_ATTRIB: "IN_ATTRIB",
-    IN_CLOSE_WRITE: "IN_CLOSE_WRITE", IN_CLOSE_NOWRITE: "IN_CLOSE_NOWRITE",
-    IN_OPEN: "IN_OPEN", IN_MOVED_FROM: "IN_MOVED_FROM", IN_MOVED_TO: "IN_MOVED_TO",
-    IN_CREATE: "IN_CREATE", IN_DELETE: "IN_DELETE", IN_DELETE_SELF: "IN_DELETE_SELF",
-    IN_MOVE_SELF: "IN_MOVE_SELF", IN_UNMOUNT: "IN_UNMOUNT", IN_Q_OVERFLOW: "IN_Q_OVERFLOW",
+    IN_ACCESS: "IN_ACCESS",
+    IN_MODIFY: "IN_MODIFY",
+    IN_ATTRIB: "IN_ATTRIB",
+    IN_CLOSE_WRITE: "IN_CLOSE_WRITE",
+    IN_CLOSE_NOWRITE: "IN_CLOSE_NOWRITE",
+    IN_OPEN: "IN_OPEN",
+    IN_MOVED_FROM: "IN_MOVED_FROM",
+    IN_MOVED_TO: "IN_MOVED_TO",
+    IN_CREATE: "IN_CREATE",
+    IN_DELETE: "IN_DELETE",
+    IN_DELETE_SELF: "IN_DELETE_SELF",
+    IN_MOVE_SELF: "IN_MOVE_SELF",
+    IN_UNMOUNT: "IN_UNMOUNT",
+    IN_Q_OVERFLOW: "IN_Q_OVERFLOW",
     IN_IGNORED: "IN_IGNORED",
+    IN_ISDIR: "IN_ISDIR",
 }
 
 ALIAS_TO_MASK = {
-    "all": IN_ALL_EVENTS, "create": IN_CREATE, "delete": IN_DELETE | IN_DELETE_SELF,
-    "modify": IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE, "write": IN_MODIFY | IN_CLOSE_WRITE,
-    "move": IN_MOVE | IN_MOVE_SELF, "open": IN_OPEN, "close": IN_CLOSE,
-    "access": IN_ACCESS, "attrib": IN_ATTRIB,
+    "all": IN_ALL_EVENTS,
+    "modify": IN_MODIFY | IN_ATTRIB,
+    "create": IN_CREATE | IN_MOVED_TO,
+    "delete": IN_DELETE | IN_MOVED_FROM | IN_DELETE_SELF,
+    "write": IN_CLOSE_WRITE | IN_MODIFY,
+    "move": IN_MOVE,
+    "close": IN_CLOSE,
 }
 
 
 class InotifyAPI:
-    """Universal Native Linux inotify kernel file-monitoring controller."""
+    """Linux kernel inotify C-types wrapper API."""
 
     def __init__(self) -> None:
-        self._libc = None
+        self._libc: Any = None
         self._fd: int | None = None
         self._watches: dict[int, str] = {}
         self._path_to_wd: dict[str, int] = {}
         self._initialized: bool = False
-        self._init_libc()
 
-    def _init_libc(self) -> None:
+        libc_name = ctypes.util.find_library("c") or "libc.so.6"
         try:
-            libc_path = ctypes.util.find_library("c") or "libc.so.6"
-            self._libc = ctypes.CDLL(libc_path, use_errno=True)
+            self._libc = ctypes.CDLL(libc_name, use_errno=True)
             self._libc.inotify_init1.argtypes = [ctypes.c_int]
             self._libc.inotify_init1.restype = ctypes.c_int
             self._libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
@@ -98,7 +110,7 @@ class InotifyAPI:
             self._libc.inotify_rm_watch.argtypes = [ctypes.c_int, ctypes.c_int]
             self._libc.inotify_rm_watch.restype = ctypes.c_int
             self._initialized = True
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError) as e:
             logger.warning(f"Failed to load libc inotify bindings: {e}")
             self._initialized = False
 
@@ -171,7 +183,12 @@ class InotifyAPI:
         if not added_watches:
             return {"success": False, "error": f"Failed to watch '{target_path}'."}
 
-        return {"success": True, "root_path": target_path, "watches_count": len(added_watches), "watches": added_watches}
+        return {
+            "success": True,
+            "root_path": target_path,
+            "watches_count": len(added_watches),
+            "watches": added_watches,
+        }
 
     def remove_watch(self, watch: int | str) -> dict[str, Any]:
         if self._fd is None or self._libc is None:
@@ -196,7 +213,15 @@ class InotifyAPI:
         return {"success": True, "removed_watch_id": wd, "path": path}
 
     def list_watches(self) -> list[dict[str, Any]]:
-        return [{"watch_id": wd, "path": p, "is_dir": os.path.isdir(p) if os.path.exists(p) else False, "exists": os.path.exists(p)} for wd, p in self._watches.items()]
+        return [
+            {
+                "watch_id": wd,
+                "path": p,
+                "is_dir": os.path.isdir(p) if os.path.exists(p) else False,
+                "exists": os.path.exists(p),
+            }
+            for wd, p in self._watches.items()
+        ]
 
     def read_events(self, timeout_ms: int = 100, max_events: int = 100) -> list[dict[str, Any]]:
         if self._fd is None:
@@ -207,7 +232,7 @@ class InotifyAPI:
             return []
 
         events = []
-        try:
+        with contextlib.suppress(OSError, AttributeError, ValueError, TypeError, struct.error):
             raw_data = os.read(self._fd, 16384)
             offset = 0
             data_len = len(raw_data)
@@ -231,11 +256,14 @@ class InotifyAPI:
                     "event": primary_name, "event_flags": event_flags, "is_dir": bool(mask & IN_ISDIR),
                     "cookie": cookie, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                 })
-        except Exception:
-            pass
         return events
 
-    def wait_for_event(self, path: str, events: int | str | list[str] = "all", timeout_seconds: float = 5.0) -> dict[str, Any]:
+    def wait_for_event(
+        self,
+        path: str,
+        events: int | str | list[str] = "all",
+        timeout_seconds: float = 5.0,
+    ) -> dict[str, Any]:
         target_path = self._resolve_path(path)
         is_already_watched = target_path in self._path_to_wd
         _ = self.read_events(timeout_ms=0, max_events=100)
@@ -260,8 +288,19 @@ class InotifyAPI:
                     if ev.get("event") == "IGNORED":
                         continue
                     if target_wd is None or ev.get("watch_id") == target_wd:
-                        return {"success": True, "triggered": True, "elapsed_seconds": round(time.time() - start_time, 3), "event": ev}
-            return {"success": True, "triggered": False, "timeout": True, "elapsed_seconds": round(time.time() - start_time, 3), "message": f"Timeout waiting for event on '{target_path}'."}
+                        return {
+                            "success": True,
+                            "triggered": True,
+                            "elapsed_seconds": round(time.time() - start_time, 3),
+                            "event": ev,
+                        }
+            return {
+                "success": True,
+                "triggered": False,
+                "timeout": True,
+                "elapsed_seconds": round(time.time() - start_time, 3),
+                "message": f"Timeout waiting for event on '{target_path}'.",
+            }
         finally:
             if temp_wd is not None:
                 self.remove_watch(temp_wd)
@@ -290,7 +329,7 @@ class FileIO:
         try:
             os.chdir(target)
             return f"Working directory changed to: {os.getcwd()}"
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error changing directory: {e}"
 
     def stat(self, path: str) -> dict[str, Any]:
@@ -312,7 +351,7 @@ class FileIO:
                 "ctime_iso": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(st.st_ctime)),
                 "inode": st.st_ino,
             }
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return {"error": f"Error querying stat: {e}"}
 
     def chmod(self, path: str, mode: str | int) -> str:
@@ -322,8 +361,9 @@ class FileIO:
         try:
             mode_int = int(mode.strip(), 8) if isinstance(mode, str) else int(mode)
             os.chmod(file_path, mode_int)
-            return f"Successfully changed permissions of '{file_path}' to {oct(stat.S_IMODE(os.stat(file_path).st_mode))}."
-        except Exception as e:
+            mode_oct = oct(stat.S_IMODE(os.stat(file_path).st_mode))
+            return f"Successfully changed permissions of '{file_path}' to {mode_oct}."
+        except (OSError, ValueError, TypeError) as e:
             return f"Error changing permissions: {e}"
 
     def disk_usage(self, path: str = ".") -> dict[str, Any]:
@@ -340,14 +380,12 @@ class FileIO:
                 "used_percentage": f"{used_pct}%",
             }
             if hasattr(os, "statvfs"):
-                try:
+                with contextlib.suppress(OSError, AttributeError):
                     st = os.statvfs(target)
                     result["total_inodes"] = st.f_files
                     result["free_inodes"] = st.f_ffree
-                except Exception:
-                    pass
             return result
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return {"error": f"Error querying disk usage: {e}"}
 
     def list_mounts(self) -> list[dict[str, Any]]:
@@ -355,16 +393,18 @@ class FileIO:
         if not mounts_path.exists():
             return []
         mounts = []
+        min_parts = 4
+        virtual_fs = ("sysfs", "proc", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2", "pstore", "bpf", "tracefs")
         try:
-            with open(mounts_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(mounts_path, encoding="utf-8", errors="replace") as f:
                 for line in f:
                     parts = line.strip().split()
-                    if len(parts) >= 4:
+                    if len(parts) >= min_parts:
                         dev, mp, fs, opts = parts[0], parts[1], parts[2], parts[3]
-                        if fs in ("sysfs", "proc", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2", "pstore", "bpf", "tracefs"):
+                        if fs in virtual_fs:
                             continue
                         mounts.append({"device": dev, "mount_point": mp, "fs_type": fs, "options": opts})
-        except Exception:
+        except (OSError, ValueError, TypeError):
             pass
         return mounts
 
@@ -390,14 +430,14 @@ class FileIO:
         if file_path.is_dir():
             return f"Error: '{file_path}' is a directory."
         try:
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
             if start_line is not None or end_line is not None:
                 start = max(1, start_line or 1) - 1
                 end = min(len(lines), end_line or len(lines))
                 return "".join([f"{start + i + 1}: {line}" for i, line in enumerate(lines[start:end])])
             return "".join(lines)
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error reading file: {e}"
 
     def write(self, path: str, content: str, atomic: bool = True) -> str:
@@ -413,7 +453,7 @@ class FileIO:
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
             return f"Successfully wrote {len(content)} characters to '{file_path}'."
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error writing to file: {e}"
 
     def replace(self, path: str, target: str, replacement: str) -> str:
@@ -421,7 +461,7 @@ class FileIO:
         if not file_path.exists():
             return f"Error: File '{file_path}' does not exist."
         try:
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
                 content = f.read()
             if target not in content:
                 return f"Error: Target text not found in '{file_path}'."
@@ -429,7 +469,7 @@ class FileIO:
             new_content = content.replace(target, replacement, 1)
             self.write(str(file_path), new_content, atomic=True)
             return f"Successfully replaced block in '{file_path}' (match 1 of {count})."
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error replacing in file: {e}"
 
     def list_dir(self, path: str = ".", recursive: bool = False, max_items: int = 50) -> list[dict[str, Any]]:
@@ -452,7 +492,7 @@ class FileIO:
                     if len(results) >= max_items:
                         break
             return results
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return [{"error": str(e)}]
 
     def find(self, directory: str, pattern: str, max_results: int = 30) -> list[str]:
@@ -466,7 +506,7 @@ class FileIO:
                         if len(matches) >= max_results:
                             return matches
             return matches
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return [f"Error searching: {e}"]
 
 
@@ -553,7 +593,7 @@ class FilesystemStorage(Yarn):
         """List mounted filesystems and storage devices."""
         return file_io.list_mounts()
 
-    @strand(description="File system operations, directory navigation, permissions, disk usage, and inotify monitoring.")
+    @strand(description="File system operations, directory navigation, permissions, and disk usage.")
     def file_op(
         self,
         operation: Literal[
@@ -597,42 +637,35 @@ class FilesystemStorage(Yarn):
         pat = str(pattern or "*").strip()
         evts = str(events or "all").strip()
 
-        if op == "getcwd":
-            return f"Current working directory: {file_io.getcwd()}"
-        elif op == "chdir":
-            return file_io.chdir(raw_path or ".")
-        elif op == "read":
-            return file_io.read(raw_path, start_line=start_line, end_line=end_line)
-        elif op == "write":
-            return file_io.write(raw_path, content=cnt, atomic=True)
-        elif op == "replace":
-            return file_io.replace(raw_path, target=tgt, replacement=repl)
-        elif op == "list":
-            return file_io.list_dir(raw_path or ".")
-        elif op == "find":
-            return file_io.find(raw_path or ".", pattern=pat)
-        elif op == "stat":
-            return file_io.stat(raw_path or ".")
-        elif op == "chmod":
-            return file_io.chmod(raw_path, mode=m)
-        elif op in ("disk_usage", "statvfs", "df"):
-            return file_io.disk_usage(raw_path or ".")
-        elif op in ("list_mounts", "mounts"):
-            return file_io.list_mounts()
-        elif op in ("get_all_disks", "all_disks", "disks"):
-            return file_io.get_all_disks()
-        elif op == "watch":
-            return inotify_api.add_watch(raw_path or ".", events=evts, recursive=recursive)
-        elif op == "unwatch":
-            return inotify_api.remove_watch(raw_path)
-        elif op == "list_watches":
-            return inotify_api.list_watches()
-        elif op == "read_events":
-            return inotify_api.read_events(timeout_ms=int(timeout_seconds * 1000))
-        elif op == "wait_event":
-            return inotify_api.wait_for_event(raw_path or ".", events=evts, timeout_seconds=timeout_seconds)
-        else:
-            return f"Unknown file operation '{op}'."
+        handlers = {
+            "getcwd": lambda: f"Current working directory: {file_io.getcwd()}",
+            "chdir": lambda: file_io.chdir(raw_path or "."),
+            "read": lambda: file_io.read(raw_path, start_line=start_line, end_line=end_line),
+            "write": lambda: file_io.write(raw_path, content=cnt, atomic=True),
+            "replace": lambda: file_io.replace(raw_path, target=tgt, replacement=repl),
+            "list": lambda: file_io.list_dir(raw_path or "."),
+            "find": lambda: file_io.find(raw_path or ".", pattern=pat),
+            "stat": lambda: file_io.stat(raw_path or "."),
+            "chmod": lambda: file_io.chmod(raw_path, mode=m),
+            "disk_usage": lambda: file_io.disk_usage(raw_path or "."),
+            "statvfs": lambda: file_io.disk_usage(raw_path or "."),
+            "df": lambda: file_io.disk_usage(raw_path or "."),
+            "list_mounts": file_io.list_mounts,
+            "mounts": file_io.list_mounts,
+            "get_all_disks": file_io.get_all_disks,
+            "all_disks": file_io.get_all_disks,
+            "disks": file_io.get_all_disks,
+            "watch": lambda: inotify_api.add_watch(raw_path or ".", events=evts, recursive=recursive),
+            "unwatch": lambda: inotify_api.remove_watch(raw_path),
+            "list_watches": inotify_api.list_watches,
+            "read_events": lambda: inotify_api.read_events(timeout_ms=int(timeout_seconds * 1000)),
+            "wait_event": lambda: inotify_api.wait_for_event(
+                raw_path or ".", events=evts, timeout_seconds=timeout_seconds
+            ),
+        }
+        if op in handlers:
+            return handlers[op]()
+        return f"Unknown file operation '{op}'."
 
     @strand(description="Add a Linux inotify kernel watch on a file or directory.")
     def inotify_watch(self, path: str, events: str = "all", recursive: bool = False) -> dict[str, Any]:

@@ -7,5 +7,5 @@ layer = 50
 description = "AT-SPI accessibility tree inspection and GUI element automation"
 
 [dependencies]
-python = ["pyatspi"]
+python = ["pyatspi", "pygobject-stubs"]
 system = []

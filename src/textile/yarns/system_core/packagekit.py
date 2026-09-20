@@ -5,22 +5,33 @@ and file provider queries via the freedesktop.org PackageKit D-Bus protocol (org
 Layer 10 (Core POSIX / System Lifecycle).
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import threading
-from typing import Any
+import time
+from typing import TYPE_CHECKING, Any
 
-try:
+if TYPE_CHECKING:
     from dbus_fast import BusType, Variant
     from dbus_fast.aio import MessageBus
-except ImportError:
-    BusType: Any = None
-    Variant: Any = None
-    MessageBus: Any = None
+else:
+    try:
+        from dbus_fast import BusType, Variant
+        from dbus_fast.aio import MessageBus
+    except ImportError:
+        BusType = Any
+        Variant = Any
+        MessageBus = Any
 
 from textile.core.base import CapabilityTier, Yarn, strand
 
 logger = logging.getLogger(__name__)
+
+PKG_ID_MIN_PARTS_ARCH = 2
+PKG_ID_MIN_PARTS_REPO = 3
+CACHE_FRESH_SECONDS = 60.0
 
 
 def parse_package_id(package_id: str) -> dict[str, str]:
@@ -31,8 +42,8 @@ def parse_package_id(package_id: str) -> dict[str, str]:
         "id": pkg_id,
         "name": parts[0] if len(parts) > 0 else pkg_id,
         "version": parts[1] if len(parts) > 1 else "",
-        "arch": parts[2] if len(parts) > 2 else "",
-        "repository": parts[3] if len(parts) > 3 else "",
+        "arch": parts[2] if len(parts) > PKG_ID_MIN_PARTS_ARCH else "",
+        "repository": parts[3] if len(parts) > PKG_ID_MIN_PARTS_REPO else "",
     }
 
 
@@ -77,7 +88,8 @@ class PackageKitDBusClient:
 
     async def _get_bus(self) -> Any:
         if self._system_bus is None and callable(MessageBus):
-            self._system_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+            mb_cls: Any = MessageBus
+            self._system_bus = await mb_cls(bus_type=BusType.SYSTEM).connect()
         return self._system_bus
 
     async def _create_transaction(self) -> tuple[Any, Any]:
@@ -176,7 +188,6 @@ class PackageKitDBusClient:
     async def _fetch_updates_task(self):
         """Asynchronously perform the full GetUpdates scan in the background."""
         try:
-            import time
             _, tx = await self._create_transaction()
             updates: list[dict[str, Any]] = []
             finished = asyncio.Event()
@@ -200,7 +211,7 @@ class PackageKitDBusClient:
             await asyncio.wait_for(finished.wait(), timeout=180.0)
             self._updates_cache = updates
             self._updates_cache_time = time.time()
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             logger.debug(f"Background GetUpdates failed: {e}")
         finally:
             self._updates_in_progress = False
@@ -209,11 +220,14 @@ class PackageKitDBusClient:
 
     async def get_updates(self, max_wait: float = 2.5) -> list[dict[str, Any]]:
         """Check for pending updates with background caching and MCP timeout protection."""
-        import time
         now = time.time()
 
         # If cache is very fresh (<60s) and no scan in progress, return immediately
-        if self._updates_cache is not None and (now - self._updates_cache_time < 60.0) and not self._updates_in_progress:
+        if (
+            self._updates_cache is not None
+            and (now - self._updates_cache_time < CACHE_FRESH_SECONDS)
+            and not self._updates_in_progress
+        ):
             return self._updates_cache
 
         # Start scan in background if not already running
@@ -236,8 +250,11 @@ class PackageKitDBusClient:
             return self._updates_cache
 
         return [{
-            "status": "scanning",
-            "message": "Package update scan is running asynchronously in the background. Please query packagekit_check_updates again in a few seconds.",
+            "status": "scan_in_progress",
+            "notice": (
+                "Package updates check started in background. "
+                "Query again in a few seconds."
+            ),
         }]
 
     async def what_provides(self, file_path: str) -> str:
@@ -272,7 +289,7 @@ class PackageKitDBusClient:
             await tx.call_refresh_cache(force)
             await asyncio.wait_for(finished.wait(), timeout=180.0)
             self._updates_cache = None  # Invalidate cached updates
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             logger.debug(f"Background refresh_cache failed: {e}")
         finally:
             self._refresh_in_progress = False
@@ -367,7 +384,7 @@ class PackageKitController:
             return []
         try:
             return self.client.run_sync(self.client.search_names(clean_query, limit=limit), timeout=30.0)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return [{"error": f"PackageKit D-Bus search error: {e}"}]
 
     def install(self, packages: list[str]) -> str:
@@ -377,7 +394,7 @@ class PackageKitController:
             return "Error: No packages specified for installation."
         try:
             return self.client.run_sync(self.client.install_packages(packages), timeout=300.0)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"PackageKit D-Bus install error: {e}"
 
     def remove(self, packages: list[str], autoremove: bool = False) -> str:
@@ -387,7 +404,7 @@ class PackageKitController:
             return "Error: No packages specified for removal."
         try:
             return self.client.run_sync(self.client.remove_packages(packages, autoremove=autoremove), timeout=300.0)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"PackageKit D-Bus remove error: {e}"
 
     def get_details(self, package: str) -> dict[str, Any]:
@@ -396,7 +413,7 @@ class PackageKitController:
         pkg_name = package.strip()
         try:
             return self.client.run_sync(self.client.get_details(pkg_name), timeout=25.0)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return {"error": f"PackageKit D-Bus get_details error: {e}"}
 
     def check_updates(self) -> list[dict[str, Any]]:
@@ -404,7 +421,7 @@ class PackageKitController:
             return [{"error": "PackageKit D-Bus client is not available."}]
         try:
             return self.client.run_sync(self.client.get_updates(max_wait=3.5), timeout=4.5)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return [{"error": f"PackageKit D-Bus check_updates error: {e}"}]
 
     def what_provides(self, file_path: str) -> str:
@@ -412,7 +429,7 @@ class PackageKitController:
             return "Error: PackageKit D-Bus client is not available."
         try:
             return self.client.run_sync(self.client.what_provides(file_path), timeout=30.0)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"PackageKit D-Bus what_provides error: {e}"
 
     def refresh_cache(self, force: bool = False) -> str:
@@ -420,7 +437,7 @@ class PackageKitController:
             return "Error: PackageKit D-Bus client is not available."
         try:
             return self.client.run_sync(self.client.refresh_cache(force=force, max_wait=2.5), timeout=3.5)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"PackageKit D-Bus refresh_cache error: {e}"
 
 
@@ -434,7 +451,7 @@ class PackageKit(Yarn):
         return packagekit_ctl.is_available()
 
     @strand(
-        description="Search for available or installed packages across distribution repositories via PackageKit D-Bus.",
+        description="Search for available or installed packages via PackageKit D-Bus.",
         tier=CapabilityTier.OBSERVE,
     )
     def packagekit_search(self, query: str = "", limit: int = 25) -> list[dict[str, Any]]:
@@ -471,7 +488,7 @@ class PackageKit(Yarn):
         return packagekit_ctl.remove(packages=pkgs_raw, autoremove=autoremove)
 
     @strand(
-        description="Get detailed metadata, description, license, and repository info for a package via PackageKit D-Bus.",
+        description="Get package metadata, description, license, and repo info via PackageKit D-Bus.",
         tier=CapabilityTier.OBSERVE,
     )
     def packagekit_get_details(self, package: str) -> dict[str, Any]:

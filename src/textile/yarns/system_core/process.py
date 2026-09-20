@@ -4,6 +4,7 @@ Provides POSIX signals, process inspection, system load monitoring, and backgrou
 Layer 10 (Core POSIX).
 """
 
+import contextlib
 import os
 import signal as sig_mod
 import subprocess
@@ -13,6 +14,7 @@ from typing import Any
 from textile import Yarn, strand
 
 BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}
+MAX_PROC_SCAN_LIMIT = 50
 
 
 class ProcessControl(Yarn):
@@ -43,10 +45,10 @@ class ProcessControl(Yarn):
         if not app_clean:
             return "Error: No application command provided."
         try:
-            proc = subprocess.Popen(app_clean, shell=True, start_new_session=True, cwd=os.getcwd())
+            proc = subprocess.Popen(app_clean, shell=True, start_new_session=True, cwd=os.getcwd())  # noqa: S602
             self.register_bg_job(proc.pid, app_clean, "app")
             return f"Universal Launcher: Started '{app_clean}' in background (PID {proc.pid})."
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching application: {e}"
 
     @strand(description="List running system processes with PID, CPU/memory usage, user, and command line.")
@@ -63,18 +65,16 @@ class ProcessControl(Yarn):
                     p = int(entry.name)
                     comm_path = os.path.join(entry.path, "comm")
                     if os.path.exists(comm_path):
-                        try:
+                        with contextlib.suppress(OSError, ValueError, TypeError):
                             with open(comm_path, encoding="utf-8", errors="replace") as f:
                                 pname = f.read().strip()
                             if filter_name and filter_name not in pname.lower():
                                 continue
                             procs.append({"pid": p, "name": pname})
-                            if len(procs) >= 50:
+                            if len(procs) >= MAX_PROC_SCAN_LIMIT:
                                 break
-                        except Exception:
-                            pass
             return procs
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return [{"error": f"Error scanning /proc: {e}"}]
 
     @strand(description="Send a POSIX signal to terminate or signal a process by PID.")
@@ -95,7 +95,7 @@ class ProcessControl(Yarn):
             return f"Process PID {pid} not found (already exited)."
         except PermissionError:
             return f"Error: Permission denied sending signal to PID {pid}."
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error sending signal: {e}"
 
     @strand(description="List background jobs spawned and tracked by Textile.")
@@ -129,7 +129,7 @@ class ProcessControl(Yarn):
                     "cpu_cores": os.cpu_count() or 1,
                 }
             return {"cpu_cores": os.cpu_count() or 1, "notice": "Load average metric not supported platform."}
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             return {"error": f"Error reading load average: {e}"}
 
     @strand(description="Get nice priority level of a running process by PID.")
@@ -142,7 +142,7 @@ class ProcessControl(Yarn):
             return "Error: Priority management not supported."
         try:
             return f"PID {pid} nice priority: {os.getpriority(os.PRIO_PROCESS, int(pid))}"
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error getting priority: {e}"
 
     @strand(description="Set nice priority level (-20 to 19) of a process by PID.")
@@ -157,5 +157,5 @@ class ProcessControl(Yarn):
         try:
             os.setpriority(os.PRIO_PROCESS, int(pid), int(priority))
             return f"PID {pid} nice priority set to {priority}."
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return f"Error setting priority: {e}"

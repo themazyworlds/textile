@@ -11,31 +11,10 @@ import threading
 from importlib.metadata import entry_points
 from pathlib import Path
 
+import textile.yarns
 from textile.core.base import Yarn, YarnManifest
 
 logger = logging.getLogger(__name__)
-
-BUILTIN_YARNS = [
-    ("session.uwsm", "UWSM"),
-    ("compositor.hyprland", "Hyprland"),
-    ("compositor.caelestia", "Caelestia"),
-    ("compositor.canvas", "Canvas"),
-    ("protocols.clipboard", "Clipboard"),
-    ("protocols.dbus_system", "DBus"),
-    ("protocols.journal", "Journal"),
-    ("protocols.polkit", "Polkit"),
-    ("protocols.ydotool", "Ydotool"),
-    ("protocols.atspi", "Atspi"),
-    ("system_core.basics", "Basics"),
-    ("system_core.process", "ProcessControl"),
-    ("system_core.filesystem", "FilesystemStorage"),
-    ("system_core.web_research", "WebResearch"),
-    ("system_core.screen_vision", "ScreenVision"),
-    ("system_core.dev_shell", "DevShell"),
-    ("system_core.sensors", "Sensors"),
-    ("system_core.packagekit", "PackageKit"),
-]
-
 
 class Skein:
     """Manages yarn discovery, configuration, and runtime health."""
@@ -97,14 +76,28 @@ class Skein:
             return active
 
     def load_builtin_yarns(self) -> None:
-        for mod_path, cls_name in BUILTIN_YARNS:
-            try:
-                mod = importlib.import_module(f"textile.yarns.{mod_path}")
-                instance = getattr(mod, cls_name)()
-                with self._lock:
-                    self.all_yarns[instance.name] = instance
-            except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                logger.debug(f"Skipping builtin yarn {mod_path}: {e}")
+        try:
+            yarns_root = Path(textile.yarns.__file__).parent
+            for py_file in yarns_root.rglob("*.py"):
+                if py_file.name.startswith("_"):
+                    continue
+                rel_path = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
+                modname = f"textile.yarns.{rel_path}"
+                try:
+                    mod = importlib.import_module(modname)
+                    for _, attr in inspect.getmembers(mod, inspect.isclass):
+                        if (
+                            issubclass(attr, Yarn)
+                            and attr is not Yarn
+                            and getattr(attr, "__module__", None) == modname
+                        ):
+                            instance = attr()
+                            with self._lock:
+                                self.all_yarns[instance.name] = instance
+                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                    logger.debug(f"Skipping builtin yarn module {modname}: {e}")
+        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+            logger.debug(f"Failed scanning builtin yarns: {e}")
 
     def load_entrypoint_yarns(self) -> None:
         try:
@@ -156,7 +149,7 @@ class Skein:
                 m = YarnManifest.from_toml(toml_file)
                 if m.name:
                     manifests[m.name] = m
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
                 logger.debug(f"Failed parsing manifest {toml_file}: {e}")
         if self._user_yarns_dir.exists():
             for toml_file in self._user_yarns_dir.rglob("*.toml"):
@@ -164,7 +157,7 @@ class Skein:
                     m = YarnManifest.from_toml(toml_file)
                     if m.name:
                         manifests[m.name] = m
-                except Exception as e:
+                except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
                     logger.debug(f"Failed parsing user manifest {toml_file}: {e}")
         return manifests
 

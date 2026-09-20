@@ -4,6 +4,7 @@ Provides high-speed hardware temperature, fan speeds, CPU core frequencies, and 
 Layer 10 (Core POSIX).
 """
 
+import contextlib
 import ctypes
 import ctypes.util
 import json
@@ -27,22 +28,16 @@ class SensorsAPI:
         lib_path = ctypes.util.find_library("sensors") if hasattr(ctypes, "util") else None
         if not lib_path:
             for candidate in ("libsensors.so.5", "libsensors.so.4", "libsensors.so"):
-                try:
+                with contextlib.suppress(OSError, AttributeError):
                     self._libsensors = ctypes.CDLL(candidate)
                     break
-                except Exception:
-                    pass
         else:
-            try:
+            with contextlib.suppress(OSError, AttributeError):
                 self._libsensors = ctypes.CDLL(lib_path)
-            except Exception:
-                pass
 
         if self._libsensors:
-            try:
+            with contextlib.suppress(AttributeError, TypeError, OSError):
                 self._libsensors.sensors_init(None)
-            except Exception:
-                self._libsensors = None
 
     def is_available(self) -> bool:
         if self._libsensors or shutil.which("sensors"):
@@ -50,17 +45,16 @@ class SensorsAPI:
         return os.path.exists("/sys/class/hwmon")
 
     def get_sensor_data(self) -> dict[str, Any]:
-        if shutil.which("sensors"):
-            try:
-                res = subprocess.run(["sensors", "-j"], capture_output=True, text=True, timeout=3)
+        sensors_bin = shutil.which("sensors")
+        if sensors_bin:
+            with contextlib.suppress(OSError, ValueError, TypeError, json.JSONDecodeError, subprocess.SubprocessError):
+                res = subprocess.run([sensors_bin, "-j"], capture_output=True, text=True, timeout=3, check=False)
                 raw_out = res.stdout.strip()
                 if raw_out:
                     idx = raw_out.find("{")
                     if idx != -1:
                         data = json.loads(raw_out[idx:])
                         return self._format_sensors_json(data)
-            except Exception:
-                pass
         return self._read_sysfs_hwmon()
 
     def _format_sensors_json(self, raw_data: dict[str, Any]) -> dict[str, Any]:
@@ -110,22 +104,18 @@ class SensorsAPI:
             name = name_file.read_text().strip() if name_file.exists() else hw_dir.name
 
             for temp_input in hw_dir.glob("temp*_input"):
-                try:
+                with contextlib.suppress(OSError, ValueError, TypeError):
                     temp_c = round(int(temp_input.read_text().strip()) / 1000.0, 1)
                     label_file = hw_dir / temp_input.name.replace("_input", "_label")
                     label = label_file.read_text().strip() if label_file.exists() else temp_input.stem
                     data["temperatures"][f"{name} {label}"] = f"{temp_c}°C"
-                except Exception:
-                    pass
 
             for fan_input in hw_dir.glob("fan*_input"):
-                try:
+                with contextlib.suppress(OSError, ValueError, TypeError):
                     rpm = int(fan_input.read_text().strip())
                     label_file = hw_dir / fan_input.name.replace("_input", "_label")
                     label = label_file.read_text().strip() if label_file.exists() else fan_input.stem
                     data["fans"][f"{name} {label}"] = f"{rpm} RPM"
-                except Exception:
-                    pass
         return data
 
     def get_cpu_frequencies(self) -> list[dict[str, Any]]:
@@ -137,12 +127,11 @@ class SensorsAPI:
             cur_freq_file = c_dir / "cpufreq" / "scaling_cur_freq"
             gov_file = c_dir / "cpufreq" / "scaling_governor"
             if cur_freq_file.exists():
-                try:
+                with contextlib.suppress(OSError, ValueError, TypeError):
                     freq_mhz = round(int(cur_freq_file.read_text().strip()) / 1000.0, 1)
                     gov = gov_file.read_text().strip() if gov_file.exists() else "unknown"
                     freqs.append({"core": c_dir.name, "freq": f"{freq_mhz} MHz", "governor": gov})
-                except Exception:
-                    pass
+        return freqs
         return freqs
 
 

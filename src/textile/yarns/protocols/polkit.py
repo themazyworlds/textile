@@ -12,12 +12,13 @@ import os
 import shutil
 import subprocess
 import time
+import xml.dom.minidom
 import xml.etree.ElementTree as ET
 from typing import Any, Literal
 
 try:
     from dbus_fast import Variant
-except Exception:
+except (ImportError, AttributeError):
     Variant = None
 
 from textile.core.base import CapabilityTier, Yarn, strand
@@ -35,46 +36,37 @@ IMPLICIT_AUTH_MAP = {
     6: "auth_admin",
     7: "auth_admin_keep",
 }
+MIN_ACTION_ITEM_LEN = 10
+IDX_DETAILS = 2
 
 
 class PolkitAPI:
-    """Universal Linux Polkit-1 Authority & Privilege Management Controller."""
+    """Polkit-1 D-Bus and CLI Integration API."""
 
     def __init__(self):
         self._authority_dest = "org.freedesktop.PolicyKit1"
         self._authority_path = "/org/freedesktop/PolicyKit1/Authority"
         self._authority_iface = "org.freedesktop.PolicyKit1.Authority"
+        self._pkexec_bin: str | None = shutil.which("pkexec")
 
     def is_available(self) -> bool:
-        try:
-            res = dbus_api.run_sync(
-                dbus_api.get_property(
-                    bus="system",
-                    destination=self._authority_dest,
-                    path=self._authority_path,
-                    interface=self._authority_iface,
-                    property_name="BackendName",
-                ),
-                timeout=3.0,
-            )
-            return bool(res)
-        except Exception:
-            return os.path.exists("/usr/share/polkit-1/actions") or shutil.which("pkexec") is not None
+        return self._pkexec_bin is not None or os.path.exists("/usr/share/polkit-1/actions")
 
     def check_authorization(
         self,
         action_id: str,
         details: dict[str, str] | None = None,
         allow_user_interaction: bool = False,
-        pid: int | None = None,
     ) -> dict[str, Any]:
-        target_pid = pid or os.getpid()
-        subject = ("unix-process", {"pid": Variant("u", target_pid) if Variant else target_pid, "start-time": Variant("t", 0) if Variant else 0})
-        det = details or {}
-        flags = 1 if allow_user_interaction else 0
-        cancellation_id = ""
-
+        if Variant is None:
+            return {"error": "dbus_fast dependency is not installed."}
         try:
+            session_name = dbus_api._session_bus.unique_name if dbus_api._session_bus else ":1.0"
+            subject = ("system-bus-name", {"name": Variant("s", session_name)})
+            details_dict = {k: Variant("s", str(v)) for k, v in (details or {}).items()}
+            flags = 1 if allow_user_interaction else 0
+            cancellation_id = ""
+
             res = dbus_api.run_sync(
                 dbus_api.call(
                     bus="system",
@@ -82,26 +74,33 @@ class PolkitAPI:
                     path=self._authority_path,
                     interface=self._authority_iface,
                     member="CheckAuthorization",
-                    signature="(sa{sv})sa{ss}us",
-                    body=[subject, action_id, det, flags, cancellation_id],
+                    signature="(sa{sv})sa{sv}us",
+                    body=[subject, action_id, details_dict, flags, cancellation_id],
                 ),
-                timeout=60.0 if allow_user_interaction else 5.0,
+                timeout=5.0,
             )
 
-            if res and isinstance(res, (list, tuple)) and len(res) >= 3:
-                is_auth = bool(res[0])
-                is_challenge = bool(res[1])
-                res_details = res[2] if isinstance(res[2], dict) else {}
+            if res and isinstance(res, (list, tuple)) and len(res) > 0:
+                auth_seq: Any = res[0]
+                try:
+                    is_auth = bool(auth_seq[0])
+                    is_challenge = bool(auth_seq[1]) if len(auth_seq) > 1 else False
+                    res_details = auth_seq[IDX_DETAILS] if len(auth_seq) > IDX_DETAILS else {}
+                except (IndexError, TypeError, KeyError):
+                    is_auth = False
+                    is_challenge = False
+                    res_details = {}
+                res_str = "yes" if is_auth else ("challenge" if is_challenge else "no")
+
                 return {
-                    "success": True,
                     "action_id": action_id,
                     "is_authorized": is_auth,
                     "is_challenge": is_challenge,
                     "details": res_details,
-                    "result": res_details.get("polkit.result", "yes" if is_auth else ("challenge" if is_challenge else "no")),
+                    "result": res_details.get("polkit.result", res_str),
                 }
             return {"success": False, "error": f"Unexpected Polkit response: {res}"}
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return {"success": False, "error": f"Polkit check failed: {e}"}
 
     def list_actions(self, filter_query: str | None = None) -> list[dict[str, Any]]:
@@ -122,7 +121,7 @@ class PolkitAPI:
             actions = []
             if res and isinstance(res, (list, tuple)):
                 for item in res:
-                    if isinstance(item, (list, tuple)) and len(item) >= 10:
+                    if isinstance(item, (list, tuple)) and len(item) >= MIN_ACTION_ITEM_LEN:
                         act_id = str(item[0])
                         desc = str(item[1])
                         msg = str(item[2])
@@ -148,13 +147,13 @@ class PolkitAPI:
 
                 if actions:
                     return actions
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             logger.debug(f"D-Bus EnumerateActions fallback: {e}")
 
         results = []
         for policy_file in glob.glob("/usr/share/polkit-1/actions/*.policy"):
             try:
-                tree = ET.parse(policy_file)
+                tree = ET.parse(policy_file)  # noqa: S314
                 root = tree.getroot()
                 vendor = root.findtext("vendor", "System")
                 for act in root.findall("action"):
@@ -162,9 +161,17 @@ class PolkitAPI:
                     desc = act.findtext("description", "")
                     msg = act.findtext("message", "")
                     defaults = act.find("defaults")
-                    imp_any = defaults.findtext("allow_any", "auth_admin") if defaults is not None else "auth_admin"
-                    imp_inact = defaults.findtext("allow_inactive", "auth_admin") if defaults is not None else "auth_admin"
-                    imp_act = defaults.findtext("allow_active", "auth_admin_keep") if defaults is not None else "auth_admin_keep"
+                    imp_any = (
+                        defaults.findtext("allow_any", "auth_admin") if defaults is not None else "auth_admin"
+                    )
+                    imp_inact = (
+                        defaults.findtext("allow_inactive", "auth_admin") if defaults is not None else "auth_admin"
+                    )
+                    imp_act = (
+                        defaults.findtext("allow_active", "auth_admin_keep")
+                        if defaults is not None
+                        else "auth_admin_keep"
+                    )
 
                     if filter_query:
                         q = filter_query.lower()
@@ -180,7 +187,7 @@ class PolkitAPI:
                         "implicit_inactive": imp_inact,
                         "implicit_active": imp_act,
                     })
-            except Exception:
+            except (OSError, ET.ParseError, ValueError, TypeError, AttributeError, KeyError):
                 continue
 
         return results
@@ -213,18 +220,17 @@ class PolkitAPI:
             a_act.text = act.get("allow_active", "auth_admin_keep")
 
         xml_str = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
-        import xml.dom.minidom
-        dom = xml.dom.minidom.parseString(xml_str)
+        dom = xml.dom.minidom.parseString(xml_str)  # noqa: S318
         pretty_xml = dom.toprettyxml(indent="  ")
 
         if output_path:
-            out = os.path.expanduser(output_path)
-            os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-            with open(out, "w", encoding="utf-8") as f:
+            p_out = os.path.abspath(output_path)
+            os.makedirs(os.path.dirname(p_out), exist_ok=True)
+            with open(p_out, "w", encoding="utf-8") as f:
                 f.write(pretty_xml)
-            return {"success": True, "path": out, "actions_count": len(actions), "xml": pretty_xml}
+            return {"success": True, "output_path": p_out, "xml": pretty_xml}
 
-        return {"success": True, "actions_count": len(actions), "xml": pretty_xml}
+        return {"success": True, "xml": pretty_xml}
 
     def generate_rule(
         self,
@@ -235,57 +241,56 @@ class PolkitAPI:
         result: str = "yes",
         output_path: str | None = None,
     ) -> dict[str, Any]:
-        res_enum = f"polkit.Result.{result.upper()}"
-        users_list = [f'"{u}"' for u in (users or [])]
-        groups_list = [f'"{g}"' for g in (groups or [])]
+        rule_id = rule_name.strip().replace(" ", "_")
+        code_lines = [f"// Polkit rule generated by Textile: {rule_id}"]
+        code_lines.append("polkit.addRule(function(action, subject) {")
+        code_lines.append(f'    if (action.id == "{action_pattern}" || action.id.match(/{action_pattern}/)) {{')
 
-        conditions = []
-        if action_pattern.endswith("*"):
-            prefix = action_pattern[:-1]
-            conditions.append(f'action.id.indexOf("{prefix}") === 0')
+        if users:
+            u_checks = " || ".join([f'subject.user == "{u}"' for u in users])
+            code_lines.append(f"        if ({u_checks}) {{")
+            code_lines.append(f'            return polkit.Result.{result.upper()};')
+            code_lines.append("        }")
+        elif groups:
+            g_checks = " || ".join([f'subject.isInGroup("{g}")' for g in groups])
+            code_lines.append(f"        if ({g_checks}) {{")
+            code_lines.append(f'            return polkit.Result.{result.upper()};')
+            code_lines.append("        }")
         else:
-            conditions.append(f'action.id === "{action_pattern}"')
+            code_lines.append(f'        return polkit.Result.{result.upper()};')
 
-        if users_list:
-            conditions.append(f'[{", ".join(users_list)}].indexOf(subject.user) !== -1')
+        code_lines.append("    }")
+        code_lines.append("});")
 
-        if groups_list:
-            groups_checks = " || ".join([f'subject.isInGroup({g})' for g in groups_list])
-            conditions.append(f"({groups_checks})")
+        rule_code = "\n".join(code_lines) + "\n"
 
-        joined_conditions = " &&\n        ".join(conditions)
-
-        js_content = f"""/* Polkit Rule: {rule_name} */
-polkit.addRule(function(action, subject) {{
-    if ({joined_conditions}) {{
-        return {res_enum};
-    }}
-}});
-"""
         if output_path:
-            out = os.path.expanduser(output_path)
-            os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(js_content)
-            return {"success": True, "path": out, "rule_name": rule_name, "content": js_content}
+            p_out = os.path.abspath(output_path)
+            os.makedirs(os.path.dirname(p_out), exist_ok=True)
+            with open(p_out, "w", encoding="utf-8") as f:
+                f.write(rule_code)
+            return {"success": True, "output_path": p_out, "rule_code": rule_code}
 
-        return {"success": True, "rule_name": rule_name, "content": js_content}
+        return {"success": True, "rule_code": rule_code}
 
     def pkexec(
         self,
-        command: str | list[str],
-        user: str = "root",
+        command: str,
+        args: list[str] | None = None,
+        user: str | None = None,
         env: dict[str, str] | None = None,
-        timeout_seconds: float = 30.0,
+        timeout_seconds: float = 60.0,
     ) -> dict[str, Any]:
-        pkexec_bin = shutil.which("pkexec")
-        if not pkexec_bin:
-            return {"success": False, "error": "pkexec binary not found."}
+        if not self._pkexec_bin:
+            return {"success": False, "error": "pkexec is not installed on this system."}
 
-        if isinstance(command, str):
-            cmd_args = [pkexec_bin, "--user", user, "sh", "-c", command]
-        else:
-            cmd_args = [pkexec_bin, "--user", user] + list(command)
+        cmd_args = [self._pkexec_bin]
+        if user:
+            cmd_args.extend(["--user", user])
+
+        cmd_args.append(command)
+        if args:
+            cmd_args.extend(args)
 
         exec_env = os.environ.copy()
         if env:
@@ -299,6 +304,7 @@ polkit.addRule(function(action, subject) {{
                 text=True,
                 env=exec_env,
                 timeout=timeout_seconds,
+                check=False,
             )
             elapsed = round(time.time() - start_time, 3)
             return {
@@ -310,7 +316,7 @@ polkit.addRule(function(action, subject) {{
             }
         except subprocess.TimeoutExpired:
             return {"success": False, "error": f"pkexec timed out after {timeout_seconds}s."}
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return {"success": False, "error": f"pkexec execution failed: {e}"}
 
 
@@ -342,10 +348,12 @@ class Polkit(Yarn):
         if details:
             try:
                 det = json.loads(details) if isinstance(details, str) else details
-            except Exception:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 det = {}
 
-        return polkit_api.check_authorization(action_id=act_id, details=det, allow_user_interaction=allow_user_interaction)
+        return polkit_api.check_authorization(
+            action_id=act_id, details=det, allow_user_interaction=allow_user_interaction
+        )
 
     @strand(description="List and search registered Polkit action definitions.", tier=CapabilityTier.OBSERVE)
     def polkit_list_actions(self, filter_query: str | None = None) -> dict[str, Any]:
@@ -378,10 +386,12 @@ class Polkit(Yarn):
             parsed_actions = json.loads(actions) if isinstance(actions, str) else actions
             if not isinstance(parsed_actions, list):
                 return {"success": False, "error": "actions must be a JSON array."}
-        except Exception as e:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
             return {"success": False, "error": f"Invalid JSON in actions: {e}"}
 
-        return polkit_api.generate_policy(actions=parsed_actions, vendor=vendor, vendor_url=vendor_url, output_path=output_path)
+        return polkit_api.generate_policy(
+            actions=parsed_actions, vendor=vendor, vendor_url=vendor_url, output_path=output_path
+        )
 
     @strand(
         description="Generate a Polkit-1 JavaScript rule (.rules) for pre-authorizing specific actions.",
@@ -412,14 +422,14 @@ class Polkit(Yarn):
         if users:
             try:
                 parsed_users = json.loads(users) if isinstance(users, str) else users
-            except Exception:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 parsed_users = [str(users)]
 
         parsed_groups = None
         if groups:
             try:
                 parsed_groups = json.loads(groups) if isinstance(groups, str) else groups
-            except Exception:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 parsed_groups = [str(groups)]
 
         return polkit_api.generate_rule(

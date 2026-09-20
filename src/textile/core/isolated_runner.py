@@ -5,6 +5,7 @@ Invoked via `uv run --isolated` for ephemeral, dependency-isolated strand execut
 
 import importlib
 import json
+import os
 import sys
 from typing import Any
 
@@ -27,7 +28,6 @@ def main():
         print(json.dumps({"success": False, "error": f"Failed to parse arguments JSON: {e}"}))
         sys.exit(1)
 
-    import os
     cwd = os.getcwd()
     if cwd not in sys.path:
         sys.path.insert(0, cwd)

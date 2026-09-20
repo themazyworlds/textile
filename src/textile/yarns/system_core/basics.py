@@ -4,6 +4,9 @@ Provides system timing delays, state inspection, and integrity checks.
 Layer 10 (Core POSIX).
 """
 
+import os
+import subprocess
+import sys
 from typing import Any
 
 from textile.core.base import Yarn, strand
@@ -17,7 +20,7 @@ class Basics(Yarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(description="Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts).")
+    @strand(description="Get the open sensory blackboard snapshot.")
     def textile_get_sensory_state(self) -> dict[str, Any]:
         """Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts)."""
         return sensory_tapestry.get_state()
@@ -48,10 +51,6 @@ class Basics(Yarn):
     @strand(description="Run the full Textile system diagnostic unit, integration, and E2E test suite.")
     def run_system_tests(self) -> str:
         """Run the full Textile system diagnostic unit, integration, and E2E test suite."""
-        import os
-        import subprocess
-        import sys
-
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
         test_script = os.path.join(project_root, "tests", "run_all_tests.py")
         if not os.path.exists(test_script):
@@ -64,8 +63,9 @@ class Basics(Yarn):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                timeout=60
+                timeout=60,
+                check=False,
             )
             return res.stdout
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error executing system test suite: {e}"

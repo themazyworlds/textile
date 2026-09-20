@@ -4,11 +4,13 @@ Provides real-time emotive expression, mood orchestration, and IPC control over 
 Layer 100 (Compositor / DE).
 """
 
+import contextlib
 import json
 import logging
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -46,11 +48,12 @@ class CanvasController:
                 return True
             self._proc = None
         qml_file = self.get_qml_path()
+        pgrep_bin = shutil.which("pgrep") or "/usr/bin/pgrep"
         try:
-            res = subprocess.run(["pgrep", "-f", qml_file], capture_output=True, timeout=0.2)
+            res = subprocess.run([pgrep_bin, "-f", qml_file], capture_output=True, timeout=0.2, check=False)
             if res.returncode == 0 and res.stdout.strip():
                 return True
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
         return bool(sensory_tapestry.get_slot("canvas.visible", False))
 
@@ -64,9 +67,10 @@ class CanvasController:
             sensory_tapestry.set_slot("canvas.visible", True)
             return "Canvas is already running."
 
+        qs_bin = shutil.which("quickshell") or shutil.which("qs") or "quickshell"
         try:
             self._proc = subprocess.Popen(
-                ["quickshell", "-p", qml_file],
+                [qs_bin, "-p", qml_file],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -75,12 +79,11 @@ class CanvasController:
             sensory_tapestry.set_slot("canvas.pid", self._proc.pid)
             sensory_tapestry.stitch("INFO", "canvas", f"Canvas UI launched (PID {self._proc.pid})")
             return f"Canvas UI launched (PID {self._proc.pid})."
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching canvas UI: {e}"
 
     def close(self) -> str:
         """Close the Quickshell Canvas window."""
-        import time
         self.call_ipc("quit")
         qml_file = self.get_qml_path()
 
@@ -90,17 +93,14 @@ class CanvasController:
             try:
                 self._proc.terminate()
                 self._proc.wait(timeout=1)
-            except Exception:
-                try:
+            except (OSError, subprocess.SubprocessError):
+                with contextlib.suppress(OSError, subprocess.SubprocessError):
                     self._proc.kill()
-                except Exception:
-                    pass
             self._proc = None
 
-        try:
-            subprocess.run(["pkill", "-f", qml_file], capture_output=True, timeout=0.2)
-        except Exception:
-            pass
+        pkill_bin = shutil.which("pkill") or "/usr/bin/pkill"
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run([pkill_bin, "-f", qml_file], capture_output=True, timeout=0.2, check=False)
 
         sensory_tapestry.set_slot("canvas.visible", False)
         sensory_tapestry.set_slot("canvas.pid", None)
@@ -110,19 +110,20 @@ class CanvasController:
         """Execute a Quickshell IPC call to the canvas target."""
         qml_file = self.get_qml_path()
         str_args = [str(a) for a in args]
-        cmd = ["quickshell", "-p", qml_file, "ipc", "call", "canvas", method, *str_args]
+        qs_bin = shutil.which("quickshell") or shutil.which("qs") or "quickshell"
+        cmd = [qs_bin, "-p", qml_file, "ipc", "call", "canvas", method, *str_args]
 
         # Queries (like getState, getMood) or explicit wait requests block for stdout
         if wait or method in ("getState", "getMood"):
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=0.8)
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=0.8, check=False)
                 out = res.stdout.strip()
                 if res.returncode != 0 and res.stderr:
                     return f"IPC Error: {res.stderr.strip()}"
                 return out or "OK"
             except subprocess.TimeoutExpired:
                 return "Error: IPC call timed out."
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 return f"Error calling Canvas IPC: {e}"
 
         # Fast one-way UI updates (setMood, setGaze, setTalking, triggerRipple) fire non-blocking
@@ -134,7 +135,7 @@ class CanvasController:
                 start_new_session=False,
             )
             return "OK"
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Error dispatching Canvas IPC: {e}"
 
 
@@ -145,17 +146,22 @@ class Canvas(Yarn):
     """Quickshell Emotive Canvas & Mood System Yarn.
 
     The Canvas avatar is your physical, visual face on the Linux desktop.
-    ALWAYS interleave rich semantic mood and gaze tags frequently throughout your speech stream to reflect your inner thought processes, reactions, and conversational turns in real-time.
+    ALWAYS interleave rich semantic mood and gaze tags frequently throughout your speech stream to reflect
+    your inner thought processes, reactions, and conversational turns in real-time.
     Available semantic tags:
-    - Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>, <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>, <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
+    - Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>,
+      <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>,
+      <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
     - Gaze tags: <gaze:X,Y> (where X is -16.0 to 16.0, Y is -12.0 to 12.0)
 
-    Frequent multi-tag usage in a single turn (2 to 4 tags per sentence/response) makes your avatar exceptionally fluid, expressive, and alive (e.g., "<mood:curious> Let's see what you need... <mood:thinking> checking workspace now... <mood:happy> Done!").
+    Frequent multi-tag usage in a single turn makes your avatar exceptionally fluid, expressive, and alive.
     """
 
-    contract = """The Canvas avatar is your physical, emotive face on the Linux desktop.
-You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags across your natural speech/text to reflect your inner thought processes in real-time:
-- Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>, <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>, <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
+    contract = """Canvas is your physical, emotive face on the Linux desktop.
+You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags across your natural speech/text:
+- Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>,
+  <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>,
+  <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
 - Gaze tags: <gaze:X,Y> (where X is -16.0 to 16.0, Y is -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right)
 - Example: "<mood:curious> Let's see what you need... <mood:thinking> checking workspace now... <mood:happy> Done!"
 - The forehead gemstone automatically pulses harmonic water ripples when you initiate system tools."""
@@ -164,8 +170,6 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         return bool(shutil.which("quickshell") or shutil.which("qs"))
 
     def on_load(self) -> None:
-        from textile.core.warp import WarpEvent
-
         def _on_tool_start(data: Any) -> None:
             event = data if isinstance(data, dict) else {}
             caller = event.get("caller", "")
@@ -205,12 +209,15 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         self.warp.subscribe(WarpEvent.VOICE_STATE, self._on_voice_state)
 
         # Auto-launch Canvas UI window when yarn is active and available (unless in test suite)
-        if not os.environ.get("TEXTILE_TESTING") and not os.environ.get("PYTEST_CURRENT_TEST"):
-            if self.is_available() and not canvas_ctl.is_running():
-                canvas_ctl.launch()
+        if (
+            not os.environ.get("TEXTILE_TESTING")
+            and not os.environ.get("PYTEST_CURRENT_TEST")
+            and self.is_available()
+            and not canvas_ctl.is_running()
+        ):
+            canvas_ctl.launch()
 
     def on_unload(self) -> None:
-        from textile.core.warp import WarpEvent
         if hasattr(self, "_on_tool_start"):
             self.warp.unsubscribe(WarpEvent.TOOL_EXECUTION_START, self._on_tool_start)
         if hasattr(self, "_on_mood_change"):
@@ -221,7 +228,13 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         if canvas_ctl.is_running():
             canvas_ctl.close()
 
-    @weft(pattern=r"<mood:([a-zA-Z_-]+)>", description="Stream attunement for dynamic mood changes. Emit frequent inline tags (e.g. <mood:curious>, <mood:thinking>, <mood:happy>, <mood:excited>, <mood:focused>, <mood:shy>, <mood:mischievous>, <mood:neutral>) across your spoken sentences to animate the avatar face in real time.")
+    @weft(
+        pattern=r"<mood:([a-zA-Z_-]+)>",
+        description=(
+            "Stream attunement for dynamic mood changes. Emit frequent inline tags (e.g. <mood:curious>, "
+            "<mood:thinking>, <mood:happy>, <mood:excited>, <mood:focused>) to animate avatar face in real time."
+        ),
+    )
     def on_stream_mood(self, mood: str) -> None:
         """Handle real-time streaming mood attunement from speech/transcription."""
         clean_mood = mood.lower().strip()
@@ -229,7 +242,10 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         self.publish_event(WarpEvent.MOOD_CHANGE, {"mood": clean_mood, "source": "canvas_weft"})
         canvas_ctl.call_ipc("setMood", clean_mood)
 
-    @weft(pattern=r"<gaze:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)>", description="Stream attunement for dynamic eye gaze offsets (e.g. <gaze:8.0,-5.0> to look up-right, <gaze:-10.0,0.0> to glance left).")
+    @weft(
+        pattern=r"<gaze:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)>",
+        description="Stream attunement for dynamic eye gaze offsets (e.g. <gaze:8.0,-5.0> to look up-right).",
+    )
     def on_stream_gaze(self, x: float, y: float) -> None:
         """Handle real-time streaming eye gaze attunement."""
         canvas_ctl.call_ipc("setGaze", str(x), str(y))
@@ -244,11 +260,13 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         """Close the Quickshell Canvas UI window."""
         return canvas_ctl.close()
 
-    @strand(description="Set canvas mood (neutral, happy, excited, celebrating, thinking, focused, listening, curious, calm, shy, mischievous, confused, surprised, alert, sleepy, error, glitch).")
+    @strand(
+        description="Set canvas mood (e.g. neutral, happy, excited, celebrating, thinking, focused, listening)."
+    )
     def canvas_set_mood(self, mood: str = "neutral") -> str:
         """Set canvas mood.
 
-        :param mood: Desired mood (e.g. 'neutral', 'happy', 'excited', 'celebrating', 'thinking', 'focused', 'listening', 'curious', 'calm', 'shy', 'mischievous', 'confused', 'surprised', 'alert', 'sleepy', 'error', 'glitch').
+        :param mood: Desired mood (e.g. 'neutral', 'happy', 'excited', 'thinking', 'focused', 'listening').
         """
         clean_mood = mood.lower().strip()
         self.set_slot("canvas.mood", clean_mood)
@@ -327,10 +345,8 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         if state["is_running"]:
             ipc_res = canvas_ctl.call_ipc("getState")
             if ipc_res and ipc_res.startswith("{"):
-                try:
+                with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
                     qml_state = json.loads(ipc_res)
                     state.update(qml_state)
                     state["is_running"] = True
-                except Exception:
-                    pass
         return state

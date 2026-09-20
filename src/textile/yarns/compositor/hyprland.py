@@ -4,8 +4,11 @@ Bypasses subshell forks with direct UNIX domain socket IPC communication.
 Layer 100 (Compositor / DE).
 """
 
+import contextlib
+import glob
 import json
 import os
+import select
 import shutil
 import socket
 import subprocess
@@ -27,115 +30,107 @@ class HyprlandIPC:
         if sig:
             candidates = [
                 f"{self._runtime_dir}/hypr/{sig}/.socket.sock",
-                f"/tmp/hypr/{sig}/.socket.sock",
+                f"/tmp/hypr/{sig}/.socket.sock",  # noqa: S108
             ]
-            for path in candidates:
-                if os.path.exists(path):
-                    return path
-        import glob
-        found = glob.glob(f"{self._runtime_dir}/hypr/*/.socket.sock") + glob.glob("/tmp/hypr/*/.socket.sock")
-        if found:
-            return found[0]
-        raise FileNotFoundError("Hyprland command socket (.socket.sock) not found.")
+            for c in candidates:
+                if os.path.exists(c):
+                    return c
+        return f"{self._runtime_dir}/hypr/{sig}/.socket.sock"
 
     def _get_event_socket_path(self) -> str:
         sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", self._signature)
         if sig:
             candidates = [
                 f"{self._runtime_dir}/hypr/{sig}/.socket2.sock",
-                f"/tmp/hypr/{sig}/.socket2.sock",
+                f"/tmp/hypr/{sig}/.socket2.sock",  # noqa: S108
             ]
-            for path in candidates:
-                if os.path.exists(path):
-                    return path
-        import glob
-        found = glob.glob(f"{self._runtime_dir}/hypr/*/.socket2.sock") + glob.glob("/tmp/hypr/*/.socket2.sock")
-        if found:
-            return found[0]
-        raise FileNotFoundError("Hyprland event socket (.socket2.sock) not found.")
+            for c in candidates:
+                if os.path.exists(c):
+                    return c
+        return f"{self._runtime_dir}/hypr/{sig}/.socket2.sock"
 
-    def send_raw(self, request: str) -> str:
+    def send_raw(self, command: str) -> str:
         sock_path = self._get_socket_path()
+        if not os.path.exists(sock_path):
+            return ""
+
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
+            sock.settimeout(1.5)
             sock.connect(sock_path)
-            sock.sendall(request.encode("utf-8"))
-            chunks = []
+            sock.sendall(command.encode("utf-8"))
+            data = bytearray()
             while True:
                 chunk = sock.recv(4096)
                 if not chunk:
                     break
-                chunks.append(chunk)
-            return b"".join(chunks).decode("utf-8", errors="replace")
+                data.extend(chunk)
+            return data.decode("utf-8", errors="replace")
+        except OSError:
+            return ""
         finally:
             sock.close()
 
     def send_json(self, command: str) -> Any:
-        cmd = command if command.startswith("j/") else f"j/{command}"
-        raw = self.send_raw(cmd)
+        raw = self.send_raw(command)
+        if not raw:
+            return None
         try:
             return json.loads(raw)
-        except Exception:
-            return {"raw_response": raw}
+        except json.JSONDecodeError:
+            return None
 
-    def dispatch(self, action: str) -> str:
-        return self.send_raw(f"dispatch {action}").strip()
+    def dispatch(self, lua_disp_call: str) -> str:
+        return self.eval_lua(f"return {lua_disp_call}")
 
     def focus_workspace(self, workspace: str) -> str:
         ws_str = str(workspace).strip()
-        return self.dispatch(f'hl.dsp.focus({{ workspace = "{ws_str}" }})')
+        return self.dispatch(f'hl.dsp.workspace({{ name = "{ws_str}" }})')
 
     @staticmethod
     def _detect_terminal() -> str:
-        env_term = os.environ.get("TERMINAL")
-        if env_term and shutil.which(env_term):
-            return env_term
-        for candidate in ["foot", "kitty", "alacritty", "ghostty", "wezterm", "gnome-terminal", "konsole", "xterm"]:
-            if shutil.which(candidate):
-                return candidate
-        return "foot"
+        for term in ("foot", "kitty", "alacritty", "ghostty", "wezterm", "st", "urxvt", "xterm"):
+            if shutil.which(term):
+                return term
+        return "xterm"
 
     @staticmethod
     def _detect_shell() -> str:
-        if shutil.which("fish"):
-            return "fish"
-        env_shell = os.environ.get("SHELL")
-        if env_shell and shutil.which(env_shell):
-            return env_shell
-        for candidate in ["zsh", "bash", "sh"]:
-            if shutil.which(candidate):
-                return candidate
-        return "sh"
+        user_shell = os.environ.get("SHELL", "")
+        if user_shell and shutil.which(user_shell):
+            return user_shell
+        for sh in ("zsh", "bash", "fish", "sh"):
+            if shutil.which(sh):
+                return sh
+        return "/bin/sh"
 
     def exit_session(self) -> str:
         return self.dispatch("hl.dsp.exit()")
 
-    @staticmethod
-    def _get_self_ancestor_pids() -> set[int]:
-        ancestors = set()
-        try:
-            pid = os.getpid()
-            while pid > 1:
-                ancestors.add(pid)
-                with open(f"/proc/{pid}/stat", "r") as f:
+    def _get_self_ancestor_pids(self) -> list[int]:
+        ancestors = []
+        curr = os.getpid()
+        visited = set()
+        while curr > 1 and curr not in visited:
+            visited.add(curr)
+            ancestors.append(curr)
+            try:
+                with open(f"/proc/{curr}/stat") as f:
                     stat = f.read().split()
-                    pid = int(stat[3])
-        except Exception:
-            pass
+                    curr = int(stat[3])
+            except (OSError, ValueError, IndexError):
+                break
         return ancestors
 
-    def _get_window_descendants(self, root_pid: int) -> list[str]:
-        if not root_pid or root_pid <= 1:
-            return []
+    def _get_self_descendant_command_lines(self, root_pid: int) -> list[str]:
         parent_map: dict[int, list[int]] = {}
         proc_info: dict[int, str] = {}
         proc_cmdlines: dict[int, str] = {}
         try:
-            import glob
             for p_dir in glob.glob("/proc/[0-9]*"):
-                try:
+                with contextlib.suppress(OSError, ValueError, TypeError, KeyError, IndexError):
                     pid = int(os.path.basename(p_dir))
-                    with open(f"{p_dir}/stat", "r") as f:
+                    with open(f"{p_dir}/stat") as f:
                         stat = f.read().split()
                         comm = stat[1].strip("()")
                         ppid = int(stat[3])
@@ -144,9 +139,7 @@ class HyprlandIPC:
                     with open(f"{p_dir}/cmdline", "rb") as cmdf:
                         cmd_str = cmdf.read().decode("utf-8", errors="ignore").replace("\x00", " ").lower()
                         proc_cmdlines[pid] = cmd_str
-                except Exception:
-                    continue
-        except Exception:
+        except (OSError, ValueError):
             return []
 
         descendants = []
@@ -174,27 +167,24 @@ class HyprlandIPC:
                 return c
         return None
 
-    def resolve_window(self, target: str) -> dict[str, Any] | None:
-        target_clean = str(target).strip()
-        if not target_clean:
-            return None
-        target_lower = target_clean.lower()
+    def _resolve_special_target(self, target_lower: str) -> dict[str, Any] | None:
+        active_aliases = (
+            "active", "active window", "active_window",
+            "focused", "focused window", "focused_window",
+            "current", "current window", "current_window",
+        )
+        if target_lower in active_aliases:
+            return self.get_active_window() or None
 
-        if target_lower in ("active", "active window", "active_window", "focused", "focused window", "focused_window", "current", "current window", "current_window"):
-            act_win = self.get_active_window()
-            if act_win:
-                return act_win
-
-        self_keywords = ("textile", "weave", "twill", "agy", "agy_cli", "self", "you", "yourself", "this", "this window", "my window", "your window", "here")
+        self_keywords = (
+            "textile", "weave", "twill", "agy", "agy_cli", "self",
+            "you", "yourself", "this", "this window", "my window", "your window", "here",
+        )
         if target_lower in self_keywords:
-            self_win = self.get_self_window()
-            if self_win:
-                return self_win
+            return self.get_self_window() or None
+        return None
 
-        clients = self.get_clients()
-        if not clients:
-            return None
-
+    def _resolve_prefixed_target(self, target_clean: str, clients: list[dict[str, Any]]) -> dict[str, Any] | None:
         if target_clean.startswith("0x"):
             for c in clients:
                 if c.get("address", "").lower() == target_clean.lower():
@@ -222,63 +212,96 @@ class HyprlandIPC:
                     if c.get("address", "").lower() == val_lower:
                         return c
                 return {"address": val}
+        return None
+
+    def _score_client(
+        self,
+        c: dict[str, Any],
+        target_lower: str,
+        keywords: list[str],
+        is_querying_self: bool,
+        self_ancestors: list[int],
+    ) -> int:
+        score = 0
+        title = c.get("title", "").lower()
+        cls_name = c.get("class", "").lower()
+        init_cls = c.get("initialClass", "").lower()
+        init_title = c.get("initialTitle", "").lower()
+        pid = c.get("pid", 0)
+        is_self_window = pid in self_ancestors
+
+        child_procs = self._get_self_descendant_command_lines(pid)
+        proc_matched = False
+        for proc_str in child_procs:
+            proc_str_clean = proc_str.strip().lower()
+            for kw in keywords:
+                if kw == proc_str_clean:
+                    score += 500
+                    proc_matched = True
+                elif kw in proc_str_clean.split():
+                    score += 300
+                    proc_matched = True
+                elif kw in proc_str_clean:
+                    score += 150
+                    proc_matched = True
+
+        if target_lower in title:
+            score += 200
+        for kw in keywords:
+            if kw in title.split():
+                score += 120
+            elif kw in title:
+                score += 60
+
+        for kw in keywords:
+            if kw == cls_name:
+                score += 100 if proc_matched else 30
+            elif kw in cls_name:
+                score += 15
+            if kw in init_cls or kw in init_title:
+                score += 10
+
+        if is_self_window and not is_querying_self:
+            score -= 1000
+
+        focus_hist = c.get("focusHistoryID", 99)
+        if isinstance(focus_hist, int):
+            score += max(0, 10 - focus_hist)
+        return score
+
+    def resolve_window(self, target: str) -> dict[str, Any] | None:
+        target_clean = str(target).strip()
+        if not target_clean:
+            return None
+        target_lower = target_clean.lower()
+
+        special = self._resolve_special_target(target_lower)
+        if special:
+            return special
+
+        clients = self.get_clients()
+        if not clients:
+            return None
+
+        prefixed = self._resolve_prefixed_target(target_clean, clients)
+        if prefixed:
+            return prefixed
 
         keywords = [w for w in target_lower.split() if w]
+        self_keywords = (
+            "textile", "weave", "twill", "agy", "agy_cli", "self",
+            "you", "yourself", "this", "this window", "my window", "your window", "here",
+        )
         is_querying_self = any(k in target_lower for k in self_keywords)
         self_ancestors = self._get_self_ancestor_pids()
 
         scored_clients = []
         for c in clients:
-            score = 0
-            title = c.get("title", "").lower()
-            cls_name = c.get("class", "").lower()
-            init_cls = c.get("initialClass", "").lower()
-            init_title = c.get("initialTitle", "").lower()
             addr = c.get("address", "").lower()
-            pid = c.get("pid", 0)
-            is_self_window = pid in self_ancestors
-
             if target_lower in addr or target_lower == addr:
                 return c
-
-            child_procs = self._get_window_descendants(pid)
-            proc_matched = False
-            for proc_str in child_procs:
-                proc_str_clean = proc_str.strip().lower()
-                for kw in keywords:
-                    if kw == proc_str_clean:
-                        score += 500
-                        proc_matched = True
-                    elif kw in proc_str_clean.split():
-                        score += 300
-                        proc_matched = True
-                    elif kw in proc_str_clean:
-                        score += 150
-                        proc_matched = True
-
-            if target_lower in title:
-                score += 200
-            for kw in keywords:
-                if kw in title.split():
-                    score += 120
-                elif kw in title:
-                    score += 60
-
-            for kw in keywords:
-                if kw == cls_name:
-                    score += 100 if proc_matched else 30
-                elif kw in cls_name:
-                    score += 15
-                if kw in init_cls or kw in init_title:
-                    score += 10
-
-            if is_self_window and not is_querying_self:
-                score -= 1000
-
+            score = self._score_client(c, target_lower, keywords, is_querying_self, self_ancestors)
             if score > 0:
-                focus_hist = c.get("focusHistoryID", 99)
-                if isinstance(focus_hist, int):
-                    score += max(0, 10 - focus_hist)
                 scored_clients.append((score, c))
 
         scored_clients.sort(key=lambda x: x[0], reverse=True)
@@ -315,7 +338,8 @@ class HyprlandIPC:
             target_clean = str(target).strip()
             win = self.resolve_window(target_clean)
             if win and "address" in win:
-                res = self.dispatch(f'hl.dsp.window.move({{ window = "address:{win["address"]}", workspace = "{ws_str}" }})')
+                win_addr = win["address"]
+                res = self.dispatch(f'hl.dsp.window.move({{ window = "address:{win_addr}", workspace = "{ws_str}" }})')
                 if silent and current_ws:
                     self.focus_workspace(str(current_ws))
                 return res
@@ -340,8 +364,11 @@ class HyprlandIPC:
             win_param = f', window = "address:{win["address"]}"'
 
             if act in ("fullscreen", "toggle_fullscreen"):
-                self.dispatch(f'hl.dsp.focus({{ window = "address:{win["address"]}" }})')
-                return self.dispatch(f'hl.dsp.window.fullscreen({{ mode = "fullscreen", window = "address:{win["address"]}" }})')
+                win_addr = win["address"]
+                self.dispatch(f'hl.dsp.focus({{ window = "address:{win_addr}" }})')
+                return self.dispatch(
+                    f'hl.dsp.window.fullscreen({{ mode = "fullscreen", window = "address:{win_addr}" }})'
+                )
 
         if act in ("float", "togglefloating"):
             return self.dispatch(f"hl.dsp.window.float({{{win_param.lstrip(', ')}}})")
@@ -379,9 +406,17 @@ class HyprlandIPC:
             dir_clean = direction.lower().strip()
             return self.dispatch(f'hl.dsp.window.move({{ direction = "{dir_clean}"{win_param} }})')
 
-        return self.dispatch(f'hl.dsp.window.move({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})')
+        return self.dispatch(
+            f'hl.dsp.window.move({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})'
+        )
 
-    def resize_window(self, delta_x: int = 0, delta_y: int = 0, relative: bool = True, target: str | None = None) -> str:
+    def resize_window(
+        self,
+        delta_x: int = 0,
+        delta_y: int = 0,
+        relative: bool = True,
+        target: str | None = None,
+    ) -> str:
         rel_str = "true" if relative else "false"
         win_param = ""
         if target and str(target).strip():
@@ -390,7 +425,9 @@ class HyprlandIPC:
             if not win or "address" not in win:
                 return f"Error: No open window found matching '{target_clean}'."
             win_param = f', window = "address:{win["address"]}"'
-        return self.dispatch(f'hl.dsp.window.resize({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})')
+        return self.dispatch(
+            f'hl.dsp.window.resize({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})'
+        )
 
     def exec_app(self, app: str, is_tui: bool = False, title: str | None = None) -> str:
         app_clean = app.strip()
@@ -436,7 +473,10 @@ class HyprlandIPC:
         out_clean = output.strip()
         mode_clean = mode.strip()
         pos_clean = position.strip()
-        code = f'hl.monitor({{ output = "{out_clean}", mode = "{mode_clean}", position = "{pos_clean}", scale = {scale} }})'
+        code = (
+            f'hl.monitor({{ output = "{out_clean}", mode = "{mode_clean}", '
+            f'position = "{pos_clean}", scale = {scale} }})'
+        )
         res = self.eval_lua(code)
         return f"Monitor '{out_clean}' configured to {mode_clean} at {pos_clean} (scale {scale}): {res}"
 
@@ -445,7 +485,6 @@ class HyprlandIPC:
         return res if isinstance(res, list) else []
 
     def read_events(self, timeout: float = 0.1, max_events: int = 20) -> list[dict[str, str]]:
-        import select
         sock_path = self._get_event_socket_path()
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.setblocking(False)
@@ -454,7 +493,7 @@ class HyprlandIPC:
             sock.connect(sock_path)
         except BlockingIOError:
             pass
-        except Exception as e:
+        except (OSError, ValueError) as e:
             sock.close()
             return [{"event": "error", "data": str(e)}]
 
@@ -484,7 +523,7 @@ class HyprlandIPC:
                         break
                 except (OSError, BlockingIOError):
                     break
-        except Exception as e:
+        except (OSError, ValueError) as e:
             if not events:
                 events.append({"event": "error", "data": str(e)})
         finally:
@@ -523,8 +562,13 @@ class HyprlandIPC:
         if not is_ident and temp_val is None:
             temp_val = 4000
 
-        subprocess.run(["pkill", "-x", "hyprsunset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-x", "wlsunset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        pkill_bin = shutil.which("pkill") or "/usr/bin/pkill"
+        subprocess.run(
+            [pkill_bin, "-x", "hyprsunset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
+        )
+        subprocess.run(
+            [pkill_bin, "-x", "wlsunset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
+        )
         time.sleep(0.1)
 
         if hyprsunset_bin:
@@ -536,29 +580,56 @@ class HyprlandIPC:
             if gamma is not None:
                 cmd.extend(["-g", str(float(gamma))])
             try:
-                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
                 time.sleep(0.2)
                 running = proc.poll() is None
-                return {"success": running, "manager": "hyprsunset", "pid": proc.pid if running else None, "temperature_kelvin": "identity (6500K / off)" if is_ident else temp_val, "gamma": gamma or 1.0, "identity": is_ident}
-            except Exception as e:
+                return {
+                    "success": running,
+                    "manager": "hyprsunset",
+                    "pid": proc.pid if running else None,
+                    "temperature_kelvin": "identity (6500K / off)" if is_ident else temp_val,
+                    "gamma": gamma or 1.0,
+                    "identity": is_ident,
+                }
+            except (OSError, subprocess.SubprocessError) as e:
                 return {"success": False, "error": f"Failed to spawn hyprsunset: {e}"}
-        else:
+        elif wlsunset_bin:
             cmd = [wlsunset_bin]
             if is_ident:
                 cmd.extend(["-t", "6500", "-T", "6500"])
             elif temp_val is not None:
                 cmd.extend(["-t", str(temp_val), "-T", str(temp_val)])
             try:
-                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
                 time.sleep(0.2)
                 running = proc.poll() is None
-                return {"success": running, "manager": "wlsunset", "pid": proc.pid if running else None, "temperature_kelvin": "identity (6500K / off)" if is_ident else temp_val, "gamma": gamma or 1.0, "identity": is_ident}
-            except Exception as e:
+                return {
+                    "success": running,
+                    "manager": "wlsunset",
+                    "pid": proc.pid if running else None,
+                    "temperature_kelvin": "identity (6500K / off)" if is_ident else temp_val,
+                    "gamma": gamma or 1.0,
+                    "identity": is_ident,
+                }
+            except (OSError, subprocess.SubprocessError) as e:
                 return {"success": False, "error": f"Failed to spawn wlsunset: {e}"}
 
+        return {"success": False, "error": "Neither hyprsunset nor wlsunset could be launched."}
+
     def get_night_light_status(self) -> dict[str, Any]:
-        res_hypr = subprocess.run(["pgrep", "-la", "hyprsunset"], stdout=subprocess.PIPE, text=True)
-        res_wl = subprocess.run(["pgrep", "-la", "wlsunset"], stdout=subprocess.PIPE, text=True)
+        pgrep_bin = shutil.which("pgrep") or "/usr/bin/pgrep"
+        res_hypr = subprocess.run([pgrep_bin, "-la", "hyprsunset"], stdout=subprocess.PIPE, text=True, check=False)
+        res_wl = subprocess.run([pgrep_bin, "-la", "wlsunset"], stdout=subprocess.PIPE, text=True, check=False)
         is_running = bool(res_hypr.stdout.strip() or res_wl.stdout.strip())
         active_mgr = "hyprsunset" if res_hypr.stdout.strip() else ("wlsunset" if res_wl.stdout.strip() else None)
         active_pid = None
@@ -589,7 +660,8 @@ class Hyprland(Yarn):
 
     def _parse_workspace_target(self, target: str) -> tuple[str, str | None]:
         tokens = target.split()
-        if len(tokens) >= 2 and tokens[-1].lstrip("-+").isdigit():
+        min_tokens = 2
+        if len(tokens) >= min_tokens and tokens[-1].lstrip("-+").isdigit():
             ws = tokens[-1]
             win_query = " ".join(tokens[:-1])
             return ws, win_query
@@ -667,7 +739,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.window_action("center", target=target)
 
-    @strand(description="Move active or specified window by pixel offset (delta_x, delta_y) or in direction (left, right, up, down).")
+    @strand(description="Move active or specified window by pixel offset or in direction (left, right, up, down).")
     def hyprland_move_window(
         self,
         delta_x: int = 0,
