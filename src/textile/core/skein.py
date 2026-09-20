@@ -16,6 +16,7 @@ from textile.core.base import Yarn, YarnManifest
 
 logger = logging.getLogger(__name__)
 
+
 class Skein:
     """Manages yarn discovery, configuration, and runtime health."""
 
@@ -28,12 +29,71 @@ class Skein:
         self._disabled_yarns: set[str] = set()
         self._initialized: bool = False
 
+    def load_yarns(self) -> None:
+        """Dynamically discover and register all Yarns under textile.yarns."""
+        try:
+            yarns_root = Path(textile.yarns.__file__).parent
+            for py_file in yarns_root.rglob("*.py"):
+                if py_file.name.startswith("_"):
+                    continue
+                rel_path = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
+                modname = f"textile.yarns.{rel_path}"
+                try:
+                    mod = importlib.import_module(modname)
+                    for _, attr in inspect.getmembers(mod, inspect.isclass):
+                        if (
+                            issubclass(attr, Yarn)
+                            and attr is not Yarn
+                            and getattr(attr, "__module__", None) == modname
+                        ):
+                            instance = attr()
+                            with self._lock:
+                                self.all_yarns[instance.name] = instance
+                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                    logger.debug(f"Skipping yarn module {modname}: {e}")
+        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+            logger.debug(f"Failed scanning yarns: {e}")
+
+    def load_entrypoint_yarns(self) -> None:
+        try:
+            for ep in entry_points(group="textile.yarns"):
+                try:
+                    yarn_cls = ep.load()
+                    if issubclass(yarn_cls, Yarn) and yarn_cls is not Yarn:
+                        instance = yarn_cls()
+                        with self._lock:
+                            self.all_yarns[instance.name] = instance
+                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                    logger.debug(f"Failed loading entrypoint yarn {ep}: {e}")
+        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+            logger.debug(f"Failed scanning entrypoints: {e}")
+
+    def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
+        target_dir = yarn_dir or self._user_yarns_dir
+        if not target_dir.exists():
+            return
+        for py_file in target_dir.glob("*.py"):
+            if py_file.name.startswith("_"):
+                continue
+            try:
+                spec = importlib.util.spec_from_file_location(f"textile_user_{py_file.stem}", py_file)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    for _, attr in inspect.getmembers(mod, inspect.isclass):
+                        if issubclass(attr, Yarn) and attr is not Yarn:
+                            instance = attr()
+                            with self._lock:
+                                self.all_yarns[instance.name] = instance
+            except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                logger.debug(f"Failed loading user yarn {py_file}: {e}")
+
     def initialize(self) -> None:
         with self._lock:
             if self._initialized:
                 return
             self._load_config()
-            self.load_builtin_yarns()
+            self.load_yarns()
             self.load_entrypoint_yarns()
             self.load_user_yarns()
             self._initialized = True
@@ -75,64 +135,6 @@ class Skein:
                         logger.debug(f"Yarn '{name}' availability check failed: {e}")
             return active
 
-    def load_builtin_yarns(self) -> None:
-        try:
-            yarns_root = Path(textile.yarns.__file__).parent
-            for py_file in yarns_root.rglob("*.py"):
-                if py_file.name.startswith("_"):
-                    continue
-                rel_path = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
-                modname = f"textile.yarns.{rel_path}"
-                try:
-                    mod = importlib.import_module(modname)
-                    for _, attr in inspect.getmembers(mod, inspect.isclass):
-                        if (
-                            issubclass(attr, Yarn)
-                            and attr is not Yarn
-                            and getattr(attr, "__module__", None) == modname
-                        ):
-                            instance = attr()
-                            with self._lock:
-                                self.all_yarns[instance.name] = instance
-                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                    logger.debug(f"Skipping builtin yarn module {modname}: {e}")
-        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-            logger.debug(f"Failed scanning builtin yarns: {e}")
-
-    def load_entrypoint_yarns(self) -> None:
-        try:
-            for ep in entry_points(group="textile.yarns"):
-                try:
-                    yarn_cls = ep.load()
-                    if issubclass(yarn_cls, Yarn):
-                        instance = yarn_cls()
-                        with self._lock:
-                            self.all_yarns[instance.name] = instance
-                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                    logger.debug(f"Failed loading entrypoint yarn {ep}: {e}")
-        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-            logger.debug(f"Failed scanning entrypoints: {e}")
-
-    def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
-        target_dir = yarn_dir or self._user_yarns_dir
-        if not target_dir.exists():
-            return
-        for py_file in target_dir.glob("*.py"):
-            if py_file.name.startswith("_"):
-                continue
-            try:
-                spec = importlib.util.spec_from_file_location(f"textile_user_{py_file.stem}", py_file)
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    for _, attr in inspect.getmembers(mod, inspect.isclass):
-                        if issubclass(attr, Yarn) and attr is not Yarn:
-                            instance = attr()
-                            with self._lock:
-                                self.all_yarns[instance.name] = instance
-            except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                logger.debug(f"Failed loading user yarn {py_file}: {e}")
-
     def _load_config(self) -> None:
         try:
             if self._config_file.exists():
@@ -170,4 +172,3 @@ class Skein:
 
 
 skein = Skein()
-
