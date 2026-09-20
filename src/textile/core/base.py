@@ -437,89 +437,74 @@ class YarnManifest(BaseModel):
 class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
-    manifest: YarnManifest | None = None
+    manifest: YarnManifest
 
-    def __init__(self) -> None:
-        if self.manifest is None:
-            mod_file = getattr(sys.modules.get(self.__class__.__module__), "__file__", None)
-            if mod_file:
-                p = Path(mod_file)
-                toml_file = p.with_suffix(".toml")
-                if not toml_file.exists():
-                    toml_file = p.parent / "yarn.toml"
-                if toml_file.exists():
-                    self.manifest = YarnManifest.from_toml(toml_file)
-        if self.manifest is None:
-            c = self.__class__
+    def __init__(self, manifest: YarnManifest | None = None) -> None:
+        if manifest is not None:
+            self.manifest = manifest
+            return
 
-            def _get_attr(attr_name: str, default: Any) -> Any:
-                val = c.__dict__.get(attr_name, getattr(self, f"_{attr_name}", default))
-                return default if isinstance(val, property) else val
+        mod_file = getattr(sys.modules.get(self.__class__.__module__), "__file__", None)
+        if mod_file:
+            p = Path(mod_file)
+            toml_file = p.with_suffix(".toml")
+            if not toml_file.exists():
+                toml_file = p.parent / "yarn.toml"
+            if toml_file.exists():
+                self.manifest = YarnManifest.from_toml(toml_file)
+                return
 
-            self.manifest = YarnManifest(
-                name=str(_get_attr("name", "base_yarn")),
-                publisher=str(_get_attr("publisher", "")),
-                version=str(_get_attr("version", "1.0.0")),
-                manifest_version=1,
-                layer=int(_get_attr("layer", LAYER_DESKTOP_PROTOCOL)),
-                description=str(_get_attr("description", "Base Yarn")),
-                contract=str(_get_attr("contract", "") or ""),
-                dependencies=DependenciesManifest(python=list(_get_attr("python_dependencies", []))),
-            )
+        raise FileNotFoundError(
+            f"Validation Hint: Yarn '{self.__class__.__name__}' requires a valid TOML manifest file (<name>.toml or yarn.toml)."
+        )
 
     @property
     def name(self) -> str:
-        return self.manifest.name if self.manifest else "base_yarn"
+        return self.manifest.name
 
     @name.setter
     def name(self, value: str) -> None:
-        if self.manifest:
-            self.manifest.name = value
+        self.manifest.name = value
 
     @property
     def publisher(self) -> str:
-        return self.manifest.publisher if self.manifest else ""
+        return self.manifest.publisher
 
     @publisher.setter
     def publisher(self, value: str) -> None:
-        if self.manifest:
-            self.manifest.publisher = value
+        self.manifest.publisher = value
 
     @property
     def version(self) -> str:
-        return self.manifest.version if self.manifest else "1.0.0"
+        return self.manifest.version
 
     @version.setter
     def version(self, value: str) -> None:
-        if self.manifest:
-            self.manifest.version = value
+        self.manifest.version = value
 
     @property
     def description(self) -> str:
-        return self.manifest.description if self.manifest else ""
+        return self.manifest.description
 
     @description.setter
     def description(self, value: str) -> None:
-        if self.manifest:
-            self.manifest.description = value
+        self.manifest.description = value
 
     @property
     def layer(self) -> int:
-        return self.manifest.layer if self.manifest else LAYER_DESKTOP_PROTOCOL
+        return self.manifest.layer
 
     @layer.setter
     def layer(self, value: int) -> None:
-        if self.manifest:
-            self.manifest.layer = value
+        self.manifest.layer = value
 
     @property
     def python_dependencies(self) -> list[str]:
-        return self.manifest.python_dependencies if self.manifest else []
+        return self.manifest.python_dependencies
 
     @python_dependencies.setter
     def python_dependencies(self, value: list[str]) -> None:
-        if self.manifest:
-            self.manifest.python_dependencies = value
+        self.manifest.python_dependencies = value
 
     def get_contract(self) -> str | None:
         """Return the yarn's sealed contract / advisory letter for the AI client."""

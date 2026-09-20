@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from textile.core.base import Strand, Yarn
+from textile.core.base import Strand, Yarn, YarnManifest
 from textile.core.loom import loom
 from textile.core.skein import skein
 
@@ -15,7 +15,8 @@ class CustomPydanticModel(BaseModel):
 
 
 class DummyYarn(Yarn):
-    name = "dummy"
+    def __init__(self):
+        super().__init__(manifest=YarnManifest(name="dummy", layer=50))
 
     def is_available(self) -> bool:
         return True
@@ -108,15 +109,17 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_capability_based_overrides(self):
         class LowCapYarn(Yarn):
-            name = "low_cap_yarn"
-            layer = 10
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="low_cap_yarn", layer=10))
+
             def is_available(self): return True
             def get_strands(self):
                 return [self.build_strand("low_app", "Low App", lambda args: "low_out", capability="test.launcher")]
 
         class HighCapYarn(Yarn):
-            name = "high_cap_yarn"
-            layer = 100
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="high_cap_yarn", layer=100))
+
             def is_available(self): return True
             def get_strands(self):
                 return [self.build_strand("high_app", "High App", lambda args: "high_out", capability="test.launcher")]
@@ -144,15 +147,17 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_name_collision_without_capability_not_overridden(self):
         class YarnNoCapA(Yarn):
-            name = "nocap_a"
-            layer = 10
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="nocap_a", layer=10))
+
             def is_available(self): return True
             def get_strands(self):
                 return [self.build_strand("same_name", "Same Name A", lambda args: "a")]
 
         class YarnNoCapB(Yarn):
-            name = "nocap_b"
-            layer = 100
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="nocap_b", layer=100))
+
             def is_available(self): return True
             def get_strands(self):
                 return [self.build_strand("same_name", "Same Name B", lambda args: "b")]
@@ -188,11 +193,14 @@ class TestYarnArchitecture(unittest.TestCase):
         st_raw = canvas.execute_strand("canvas_get_state", {})
         import json
         json.loads(st_raw) if isinstance(st_raw, str) else st_raw
+
     def test_capability_tiers_and_auto_isolation(self):
         from textile.core.base import CapabilityTier, strand
 
         class TierTestYarn(Yarn):
-            name = "tier_test"
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="tier_test", layer=50))
+
             def is_available(self): return True
 
             @strand(description="Read telemetry", tier=CapabilityTier.OBSERVE)
@@ -225,7 +233,9 @@ class TestYarnArchitecture(unittest.TestCase):
         events_received = []
 
         class WeftTestYarn(Yarn):
-            name = "weft_test"
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="weft_test", layer=50))
+
             def is_available(self): return True
 
             @weft(pattern=r"<target:(?P<name>[a-zA-Z0-9_-]+),(?P<count>\d+)>")
