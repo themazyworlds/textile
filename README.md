@@ -10,18 +10,18 @@
 
 https://github.com/user-attachments/assets/291ad11e-f4ad-48ff-933b-03c0285b8933
 
-A modular intelligence and automation framework for Linux. Textile provides a layered runtime dispatch engine and plugin architecture that exposes system capabilities and desktop interfaces to Model Context Protocol (MCP) clients, autonomous agents, and local tooling.
+Textile lets AI assistants and voice companions control your Linux desktop over MCP.
 
 ---
 
 ## Features
 
-- **Layered Runtime Dispatch**: Priority-based layer hierarchy (Layer 10 to 150) supporting seamless capability overrides across system and desktop protocols.
-- **Automated Subprocess Isolation**: Origin-blind execution tiers (`OBSERVE`, `INTERACT`, `MUTATE`, `PRIVILEGED`, `SYSTEM_EXEC`) that automatically isolate elevated operations in dedicated worker subprocesses.
-- **Model Context Protocol (MCP)**: Native stdio MCP server (`Twill`) connecting external AI assistants (Claude, Cursor, Gemini, OpenCode).
-- **Embedded Voice Companion**: Real-time full-duplex conversational voice agent (`Weave`) integrated with LiveKit and Google Gemini Live.
-- **Type-Safe Plugin System**: Write capability modules (`Yarns`) using simple `@strand` decorators with automated Pydantic v2 schema generation.
-- **Desktop Presence UI**: Optional Wayland desktop presence (`Canvas`) powered by Quickshell.
+- **MCP Server (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, and other MCP clients over stdio.
+- **Voice Companion (`Weave`)**: Hands-free voice interface using LiveKit and Gemini Realtime for low-latency audio interaction.
+- **Subprocess Isolation**: Dangerous system calls (`MUTATE`, `SYSTEM_EXEC`) run in isolated worker subprocesses to protect the main runtime.
+- **Plugin System (`Yarns` & `@strand`)**: Decorate Python functions with `@strand` to generate Pydantic schemas and register tools automatically.
+- **Layered Dispatch**: Override default tools across layers (10 to 150) to customize system behavior without editing core code.
+- **Canvas UI**: Optional GTK / Wayland overlay for visual feedback, facial expressions, and agent status.
 
 ---
 
