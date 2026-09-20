@@ -267,7 +267,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         from textile.core.loom import loom
         from textile.core.skein import skein
-        from textile.core.tapestry import tapestry
+        from textile.core.tapestry import sensory_tapestry
         from textile.yarns.compositor.canvas import Canvas
         from textile.yarns.weave import extract_and_apply_mood_tags
 
@@ -282,7 +282,7 @@ class TestYarnArchitecture(unittest.TestCase):
         time.sleep(0.1)
 
         # The final tag should be applied to canvas slot in tapestry
-        self.assertEqual(tapestry.get_slot("canvas.mood"), "happy")
+        self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "happy")
 
     def test_weave_streaming_transcription_node(self):
         import asyncio
@@ -290,7 +290,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         from textile.core.loom import loom
         from textile.core.skein import skein
-        from textile.core.tapestry import tapestry
+        from textile.core.tapestry import sensory_tapestry
         from textile.yarns.compositor.canvas import Canvas
         from textile.yarns.weave import WeaveAgent
 
@@ -320,7 +320,7 @@ class TestYarnArchitecture(unittest.TestCase):
         time.sleep(0.1)
 
         # Verify tag was intercepted and stripped from visible stream
-        self.assertEqual(tapestry.get_slot("canvas.mood"), "curious")
+        self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "curious")
         self.assertEqual(clean_text, " What shall we investigate next?")
 
     def test_packagekit_pure_dbus_yarn(self):

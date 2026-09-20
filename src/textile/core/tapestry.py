@@ -221,6 +221,3 @@ class SensoryTapestry:
 core_tapestry = CoreTapestry()
 sensory_tapestry = SensoryTapestry()
 
-# Backward-compatibility alias
-tapestry = sensory_tapestry
-

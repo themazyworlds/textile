@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand, weft
-from textile.core.tapestry import tapestry
+from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import WarpEvent
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class CanvasController:
                 return True
         except Exception:
             pass
-        return bool(tapestry.get_slot("canvas.visible", False))
+        return bool(sensory_tapestry.get_slot("canvas.visible", False))
 
     def launch(self) -> str:
         """Launch the Quickshell Canvas window."""
@@ -61,7 +61,7 @@ class CanvasController:
             return f"Error: QML file not found at {qml_file}"
 
         if self.is_running():
-            tapestry.set_slot("canvas.visible", True)
+            sensory_tapestry.set_slot("canvas.visible", True)
             return "Canvas is already running."
 
         try:
@@ -71,9 +71,9 @@ class CanvasController:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            tapestry.set_slot("canvas.visible", True)
-            tapestry.set_slot("canvas.pid", self._proc.pid)
-            tapestry.stitch("INFO", "canvas", f"Canvas UI launched (PID {self._proc.pid})")
+            sensory_tapestry.set_slot("canvas.visible", True)
+            sensory_tapestry.set_slot("canvas.pid", self._proc.pid)
+            sensory_tapestry.stitch("INFO", "canvas", f"Canvas UI launched (PID {self._proc.pid})")
             return f"Canvas UI launched (PID {self._proc.pid})."
         except Exception as e:
             return f"Error launching canvas UI: {e}"
@@ -98,12 +98,12 @@ class CanvasController:
             self._proc = None
 
         try:
-            subprocess.run(["pkill", "-f", qml_file], capture_output=True, timeout=2)
+            subprocess.run(["pkill", "-f", qml_file], capture_output=True, timeout=0.2)
         except Exception:
             pass
 
-        tapestry.set_slot("canvas.visible", False)
-        tapestry.set_slot("canvas.pid", None)
+        sensory_tapestry.set_slot("canvas.visible", False)
+        sensory_tapestry.set_slot("canvas.pid", None)
         return "Canvas UI closed."
 
     def call_ipc(self, method: str, *args: Any, wait: bool = False) -> str:

@@ -21,7 +21,7 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, ValidationError, create_model
 
-from textile.core.tapestry import tapestry
+from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import warp
 
 logger = logging.getLogger(__name__)
@@ -524,7 +524,7 @@ class Yarn(ABC):
     @property
     def tapestry(self):
         """Universal live state & sensory blackboard."""
-        return tapestry
+        return sensory_tapestry
 
     def publish_event(self, topic: Any, data: Any = None) -> None:
         """Publish a real-time streaming event to Warp."""
