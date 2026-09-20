@@ -63,7 +63,7 @@ def create_twill_server() -> Server:
     @app.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
         try:
-            res_text = await loom.execute_strand_async(name, arguments or {})
+            res_text = await loom.execute(name, arguments or {})
             return [types.TextContent(type="text", text=str(res_text))]
         except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError) as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]

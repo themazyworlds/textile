@@ -455,7 +455,8 @@ class Yarn(ABC):
                 return
 
         raise FileNotFoundError(
-            f"Validation Hint: Yarn '{self.__class__.__name__}' requires a valid TOML manifest file (<name>.toml or yarn.toml)."
+            f"Validation Hint: Yarn '{self.__class__.__name__}' requires a valid TOML manifest file "
+            "(<name>.toml or yarn.toml)."
         )
 
     @property
@@ -533,10 +534,6 @@ class Yarn(ABC):
     def stitch(self, level: str, message: str, data: dict[str, Any] | None = None) -> Any:
         """Stitch a structured notice/alert into the Tapestry sensory blackboard."""
         return self.tapestry.stitch(level=level, source=self.name, message=message, data=data)
-
-    def bind(self, level: str, message: str, data: dict[str, Any] | None = None) -> Any:
-        """Alias for stitch()."""
-        return self.stitch(level=level, message=message, data=data)
 
     def set_slot(self, key: str, value: Any) -> None:
         """Set a retained domain state slot in the Tapestry blackboard."""
@@ -761,7 +758,7 @@ class Yarn(ABC):
         if not uv_bin:
             return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
 
-        cmd = [uv_bin, "run", "--quiet", "--isolated"]
+        cmd = [uv_bin, "run", "--quiet"]
         for dep in self.get_python_dependencies():
             cmd.extend(["--with", str(dep)])
         cmd.extend([
@@ -808,7 +805,7 @@ class Yarn(ABC):
                 return h(args) if h else "ok"
         return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
-    def execute_strand(self, strand_name: str, args: dict[str, Any]) -> str:
+    def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():
             if s.name == strand_name and s.handler is not None:
                 return s.handler(args)

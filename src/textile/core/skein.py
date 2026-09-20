@@ -8,7 +8,6 @@ import inspect
 import json
 import logging
 import threading
-import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
 

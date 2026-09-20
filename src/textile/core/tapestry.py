@@ -158,16 +158,6 @@ class SensoryTapestry:
 
         return notice
 
-    def bind(
-        self,
-        level: str | NoticeLevel,
-        source: str,
-        message: str,
-        data: dict[str, Any] | None = None,
-    ) -> Notice:
-        """Alias for stitch()."""
-        return self.stitch(level, source, message, data)
-
     def set_slot(self, key: str, value: Any) -> None:
         """Set a retained state slot in the sensory blackboard."""
         with self._lock:

@@ -384,7 +384,7 @@ def cmd_call(args):
                     parsed_args[param_names[pos_idx]] = item
                     pos_idx += 1
 
-    result = loom.execute_strand(strand_name, parsed_args)
+    result = loom.execute_sync(strand_name, parsed_args)
     print(result)
 
 

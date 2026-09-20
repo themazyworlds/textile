@@ -163,14 +163,6 @@ class Loom:
                 return pool.submit(asyncio.run, self.execute(strand_name, args, caller=caller)).result()
         return asyncio.run(self.execute(strand_name, args, caller=caller))
 
-    def execute_strand(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
-        """Backward-compatible synchronous execution alias."""
-        return self.execute_sync(strand_name, args, caller=caller)
-
-    async def execute_strand_async(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
-        """Backward-compatible asynchronous execution alias."""
-        return await self.execute(strand_name, args, caller=caller)
-
     def get_all_wefts(self) -> list[Weft]:
         """Return all active Weft attunements sorted by priority."""
         self.initialize()

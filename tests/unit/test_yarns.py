@@ -57,14 +57,14 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_process_isolation_and_crash_recovery(self):
         dummy = DummyYarn()
         # 1. Normal strand execution
-        self.assertEqual(dummy.execute_strand("normal_tool", {}), "normal_ok")
+        self.assertEqual(dummy.execute_sync("normal_tool", {}), "normal_ok")
 
         # 2. Isolated process execution
-        res = dummy.execute_strand("isolated_tool", {"x": "val"})
+        res = dummy.execute_sync("isolated_tool", {"x": "val"})
         self.assertEqual(res, "isolated_val")
 
         # 3. Crash recovery: child os._exit(11) must NOT crash host parent
-        crash_res = dummy.execute_strand("crashing_tool", {})
+        crash_res = dummy.execute_sync("crashing_tool", {})
         self.assertIn("crashed", crash_res)
         self.assertIn("Host process preserved", crash_res)
 
@@ -72,33 +72,33 @@ class TestYarnArchitecture(unittest.TestCase):
         dummy = DummyYarn()
 
         # Missing required parameter 'count'
-        missing_res = dummy.execute_strand("typed_tool", {})
+        missing_res = dummy.execute_sync("typed_tool", {})
         self.assertIn("Validation Hint", missing_res)
         self.assertIn("missing in action", missing_res)
 
         # Invalid enum choice
-        enum_res = dummy.execute_strand("typed_tool", {"count": 5, "mode": "invalid_mode"})
+        enum_res = dummy.execute_sync("typed_tool", {"count": 5, "mode": "invalid_mode"})
         self.assertIn("Validation Hint", enum_res)
         self.assertIn("Available options", enum_res)
 
         # Successful typed call
-        valid_res = dummy.execute_strand("typed_tool", {"count": 5, "mode": "fast"})
+        valid_res = dummy.execute_sync("typed_tool", {"count": 5, "mode": "fast"})
         self.assertEqual(valid_res, "typed_ok")
 
     def test_pydantic_schema_validation(self):
         dummy = DummyYarn()
         # Missing message
-        res = dummy.execute_strand("pydantic_tool", {})
+        res = dummy.execute_sync("pydantic_tool", {})
         self.assertIn("Validation Hint", res)
         self.assertIn("missing in action", res)
 
         # Invalid priority enum
-        res2 = dummy.execute_strand("pydantic_tool", {"message": "hello", "priority": "invalid"})
+        res2 = dummy.execute_sync("pydantic_tool", {"message": "hello", "priority": "invalid"})
         self.assertIn("Validation Hint", res2)
         self.assertIn("Available options", res2)
 
         # Valid call
-        res3 = dummy.execute_strand("pydantic_tool", {"message": "hello", "priority": "high"})
+        res3 = dummy.execute_sync("pydantic_tool", {"message": "hello", "priority": "high"})
         self.assertEqual(res3, "pydantic_hello_high")
 
         # Test MCP schema conversion
@@ -142,7 +142,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertFalse(is_over_high)
 
         # Execution of overridden low_app strand should route to high_cap_yarn
-        res = loom.execute_strand("low_app", {})
+        res = loom.execute_sync("low_app", {})
         self.assertEqual(res, "high_out")
 
     def test_name_collision_without_capability_not_overridden(self):
@@ -188,9 +188,9 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertIn("canvas_get_state", strand_names)
 
         # Test mood strand execution updates tapestry
-        res = canvas.execute_strand("canvas_set_mood", {"mood": "excited"})
+        res = canvas.execute_sync("canvas_set_mood", {"mood": "excited"})
         self.assertIn("excited", res)
-        st_raw = canvas.execute_strand("canvas_get_state", {})
+        st_raw = canvas.execute_sync("canvas_get_state", {})
         import json
         json.loads(st_raw) if isinstance(st_raw, str) else st_raw
 
@@ -370,9 +370,9 @@ class TestYarnArchitecture(unittest.TestCase):
 
         # Test live pyxclip clipboard set and get
         if cb.is_available():
-            set_res = cb.execute_strand("clipboard_set", {"text": "Textile Pyxclip Test"})
+            set_res = cb.execute_sync("clipboard_set", {"text": "Textile Pyxclip Test"})
             self.assertIn("copied", set_res)
-            get_res = cb.execute_strand("clipboard_get", {})
+            get_res = cb.execute_sync("clipboard_get", {})
             self.assertEqual(get_res, "Textile Pyxclip Test")
 
     def test_toml_manifest_pydantic_validation(self):
