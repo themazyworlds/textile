@@ -84,21 +84,28 @@ uv run textile call clipboard_get
 
 ## Authoring Plugins (`Yarns` & `@strand`)
 
-Subclass `Yarn` to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
+Subclass `Yarn` alongside a declarative static `.toml` manifest to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
 
+### 1. `media_control.toml` (Manifest)
+```toml
+[yarn]
+name = "media_control"
+publisher = "community"
+version = "1.0.0"
+layer = 50
+description = "Media player control integration"
+
+[dependencies]
+python = ["mpris2>=1.0.2"]
+system = ["playerctl"]
+```
+
+### 2. `media_control.py` (Implementation)
 ```python
 from typing import Optional
-from textile import Yarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
+from textile import Yarn, CapabilityTier, strand
 
 class CustomMediaYarn(Yarn):
-    publisher = "community"
-    name = "media_control"
-    version = "1.0.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-
-    # Declare isolated runtime dependencies
-    python_dependencies = ["mpris2>=1.0.2"]
-
     @strand(description="Toggle playback state.", tier=CapabilityTier.INTERACT)
     def toggle_playback(self, player: Optional[str] = None) -> str:
         """Toggle media playback.
