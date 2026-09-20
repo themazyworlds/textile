@@ -81,11 +81,11 @@ class HyprlandIPC:
             return None
 
     def dispatch(self, lua_disp_call: str) -> str:
-        return self.eval_lua(f"return {lua_disp_call}")
+        return self.eval_lua(f"return hl.dispatch({lua_disp_call})")
 
     def focus_workspace(self, workspace: str) -> str:
         ws_str = str(workspace).strip()
-        return self.dispatch(f'hl.dsp.workspace({{ name = "{ws_str}" }})')
+        return self.dispatch(f'hl.dsp.focus({{ workspace = "{ws_str}" }})')
 
     @staticmethod
     def _detect_terminal() -> str:
@@ -105,7 +105,7 @@ class HyprlandIPC:
         return "/bin/sh"
 
     def exit_session(self) -> str:
-        return self.dispatch("hl.dsp.exit()")
+        return self.dispatch("exit")
 
     def _get_self_ancestor_pids(self) -> list[int]:
         ancestors = []
@@ -325,7 +325,7 @@ class HyprlandIPC:
             if win and "address" in win:
                 return self.dispatch(f'hl.dsp.window.close({{ window = "address:{win["address"]}" }})')
             return f"Error: No open window found matching '{target_clean}'."
-        return self.dispatch("hl.dsp.window.close()")
+        return self.dispatch("hl.dsp.window.close({})")
 
     def move_to_workspace(self, workspace: str, target: str | None = None, silent: bool = False) -> str:
         ws_str = str(workspace).strip()
@@ -373,7 +373,7 @@ class HyprlandIPC:
         if act in ("float", "togglefloating"):
             return self.dispatch(f"hl.dsp.window.float({{{win_param.lstrip(', ')}}})")
         elif act in ("fullscreen", "toggle_fullscreen"):
-            return self.dispatch('hl.dsp.window.fullscreen({ mode = "fullscreen" })')
+            return self.dispatch(f"hl.dsp.window.fullscreen({{{win_param.lstrip(', ')}}})")
         elif act == "pin":
             return self.dispatch(f"hl.dsp.window.pin({{{win_param.lstrip(', ')}}})")
         elif act == "center":
@@ -439,11 +439,11 @@ class HyprlandIPC:
             shell_args = f'{shell} -i -c "{app_clean}"'
 
             if term == "foot":
-                cmd = f'{term} -a {app_base} -T {title_str} {shell_args}'
+                cmd = f"{term} -a {app_base} -T {title_str} {shell_args}"
             elif term in ("kitty", "alacritty", "ghostty"):
-                cmd = f'{term} -T {title_str} -- {shell_args}'
+                cmd = f"{term} -T {title_str} -- {shell_args}"
             else:
-                cmd = f'{term} -e {shell_args}'
+                cmd = f"{term} -e {shell_args}"
         else:
             cmd = app_clean
 
