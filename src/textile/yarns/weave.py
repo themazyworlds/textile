@@ -100,7 +100,6 @@ async def entrypoint(ctx: JobContext):
         if state == "speaking":
             warp.publish(WarpEvent.VOICE_STATE, {"talking": True, "listening": False})
         elif state == "thinking":
-            warp.publish(WarpEvent.MOOD_CHANGE, {"mood": "thinking", "source": "weave"})
             warp.publish(WarpEvent.VOICE_STATE, {"talking": False})
         elif state == "listening":
             warp.publish(WarpEvent.VOICE_STATE, {"listening": True, "talking": False})
@@ -126,11 +125,9 @@ async def entrypoint(ctx: JobContext):
                     extract_and_apply_mood_tags(text_val)
 
     base_persona = (
-        "You are Weave, a calm, sovereign Linux desktop companion powered by the Textile intelligence fabric.\n"
-        "Textile is the master package that binds everything together across the desktop.\n"
+        "You are Weave, a sovereign Linux desktop companion powered by the Textile intelligence fabric.\n"
         "You have direct protocol-level control over the user's Linux desktop via Twill strands.\n"
-        "When asked to switch workspaces, move windows, launch apps, inspect errors, or manipulate UI elements,\n"
-        "use your available strands immediately and succinctly report the results back in natural spoken voice.\n\n"
+        "Execute available strands immediately and succinctly report results back in natural spoken voice.\n\n"
     )
     fabric_instructions = loom.get_fabric_instructions()
 
@@ -141,9 +138,7 @@ async def entrypoint(ctx: JobContext):
 
     await session.start(room=ctx.room, agent=agent)
     await session.generate_reply(
-        instructions=(
-            "Say a brief, confident hello with <mood:happy> stating that desktop systems and voice weave are online."
-        )
+        instructions="Say a brief, confident hello stating that desktop systems and voice weave are online."
     )
 
 
