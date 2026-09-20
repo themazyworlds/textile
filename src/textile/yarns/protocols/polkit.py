@@ -20,7 +20,7 @@ try:
 except Exception:
     Variant = None
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, CapabilityTier, Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 from textile.yarns.protocols.dbus_system import dbus_api
 
 logger = logging.getLogger(__name__)
@@ -318,15 +318,6 @@ polkit_api = PolkitAPI()
 
 
 class Polkit(Yarn):
-    name = "polkit"
-    description = "Linux PolicyKit-1 Authority Check, .policy XML Generation, .rules Rule Creation, and pkexec Elevation."
-    version = "1.0.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-    dependencies = [
-        {"type": "python_module", "target": "dbus_fast"},
-        {"type": "system_binary", "target": "pkexec", "optional": True},
-    ]
-
     def is_available(self) -> bool:
         return polkit_api.is_available()
 

@@ -7,14 +7,10 @@ Layer 10 (Core POSIX).
 import os
 import subprocess
 
-from textile.core.base import LAYER_BASE, CapabilityTier, Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 
 
 class DevShell(Yarn):
-    name = "dev_shell"
-    description = "Non-interactive POSIX shell execution."
-    version = "1.2.0"
-    layer = LAYER_BASE  # Layer 10
 
     def is_available(self) -> bool:
         return True

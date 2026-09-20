@@ -13,10 +13,12 @@ from typing import Any
 try:
     from dbus_fast import BusType, Variant
     from dbus_fast.aio import MessageBus
-except Exception:
-    BusType = Variant = MessageBus = None
+except ImportError:
+    BusType: Any = None
+    Variant: Any = None
+    MessageBus: Any = None
 
-from textile.core.base import LAYER_BASE, CapabilityTier, Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +38,8 @@ def parse_package_id(package_id: str) -> dict[str, str]:
 
 def unwrap_variant(val: Any) -> Any:
     """Recursively unwrap dbus_fast Variant values to native Python types."""
-    if isinstance(val, Variant):
-        return unwrap_variant(val.value)
+    if hasattr(val, "value") and type(val).__name__ == "Variant":
+        return unwrap_variant(getattr(val, "value"))
     elif isinstance(val, dict):
         return {str(k): unwrap_variant(v) for k, v in val.items()}
     elif isinstance(val, (list, tuple)):
@@ -73,8 +75,8 @@ class PackageKitDBusClient:
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result(timeout=timeout)
 
-    async def _get_bus(self) -> MessageBus:
-        if self._system_bus is None:
+    async def _get_bus(self) -> Any:
+        if self._system_bus is None and callable(MessageBus):
             self._system_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         return self._system_bus
 
@@ -100,7 +102,7 @@ class PackageKitDBusClient:
         def on_package(info: int, pkg_id: str, summary: str):
             meta = parse_package_id(pkg_id)
             meta["summary"] = summary
-            meta["info_code"] = info
+            meta["info_code"] = str(info)
             results.append(meta)
 
         def on_error(code: int, details: str):
@@ -358,7 +360,7 @@ class PackageKitController:
         return self.client is not None
 
     def search(self, query: str, limit: int = 25) -> list[dict[str, Any]]:
-        if not self.is_available():
+        if self.client is None:
             return [{"error": "PackageKit D-Bus client is not available."}]
         clean_query = query.strip()
         if not clean_query:
@@ -369,7 +371,7 @@ class PackageKitController:
             return [{"error": f"PackageKit D-Bus search error: {e}"}]
 
     def install(self, packages: list[str]) -> str:
-        if not self.is_available():
+        if self.client is None:
             return "Error: PackageKit D-Bus client is not available."
         if not packages:
             return "Error: No packages specified for installation."
@@ -379,7 +381,7 @@ class PackageKitController:
             return f"PackageKit D-Bus install error: {e}"
 
     def remove(self, packages: list[str], autoremove: bool = False) -> str:
-        if not self.is_available():
+        if self.client is None:
             return "Error: PackageKit D-Bus client is not available."
         if not packages:
             return "Error: No packages specified for removal."
@@ -389,7 +391,7 @@ class PackageKitController:
             return f"PackageKit D-Bus remove error: {e}"
 
     def get_details(self, package: str) -> dict[str, Any]:
-        if not self.is_available():
+        if self.client is None:
             return {"error": "PackageKit D-Bus client is not available."}
         pkg_name = package.strip()
         try:
@@ -398,7 +400,7 @@ class PackageKitController:
             return {"error": f"PackageKit D-Bus get_details error: {e}"}
 
     def check_updates(self) -> list[dict[str, Any]]:
-        if not self.is_available():
+        if self.client is None:
             return [{"error": "PackageKit D-Bus client is not available."}]
         try:
             return self.client.run_sync(self.client.get_updates(max_wait=3.5), timeout=4.5)
@@ -406,7 +408,7 @@ class PackageKitController:
             return [{"error": f"PackageKit D-Bus check_updates error: {e}"}]
 
     def what_provides(self, file_path: str) -> str:
-        if not self.is_available():
+        if self.client is None:
             return "Error: PackageKit D-Bus client is not available."
         try:
             return self.client.run_sync(self.client.what_provides(file_path), timeout=30.0)
@@ -414,7 +416,7 @@ class PackageKitController:
             return f"PackageKit D-Bus what_provides error: {e}"
 
     def refresh_cache(self, force: bool = False) -> str:
-        if not self.is_available():
+        if self.client is None:
             return "Error: PackageKit D-Bus client is not available."
         try:
             return self.client.run_sync(self.client.refresh_cache(force=force, max_wait=2.5), timeout=3.5)
@@ -427,15 +429,6 @@ packagekit_ctl = PackageKitController()
 
 class PackageKit(Yarn):
     """Universal Linux Package Management Capability Yarn via PackageKit D-Bus IPC."""
-
-    name = "packagekit"
-    description = "Universal Linux Package Management: Cross-Distribution Search, Installation, Updates, and File Tracking via PackageKit D-Bus IPC."
-    version = "2.0.0"
-    layer = LAYER_BASE  # Layer 10 (Core POSIX / System Lifecycle)
-
-    dependencies = [
-        {"type": "python_module", "target": "dbus_fast"},
-    ]
 
     def is_available(self) -> bool:
         return packagekit_ctl.is_available()

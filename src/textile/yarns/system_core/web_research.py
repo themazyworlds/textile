@@ -10,7 +10,7 @@ import re
 import urllib.parse
 import urllib.request
 
-from textile.core.base import LAYER_BASE, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, str]]:
@@ -160,11 +160,6 @@ def fetch_webpage(url: str) -> str:
 
 
 class WebResearch(Yarn):
-    name = "web_research"
-    description = "Live Internet Search and Web Page Content Fetcher."
-    version = "1.0.0"
-    layer = LAYER_BASE  # Layer 10
-
     def is_available(self) -> bool:
         return True
 

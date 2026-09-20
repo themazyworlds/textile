@@ -6,18 +6,13 @@ Layer 10 (Core POSIX).
 
 from typing import Any
 
-from textile.core.base import LAYER_BASE, Yarn, strand
+from textile.core.base import Yarn, strand
 from textile.core.seams import seams
 from textile.core.tapestry import core_tapestry, sensory_tapestry
 
 
 class Basics(Yarn):
     """General System Timing & Integrity Basics Yarn."""
-
-    name = "basics"
-    description = "System Timing Delays, State Inspection, Live Task Control, and Integrity Audits."
-    version = "1.1.0"
-    layer = LAYER_BASE  # Layer 10
 
     def is_available(self) -> bool:
         return True

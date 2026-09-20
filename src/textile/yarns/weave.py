@@ -48,7 +48,7 @@ class WeaveAgent(Agent):
             clean_delta = loom.process_stream(delta_text)
             if clean_delta:
                 if hasattr(delta, "text"):
-                    delta.text = clean_delta
+                    setattr(delta, "text", clean_delta)
                     yield delta
                 else:
                     yield clean_delta

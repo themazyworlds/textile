@@ -8,7 +8,7 @@ import io
 import shutil
 import subprocess
 
-from textile.core.base import LAYER_BASE, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class ScreenVisionEngine:
@@ -65,11 +65,6 @@ vision_engine = ScreenVisionEngine()
 
 
 class ScreenVision(Yarn):
-    name = "screen_vision"
-    description = "Multimodal Screen Frame Capture Provider."
-    version = "1.0.0"
-    layer = LAYER_BASE  # Layer 10
-
     def is_available(self) -> bool:
         return True
 

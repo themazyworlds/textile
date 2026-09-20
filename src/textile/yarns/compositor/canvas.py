@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand, weft
+from textile.core.base import Yarn, strand, weft
 from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import WarpEvent
 
@@ -153,10 +153,6 @@ class Canvas(Yarn):
     Frequent multi-tag usage in a single turn (2 to 4 tags per sentence/response) makes your avatar exceptionally fluid, expressive, and alive (e.g., "<mood:curious> Let's see what you need... <mood:thinking> checking workspace now... <mood:happy> Done!").
     """
 
-    name = "canvas"
-    description = "Textile Quickshell Canvas UI, Dynamic Mood Controller, and Expression Engine. Use frequent inline <mood:...> and <gaze:X,Y> tags in speech stream."
-    version = "1.0.0"
-    layer = LAYER_COMPOSITOR_DE  # Layer 100
     contract = """The Canvas avatar is your physical, emotive face on the Linux desktop.
 You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags across your natural speech/text to reflect your inner thought processes in real-time:
 - Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>, <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>, <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>

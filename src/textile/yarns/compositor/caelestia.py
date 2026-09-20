@@ -6,7 +6,7 @@ Layer 100 (Compositor / DE).
 import shutil
 import subprocess
 
-from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class CaelestiaIPC:
@@ -69,11 +69,6 @@ caelestia_ipc = CaelestiaIPC()
 
 
 class Caelestia(Yarn):
-    name = "caelestia"
-    description = "Caelestia Shell Drawers, Special Workspaces, and Desktop Utilities."
-    version = "1.0.0"
-    layer = LAYER_COMPOSITOR_DE  # Layer 100
-
     def is_available(self) -> bool:
         return bool(shutil.which("caelestia") or shutil.which("qs"))
 

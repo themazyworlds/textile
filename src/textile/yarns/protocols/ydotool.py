@@ -9,18 +9,10 @@ import socket
 import subprocess
 import time
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class Ydotool(Yarn):
-    name = "ydotool"
-    description = "Hardware-level Synthetic Keypress and Mouse Automation via ydotool."
-    version = "1.0.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-    dependencies = [
-        {"type": "system_binary", "target": "ydotool"},
-        {"type": "device_node", "target": "/dev/uinput", "write_required": True, "optional": True},
-    ]
 
     KEY_MAP = {
         "enter": 28,
@@ -171,8 +163,12 @@ class Ydotool(Yarn):
         :param press_enter: Press Enter after pasting.
         """
         if text and str(text).strip():
-            from textile.yarns.protocols.wayland import wayland_api
-            wayland_api.set_clipboard(str(text), selection="clipboard")
+            try:
+                import pyxclip
+                if hasattr(pyxclip, "copy"):
+                    pyxclip.copy(str(text))
+            except Exception:
+                pass
 
         term_mode = is_terminal
         if term_mode is None:

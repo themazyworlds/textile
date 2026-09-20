@@ -12,22 +12,13 @@ try:
 except Exception:
     pyxclip = None
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
+from textile.core.base import Yarn, strand
 
 logger = logging.getLogger(__name__)
 
 
 class Clipboard(Yarn):
     """Universal System Clipboard Capability Yarn via Native pyxclip."""
-
-    name = "clipboard"
-    description = "Universal Desktop Clipboard: Read, Write, and Clear Text Clipboard across Wayland and X11 via Native pyxclip."
-    version = "1.0.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-
-    dependencies = [
-        {"type": "python_module", "target": "pyxclip"},
-    ]
 
     def is_available(self) -> bool:
         if pyxclip is None:
@@ -41,7 +32,8 @@ class Clipboard(Yarn):
         if pyxclip is None:
             return "Error: 'pyxclip' module is not installed."
         try:
-            return pyxclip.paste() or ""
+            val = pyxclip.paste()
+            return str(val) if val else ""
         except Exception as e:
             if "empty" in str(e).lower():
                 return ""

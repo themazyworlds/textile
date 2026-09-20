@@ -8,7 +8,6 @@ import shutil
 import subprocess
 
 from textile.core.base import (
-    LAYER_SESSION_MANAGER,
     Yarn,
     resolve_terminal_and_shell,
     strand,
@@ -16,11 +15,6 @@ from textile.core.base import (
 
 
 class UWSM(Yarn):
-    name = "uwsm"
-    description = "UWSM Systemd Desktop Application Launcher & Scope Management."
-    version = "1.0.0"
-    layer = LAYER_SESSION_MANAGER  # Layer 150
-    dependencies = [{"type": "system_binary", "target": "uwsm"}]
 
     def is_available(self) -> bool:
         return shutil.which("uwsm") is not None

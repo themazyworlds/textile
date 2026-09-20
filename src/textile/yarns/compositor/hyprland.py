@@ -12,7 +12,7 @@ import subprocess
 import time
 from typing import Any, Literal
 
-from textile.core.base import LAYER_COMPOSITOR_DE, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class HyprlandIPC:
@@ -579,12 +579,6 @@ hyprland_ipc = HyprlandIPC()
 
 
 class Hyprland(Yarn):
-    name = "hyprland"
-    description = "Direct UNIX Domain Socket IPC for Hyprland Compositor."
-    version = "1.1.0"
-    layer = LAYER_COMPOSITOR_DE  # Layer 100
-    dependencies = [{"type": "env_variable", "target": "HYPRLAND_INSTANCE_SIGNATURE", "optional": True}]
-
     def is_available(self) -> bool:
         sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
         if sig:

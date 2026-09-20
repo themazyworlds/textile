@@ -12,7 +12,7 @@ import time
 import warnings
 from typing import Any, Literal
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
+from textile.core.base import Yarn, strand
 
 logger = logging.getLogger("textile.yarns.protocols.atspi")
 
@@ -32,6 +32,7 @@ for _p in [
     if os.path.exists(_p) and _p not in sys.path:
         sys.path.append(_p)
 
+GiAtspi: Any = None
 try:
     import warnings
 
@@ -40,9 +41,10 @@ try:
         warnings.filterwarnings("ignore", message=".*unix_signal_add_full.*")
         warnings.filterwarnings("ignore", message=".*GLib.*deprecated.*")
         gi.require_version("Atspi", "2.0")
-        from gi.repository import Atspi
+        from gi.repository import Atspi as GiAtspi  # type: ignore
     _ATSPI_AVAILABLE = True
 except Exception as e:
+    GiAtspi = None
     _ATSPI_AVAILABLE = False
     logger.debug(f"AT-SPI not available on this environment: {e}")
 
@@ -123,8 +125,8 @@ class AtspiAPI:
             return False
         if not _ATSPI_INITIALIZED:
             try:
-                if hasattr(Atspi, "init") and callable(Atspi.init):
-                    Atspi.init()
+                if hasattr(GiAtspi, "init") and callable(GiAtspi.init):
+                    GiAtspi.init()
                 _ATSPI_INITIALIZED = True
             except Exception as e:
                 logger.debug(f"Failed to initialize AT-SPI: {e}")
@@ -149,18 +151,18 @@ class AtspiAPI:
         except Exception:
             return []
 
-    def _get_bounds(self, acc: Any) -> dict[str, int] | None:
+    def _get_bounds(self, acc: Any) -> dict[str, Any] | None:
         try:
             if not acc.is_component():
                 return None
-            rect = acc.get_extents(Atspi.CoordType.SCREEN)
+            rect = acc.get_extents(GiAtspi.CoordType.SCREEN)
             if rect.x != 0 or rect.y != 0 or (rect.width > 0 and rect.height > 0):
                 if rect.width > 0 and rect.height > 0:
                     return {
                         "x": int(rect.x), "y": int(rect.y), "width": int(rect.width), "height": int(rect.height),
                         "center_x": int(rect.x + rect.width / 2), "center_y": int(rect.y + rect.height / 2), "coord_type": "screen"
                     }
-            rect_w = acc.get_extents(Atspi.CoordType.WINDOW)
+            rect_w = acc.get_extents(GiAtspi.CoordType.WINDOW)
             if rect_w.width > 0 and rect_w.height > 0:
                 return {
                     "x": int(rect_w.x), "y": int(rect_w.y), "width": int(rect_w.width), "height": int(rect_w.height),
@@ -195,7 +197,7 @@ class AtspiAPI:
                 return None
             char_count = acc.get_character_count()
             if char_count > 0:
-                return Atspi.Text.get_text(acc, 0, min(char_count, 2000))
+                return GiAtspi.Text.get_text(acc, 0, min(char_count, 2000))
         except Exception:
             pass
         return None
@@ -295,7 +297,7 @@ class AtspiAPI:
             return []
         apps = []
         try:
-            desktop = Atspi.get_desktop(0)
+            desktop = GiAtspi.get_desktop(0)
             if not desktop:
                 return []
             count = _safe_child_count(desktop)
@@ -321,7 +323,7 @@ class AtspiAPI:
     def _find_app(self, app_name_or_index: Any) -> Any | None:
         if not self.is_available():
             return None
-        desktop = Atspi.get_desktop(0)
+        desktop = GiAtspi.get_desktop(0)
         if not desktop:
             return None
         count = _safe_child_count(desktop)
@@ -348,7 +350,7 @@ class AtspiAPI:
                 return {"error": f"Application '{app_name}' not found."}
             root_path = f"app:{_safe_get_name(target_node)}"
         else:
-            target_node = Atspi.get_desktop(0)
+            target_node = GiAtspi.get_desktop(0)
             if not target_node:
                 return {"error": "Could not access AT-SPI desktop."}
             root_path = "0"
@@ -377,7 +379,7 @@ class AtspiAPI:
         if not self.is_available():
             return []
         results: list[dict[str, Any]] = []
-        target_root = self._find_app(app_name) if app_name else Atspi.get_desktop(0)
+        target_root = self._find_app(app_name) if app_name else GiAtspi.get_desktop(0)
         if not target_root:
             return []
 
@@ -441,7 +443,7 @@ class AtspiAPI:
         if root_part.startswith("app:"):
             current = self._find_app(root_part[4:])
         elif root_part == "0" or root_part.isdigit():
-            current = Atspi.get_desktop(0)
+            current = GiAtspi.get_desktop(0)
             if root_part != "0":
                 current = _safe_get_child(current, int(root_part))
         else:
@@ -653,7 +655,7 @@ class AtspiAPI:
         if not self.is_available():
             return False
         try:
-            res = Atspi.generate_keyboard_event(0, text, Atspi.KeySynthType.STRING)
+            res = GiAtspi.generate_keyboard_event(0, text, GiAtspi.KeySynthType.STRING)
             if press_enter:
                 time.sleep(0.05)
                 self.generate_key_event(65293, "pressrelease")
@@ -667,9 +669,9 @@ class AtspiAPI:
         keyval = self.resolve_keyval(key_name_or_val)
         if keyval == 0:
             return False
-        type_map = {"press": Atspi.KeySynthType.PRESS, "release": Atspi.KeySynthType.RELEASE, "pressrelease": Atspi.KeySynthType.PRESSRELEASE, "sym": Atspi.KeySynthType.SYM}
+        type_map = {"press": GiAtspi.KeySynthType.PRESS, "release": GiAtspi.KeySynthType.RELEASE, "pressrelease": GiAtspi.KeySynthType.PRESSRELEASE, "sym": GiAtspi.KeySynthType.SYM}
         try:
-            return bool(Atspi.generate_keyboard_event(keyval, None, type_map.get(event_type.lower(), Atspi.KeySynthType.PRESSRELEASE)))
+            return bool(GiAtspi.generate_keyboard_event(keyval, None, type_map.get(event_type.lower(), GiAtspi.KeySynthType.PRESSRELEASE)))
         except Exception:
             return False
 
@@ -683,12 +685,12 @@ class AtspiAPI:
         try:
             modifiers, main_key = keyvals[:-1], keyvals[-1]
             for mod in modifiers:
-                Atspi.generate_keyboard_event(mod, None, Atspi.KeySynthType.PRESS)
+                GiAtspi.generate_keyboard_event(mod, None, GiAtspi.KeySynthType.PRESS)
                 time.sleep(0.01)
-            Atspi.generate_keyboard_event(main_key, None, Atspi.KeySynthType.PRESSRELEASE)
+            GiAtspi.generate_keyboard_event(main_key, None, GiAtspi.KeySynthType.PRESSRELEASE)
             time.sleep(0.01)
             for mod in reversed(modifiers):
-                Atspi.generate_keyboard_event(mod, None, Atspi.KeySynthType.RELEASE)
+                GiAtspi.generate_keyboard_event(mod, None, GiAtspi.KeySynthType.RELEASE)
                 time.sleep(0.01)
             return True
         except Exception:
@@ -698,7 +700,7 @@ class AtspiAPI:
         if not self.is_available():
             return False
         try:
-            return bool(Atspi.generate_mouse_event(int(x), int(y), event_name))
+            return bool(GiAtspi.generate_mouse_event(int(x), int(y), event_name))
         except Exception:
             return False
 
@@ -721,15 +723,6 @@ atspi_api = AtspiAPI()
 
 
 class Atspi(Yarn):
-    name = "atspi_a11y"
-    description = "Linux AT-SPI Accessibility Interface for semantic UI inspection, native widget actions, and direct text input."
-    version = "1.1.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-    dependencies = [
-        {"type": "python_module", "target": "dbus_fast"},
-        {"type": "env_variable", "target": "DBUS_SESSION_BUS_ADDRESS", "optional": True},
-    ]
-
     def is_available(self) -> bool:
         return atspi_api.is_available()
 

@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from textile.core.base import LAYER_BASE, Yarn, strand
+from textile.core.base import Yarn, strand
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +106,10 @@ class InotifyAPI:
         return self._initialized and self._libc is not None
 
     def _ensure_fd(self) -> int:
-        if not self.is_available():
+        if self._libc is None or not self._initialized:
             raise RuntimeError("Linux inotify is not available.")
         if self._fd is None:
-            fd = self._libc.inotify_init1(IN_CLOEXEC | IN_NONBLOCK)
+            fd = int(self._libc.inotify_init1(IN_CLOEXEC | IN_NONBLOCK))
             if fd < 0:
                 errno = ctypes.get_errno()
                 raise OSError(errno, f"inotify_init1 failed: {os.strerror(errno)}")
@@ -146,6 +146,8 @@ class InotifyAPI:
 
     def add_watch(self, path: str, events: int | str | list[str] = "all", recursive: bool = False) -> dict[str, Any]:
         fd = self._ensure_fd()
+        if self._libc is None:
+            return {"success": False, "error": "Linux inotify is not available."}
         target_path = self._resolve_path(path)
         if not os.path.exists(target_path):
             return {"success": False, "error": f"Path '{target_path}' does not exist."}
@@ -172,7 +174,7 @@ class InotifyAPI:
         return {"success": True, "root_path": target_path, "watches_count": len(added_watches), "watches": added_watches}
 
     def remove_watch(self, watch: int | str) -> dict[str, Any]:
-        if self._fd is None:
+        if self._fd is None or self._libc is None:
             return {"success": False, "error": "No active inotify session."}
         if isinstance(watch, int) or (isinstance(watch, str) and watch.isdigit()):
             wd = int(watch)
@@ -472,11 +474,6 @@ file_io = FileIO()
 
 
 class FilesystemStorage(Yarn):
-    name = "filesystem_storage"
-    description = "File Operations and Linux Kernel inotify Real-Time Event Monitoring."
-    version = "1.3.0"
-    layer = LAYER_BASE  # Layer 10
-
     def is_available(self) -> bool:
         return True
 

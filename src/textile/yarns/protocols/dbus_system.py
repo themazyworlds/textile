@@ -14,10 +14,15 @@ from typing import Any, Literal
 try:
     from dbus_fast import BusType, Message, MessageFlag, MessageType, Variant
     from dbus_fast.aio import MessageBus
-except Exception:
-    BusType = Message = MessageFlag = MessageType = Variant = MessageBus = None
+except ImportError:
+    BusType: Any = None
+    Message: Any = None
+    MessageFlag: Any = None
+    MessageType: Any = None
+    Variant: Any = None
+    MessageBus: Any = None
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class DBusAPI:
@@ -218,15 +223,6 @@ dbus_api = DBusAPI()
 
 
 class DBus(Yarn):
-    name = "dbus_system"
-    description = "Universal Dynamic D-Bus Interface for Session and System Bus RPC Calls, Properties, and Introspection."
-    version = "2.0.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-    dependencies = [
-        {"type": "python_module", "target": "dbus_fast"},
-        {"type": "env_variable", "target": "DBUS_SESSION_BUS_ADDRESS", "optional": True},
-    ]
-
     def is_available(self) -> bool:
         return bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.path.exists("/run/dbus/system_bus_socket"))
 

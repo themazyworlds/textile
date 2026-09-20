@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from typing import Any, Literal
 
-from textile.core.base import LAYER_DESKTOP_PROTOCOL, Yarn, strand
+from textile.core.base import Yarn, strand
 
 PRIORITY_NAMES = {
     0: "emerg",
@@ -202,11 +202,6 @@ journal_api = JournalAPI()
 
 
 class Journal(Yarn):
-    name = "journal"
-    description = "Systemd Journal Log Querying, Service Unit Inspection, Kernel Logs, and Crash Diagnostics."
-    version = "1.0.0"
-    layer = LAYER_DESKTOP_PROTOCOL  # Layer 50
-
     def is_available(self) -> bool:
         return journal_api.is_available()
 

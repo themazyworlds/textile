@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from textile.core.base import LAYER_BASE, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class SensorsAPI:
@@ -150,11 +150,6 @@ sensors_api = SensorsAPI()
 
 
 class Sensors(Yarn):
-    name = "sensors"
-    description = "Hardware Telemetry: Real-Time CPU/GPU Temperatures, Fan Speeds, and Core Frequencies."
-    version = "1.0.0"
-    layer = LAYER_BASE  # Layer 10
-
     def is_available(self) -> bool:
         return sensors_api.is_available()
 
