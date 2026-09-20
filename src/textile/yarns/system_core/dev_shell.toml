@@ -1,0 +1,10 @@
+[yarn]
+name = "dev_shell"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Isolated subprocess shell execution tier"
+
+[dependencies]
+python = []
+system = []

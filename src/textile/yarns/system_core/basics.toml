@@ -1,0 +1,10 @@
+[yarn]
+name = "basics"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Core POSIX file, directory, and system command primitives"
+
+[dependencies]
+python = []
+system = []

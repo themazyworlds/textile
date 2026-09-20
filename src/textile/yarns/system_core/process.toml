@@ -1,0 +1,10 @@
+[yarn]
+name = "process"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Process lifecycle management, list, priority, and signaling"
+
+[dependencies]
+python = ["psutil"]
+system = []

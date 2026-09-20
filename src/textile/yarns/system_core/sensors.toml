@@ -1,0 +1,10 @@
+[yarn]
+name = "sensors"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Hardware sensors, telemetry, and CPU frequency reporting"
+
+[dependencies]
+python = ["psutil"]
+system = []

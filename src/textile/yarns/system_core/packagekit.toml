@@ -1,0 +1,10 @@
+[yarn]
+name = "packagekit"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Linux PackageKit D-Bus package installation and update query"
+
+[dependencies]
+python = []
+system = []

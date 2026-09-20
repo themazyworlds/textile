@@ -1,0 +1,10 @@
+[yarn]
+name = "web_research"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Live internet search and web page text extraction"
+
+[dependencies]
+python = []
+system = []

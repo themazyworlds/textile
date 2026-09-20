@@ -1,0 +1,10 @@
+[yarn]
+name = "ydotool"
+publisher = "textile"
+version = "1.0.0"
+layer = 50
+description = "Synthetic mouse and keyboard input events via ydotool / uinput"
+
+[dependencies]
+python = []
+system = ["ydotool"]

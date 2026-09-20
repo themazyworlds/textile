@@ -1,0 +1,10 @@
+[yarn]
+name = "hyprland"
+publisher = "textile"
+version = "1.0.0"
+layer = 100
+description = "Hyprland compositor IPC, workspace navigation, and window controls"
+
+[dependencies]
+python = []
+system = ["hyprctl"]

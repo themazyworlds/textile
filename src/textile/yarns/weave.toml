@@ -1,0 +1,10 @@
+[yarn]
+name = "weave"
+publisher = "textile"
+version = "1.0.0"
+layer = 150
+description = "Embedded LiveKit and Gemini Realtime voice companion client"
+
+[dependencies]
+python = ["livekit-agents", "livekit-plugins-google"]
+system = ["lk"]

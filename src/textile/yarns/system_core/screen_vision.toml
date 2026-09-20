@@ -1,0 +1,10 @@
+[yarn]
+name = "screen_vision"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Desktop screenshot capture and screen vision analysis"
+
+[dependencies]
+python = ["Pillow"]
+system = ["grim", "maim", "scrot"]

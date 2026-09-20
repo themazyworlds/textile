@@ -1,0 +1,10 @@
+[yarn]
+name = "filesystem"
+publisher = "textile"
+version = "1.0.0"
+layer = 10
+description = "Inotify file watching, disk usage, and storage mounts"
+
+[dependencies]
+python = []
+system = []

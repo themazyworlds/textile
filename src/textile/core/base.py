@@ -11,10 +11,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, ValidationError, create_model
@@ -378,25 +380,132 @@ def _create_invoker(
     return _sync_invoker
 
 
+@dataclass
+class YarnManifest:
+    """Declarative static manifest for Textile Yarns parsed from yarn.toml or <name>.toml."""
+
+    name: str
+    publisher: str = ""
+    version: str = "1.0.0"
+    layer: int = LAYER_DESKTOP_PROTOCOL
+    description: str = ""
+    contract: str = ""
+    python_dependencies: list[str] = field(default_factory=list)
+    system_dependencies: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_toml(cls, path: Path) -> "YarnManifest":
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        yarn_data = data.get("yarn", {})
+        deps_data = data.get("dependencies", {})
+        return cls(
+            name=yarn_data.get("name", ""),
+            publisher=yarn_data.get("publisher", ""),
+            version=yarn_data.get("version", "1.0.0"),
+            layer=yarn_data.get("layer", LAYER_DESKTOP_PROTOCOL),
+            description=yarn_data.get("description", ""),
+            contract=yarn_data.get("contract", ""),
+            python_dependencies=deps_data.get("python", []),
+            system_dependencies=deps_data.get("system", []),
+        )
+
+
 class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
-    publisher: str = ""
-    name: str = "base_yarn"
-    description: str = "Base Yarn"
-    version: str = "1.0.0"
-    layer: int = LAYER_BASE
-    contract: str | None = None
-    dependencies: list[dict[str, Any]] = []
-    python_dependencies: list[str] = []
+    manifest: YarnManifest | None = None
+
+    def __init__(self) -> None:
+        if self.manifest is None:
+            mod_file = getattr(sys.modules.get(self.__class__.__module__), "__file__", None)
+            if mod_file:
+                p = Path(mod_file)
+                toml_file = p.with_suffix(".toml")
+                if not toml_file.exists():
+                    toml_file = p.parent / "yarn.toml"
+                if toml_file.exists():
+                    self.manifest = YarnManifest.from_toml(toml_file)
+        if self.manifest is None:
+            c = self.__class__
+
+            def _get_attr(attr_name: str, default: Any) -> Any:
+                val = c.__dict__.get(attr_name, getattr(self, f"_{attr_name}", default))
+                return default if isinstance(val, property) else val
+
+            self.manifest = YarnManifest(
+                name=str(_get_attr("name", "base_yarn")),
+                publisher=str(_get_attr("publisher", "")),
+                version=str(_get_attr("version", "1.0.0")),
+                layer=int(_get_attr("layer", LAYER_DESKTOP_PROTOCOL)),
+                description=str(_get_attr("description", "Base Yarn")),
+                contract=str(_get_attr("contract", "") or ""),
+                python_dependencies=list(_get_attr("python_dependencies", [])),
+            )
+
+    @property
+    def name(self) -> str:
+        return self.manifest.name if self.manifest else "base_yarn"
+
+    @name.setter
+    def name(self, value: str) -> None:
+        if self.manifest:
+            self.manifest.name = value
+
+    @property
+    def publisher(self) -> str:
+        return self.manifest.publisher if self.manifest else ""
+
+    @publisher.setter
+    def publisher(self, value: str) -> None:
+        if self.manifest:
+            self.manifest.publisher = value
+
+    @property
+    def version(self) -> str:
+        return self.manifest.version if self.manifest else "1.0.0"
+
+    @version.setter
+    def version(self, value: str) -> None:
+        if self.manifest:
+            self.manifest.version = value
+
+    @property
+    def description(self) -> str:
+        return self.manifest.description if self.manifest else ""
+
+    @description.setter
+    def description(self, value: str) -> None:
+        if self.manifest:
+            self.manifest.description = value
+
+    @property
+    def layer(self) -> int:
+        return self.manifest.layer if self.manifest else LAYER_DESKTOP_PROTOCOL
+
+    @layer.setter
+    def layer(self, value: int) -> None:
+        if self.manifest:
+            self.manifest.layer = value
+
+    @property
+    def python_dependencies(self) -> list[str]:
+        return self.manifest.python_dependencies if self.manifest else []
+
+    @python_dependencies.setter
+    def python_dependencies(self, value: list[str]) -> None:
+        if self.manifest:
+            self.manifest.python_dependencies = value
 
     def get_contract(self) -> str | None:
         """Return the yarn's sealed contract / advisory letter for the AI client."""
+        if self.manifest and self.manifest.contract:
+            return self.manifest.contract
         return getattr(self, "contract", None) or (self.__doc__.strip() if self.__doc__ else None)
 
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""
-        return list(getattr(self, "python_dependencies", []) or [])
+        return list(self.python_dependencies)
 
     @property
     def warp(self):

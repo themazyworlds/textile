@@ -1,0 +1,10 @@
+[yarn]
+name = "dbus_system"
+publisher = "textile"
+version = "1.0.0"
+layer = 50
+description = "D-Bus system and session bus inspection and call dispatching"
+
+[dependencies]
+python = ["sdbus"]
+system = []

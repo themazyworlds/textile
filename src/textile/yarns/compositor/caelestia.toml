@@ -1,0 +1,10 @@
+[yarn]
+name = "caelestia"
+publisher = "textile"
+version = "1.0.0"
+layer = 100
+description = "Caelestia desktop shell IPC, drawer, lock screen, and screenshot controls"
+
+[dependencies]
+python = []
+system = ["caelestia"]

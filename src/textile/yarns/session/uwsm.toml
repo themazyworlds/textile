@@ -1,0 +1,10 @@
+[yarn]
+name = "uwsm"
+publisher = "textile"
+version = "1.0.0"
+layer = 150
+description = "Systemd and UWSM scope and session management integration"
+
+[dependencies]
+python = []
+system = ["uwsm"]

@@ -8,10 +8,11 @@ import inspect
 import json
 import logging
 import threading
+import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from textile.core.base import Yarn
+from textile.core.base import Yarn, YarnManifest
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,27 @@ class Skein:
                 self._disabled_yarns = set(json.loads(self._config_file.read_text()).get("disabled_yarns", []))
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load skein config: {e}")
+
+    def get_static_manifests(self) -> dict[str, YarnManifest]:
+        """Statically inspect all TOML manifests without importing Python modules."""
+        manifests: dict[str, YarnManifest] = {}
+        yarns_root = Path(__file__).parent.parent / "yarns"
+        for toml_file in yarns_root.rglob("*.toml"):
+            try:
+                m = YarnManifest.from_toml(toml_file)
+                if m.name:
+                    manifests[m.name] = m
+            except Exception as e:
+                logger.debug(f"Failed parsing manifest {toml_file}: {e}")
+        if self._user_yarns_dir.exists():
+            for toml_file in self._user_yarns_dir.rglob("*.toml"):
+                try:
+                    m = YarnManifest.from_toml(toml_file)
+                    if m.name:
+                        manifests[m.name] = m
+                except Exception as e:
+                    logger.debug(f"Failed parsing user manifest {toml_file}: {e}")
+        return manifests
 
     def _save_config(self) -> None:
         try:
