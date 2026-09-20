@@ -84,6 +84,7 @@ async def entrypoint(ctx: JobContext):
             command=textile_cmd,
             args=textile_args,
             env=textile_env,
+            client_session_timeout_seconds=60.0,
         ),
     )
 
