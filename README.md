@@ -8,9 +8,9 @@
 [![Last Commit](https://img.shields.io/github/last-commit/themazyworlds/textile.svg)](https://github.com/themazyworlds/textile/commits/main)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/themazyworlds/textile/pulls)
 
-![Textile Demo](https://github.com/user-attachments/assets/291ad11e-f4ad-48ff-933b-03c0285b8933)
+https://github.com/user-attachments/assets/291ad11e-f4ad-48ff-933b-03c0285b8933
 
-Textile lets AI assistants and voice companions control your Linux desktop over MCP.
+A layered Linux engine for realtime voice companions, MCP tools, and desktop automation.
 
 ---
 
