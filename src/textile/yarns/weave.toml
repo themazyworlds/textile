@@ -2,6 +2,7 @@
 name = "weave"
 publisher = "textile"
 version = "1.0.0"
+manifest_version = 1
 layer = 150
 description = "Embedded LiveKit and Gemini Realtime voice companion client"
 

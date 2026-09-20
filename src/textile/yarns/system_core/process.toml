@@ -2,6 +2,7 @@
 name = "process"
 publisher = "textile"
 version = "1.0.0"
+manifest_version = 1
 layer = 10
 description = "Process lifecycle management, list, priority, and signaling"
 

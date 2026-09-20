@@ -92,6 +92,7 @@ Subclass `Yarn` alongside a declarative static `.toml` manifest to create modula
 name = "media_control"
 publisher = "community"
 version = "1.0.0"
+manifest_version = 1
 layer = 50
 description = "Media player control integration"
 

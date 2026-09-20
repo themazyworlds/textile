@@ -2,6 +2,7 @@
 name = "hyprland"
 publisher = "textile"
 version = "1.0.0"
+manifest_version = 1
 layer = 100
 description = "Hyprland compositor IPC, workspace navigation, and window controls"
 

@@ -365,6 +365,33 @@ class TestYarnArchitecture(unittest.TestCase):
             get_res = cb.execute_strand("clipboard_get", {})
             self.assertEqual(get_res, "Textile Pyxclip Test")
 
+    def test_toml_manifest_pydantic_validation(self):
+        import tempfile
+        from pathlib import Path
+        from textile.core.base import YarnManifest
+
+        # Test valid TOML manifest
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write('[yarn]\nname = "test_manifest"\nversion = "1.0.0"\nmanifest_version = 1\nlayer = 50\n')
+            temp_path = Path(f.name)
+        try:
+            m = YarnManifest.from_toml(temp_path)
+            self.assertEqual(m.name, "test_manifest")
+            self.assertEqual(m.manifest_version, 1)
+        finally:
+            temp_path.unlink()
+
+        # Test malformed TOML manifest (e.g. invalid layer type)
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write('[yarn]\nname = "invalid"\nlayer = "invalid_int_string"\n')
+            temp_path2 = Path(f.name)
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                YarnManifest.from_toml(temp_path2)
+            self.assertIn("Validation Hint:", str(ctx.exception))
+        finally:
+            temp_path2.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

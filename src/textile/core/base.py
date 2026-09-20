@@ -380,35 +380,58 @@ def _create_invoker(
     return _sync_invoker
 
 
-@dataclass
-class YarnManifest:
+class DependenciesManifest(BaseModel):
+    """Declared python and system CLI package requirements."""
+
+    python: list[str] = Field(default_factory=list)
+    system: list[str] = Field(default_factory=list)
+
+
+class YarnManifest(BaseModel):
     """Declarative static manifest for Textile Yarns parsed from yarn.toml or <name>.toml."""
 
     name: str
     publisher: str = ""
     version: str = "1.0.0"
+    manifest_version: int = 1
     layer: int = LAYER_DESKTOP_PROTOCOL
     description: str = ""
     contract: str = ""
-    python_dependencies: list[str] = field(default_factory=list)
-    system_dependencies: list[str] = field(default_factory=list)
+    dependencies: DependenciesManifest = Field(default_factory=DependenciesManifest)
+    permissions: list[str] = Field(default_factory=list)
+
+    @property
+    def python_dependencies(self) -> list[str]:
+        return self.dependencies.python
+
+    @python_dependencies.setter
+    def python_dependencies(self, value: list[str]) -> None:
+        self.dependencies.python = value
+
+    @property
+    def system_dependencies(self) -> list[str]:
+        return self.dependencies.system
 
     @classmethod
     def from_toml(cls, path: Path) -> "YarnManifest":
         with open(path, "rb") as f:
-            data = tomllib.load(f)
-        yarn_data = data.get("yarn", {})
-        deps_data = data.get("dependencies", {})
-        return cls(
-            name=yarn_data.get("name", ""),
-            publisher=yarn_data.get("publisher", ""),
-            version=yarn_data.get("version", "1.0.0"),
-            layer=yarn_data.get("layer", LAYER_DESKTOP_PROTOCOL),
-            description=yarn_data.get("description", ""),
-            contract=yarn_data.get("contract", ""),
-            python_dependencies=deps_data.get("python", []),
-            system_dependencies=deps_data.get("system", []),
-        )
+            raw_data = tomllib.load(f)
+        try:
+            yarn_data = raw_data.get("yarn", {})
+            deps_data = raw_data.get("dependencies", {})
+            perms_data = raw_data.get("permissions", [])
+            data = {
+                **yarn_data,
+                "dependencies": deps_data,
+                "permissions": perms_data,
+            }
+            return cls.model_validate(data)
+        except ValidationError as e:
+            err = e.errors()[0]
+            loc = ".".join(str(x) for x in err["loc"]) if err["loc"] else "field"
+            msg = f"Validation Hint: Manifest '{path.name}' field '{loc}' failed validation: {err['msg']}."
+            logger.warning(msg)
+            raise ValueError(msg) from e
 
 
 class Yarn(ABC):
@@ -437,10 +460,11 @@ class Yarn(ABC):
                 name=str(_get_attr("name", "base_yarn")),
                 publisher=str(_get_attr("publisher", "")),
                 version=str(_get_attr("version", "1.0.0")),
+                manifest_version=1,
                 layer=int(_get_attr("layer", LAYER_DESKTOP_PROTOCOL)),
                 description=str(_get_attr("description", "Base Yarn")),
                 contract=str(_get_attr("contract", "") or ""),
-                python_dependencies=list(_get_attr("python_dependencies", [])),
+                dependencies=DependenciesManifest(python=list(_get_attr("python_dependencies", []))),
             )
 
     @property
