@@ -75,11 +75,14 @@ async def entrypoint(ctx: JobContext):
     textile_env = dict(os.environ)
     textile_env["TEXTILE_CALLER"] = "weave"
 
+    textile_cmd = shutil.which("textile") or sys.executable
+    textile_args = ["twill"] if shutil.which("textile") else ["-m", "textile.core.cli", "twill"]
+
     textile_toolset = mcp.MCPToolset(
         id="textile",
         mcp_server=mcp.MCPServerStdio(
-            command="textile",
-            args=["twill"],
+            command=textile_cmd,
+            args=textile_args,
             env=textile_env,
         ),
     )
