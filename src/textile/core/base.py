@@ -801,8 +801,20 @@ class Yarn(ABC):
     def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():
             if s.name == strand_name:
-                h = s.raw_handler or s.handler
-                return h(args) if h else "ok"
+                if s.raw_handler is not None:
+                    raw_h: Any = s.raw_handler
+                    try:
+                        res = raw_h(**args)
+                    except TypeError:
+                        res = raw_h(args)
+                elif s.handler is not None:
+                    res = s.handler(args)
+                else:
+                    return "ok"
+
+                if isinstance(res, (dict, list)):
+                    return json.dumps(res, indent=2)
+                return str(res) if res is not None else "ok"
         return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
     def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
