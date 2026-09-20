@@ -88,7 +88,7 @@ Subclass `Yarn` to create modular capability plugins. Functions decorated with `
 
 ```python
 from typing import Optional
-from textile.core.base import Yarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
+from textile import Yarn, CapabilityTier, strand, LAYER_DESKTOP_PROTOCOL
 
 class CustomMediaYarn(Yarn):
     publisher = "community"
