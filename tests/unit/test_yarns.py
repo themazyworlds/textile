@@ -173,7 +173,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertFalse(is_over_a, "Strands without capability contracts must never be flagged as overridden.")
 
     def test_canvas_yarn_and_mood(self):
-        from textile.yarns.compositor.canvas import Canvas
+        from textile.yarns.canvas.canvas import Canvas
         canvas = Canvas()
         self.assertEqual(canvas.name, "canvas")
         self.assertEqual(canvas.layer, 100)
@@ -268,8 +268,8 @@ class TestYarnArchitecture(unittest.TestCase):
         from textile.core.loom import loom
         from textile.core.skein import skein
         from textile.core.tapestry import sensory_tapestry
-        from textile.yarns.compositor.canvas import Canvas
-        from textile.yarns.weave import extract_and_apply_mood_tags
+        from textile.yarns.canvas.canvas import Canvas
+        from textile.yarns.weave.weave import extract_and_apply_mood_tags
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -291,8 +291,8 @@ class TestYarnArchitecture(unittest.TestCase):
         from textile.core.loom import loom
         from textile.core.skein import skein
         from textile.core.tapestry import sensory_tapestry
-        from textile.yarns.compositor.canvas import Canvas
-        from textile.yarns.weave import WeaveAgent
+        from textile.yarns.canvas.canvas import Canvas
+        from textile.yarns.weave.weave import WeaveAgent
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -326,7 +326,7 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_packagekit_pure_dbus_yarn(self):
         from dbus_fast import Variant
 
-        from textile.yarns.system_core.packagekit import (
+        from textile.yarns.packagekit.packagekit import (
             PackageKit,
             parse_package_id,
             unwrap_variant,
@@ -359,7 +359,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(unwrapped, {"key": 42, "nested": ["foo"]})
 
     def test_clipboard_yarn(self):
-        from textile.yarns.protocols.clipboard import Clipboard
+        from textile.yarns.clipboard.clipboard import Clipboard
         cb = Clipboard()
         self.assertEqual(cb.name, "clipboard")
         self.assertEqual(cb.layer, 50)

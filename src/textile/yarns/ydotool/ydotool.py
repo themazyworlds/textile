@@ -16,7 +16,7 @@ except ImportError:
     pyxclip = None
 
 from textile.core.base import CapabilityTier, Yarn, strand
-from textile.yarns.compositor.hyprland import hyprland_ipc
+from textile.yarns.hyprland.hyprland import hyprland_ipc
 
 
 class Ydotool(Yarn):

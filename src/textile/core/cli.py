@@ -20,8 +20,8 @@ from textile.core.seams import seams
 from textile.core.skein import skein
 from textile.core.tapestry import core_tapestry, sensory_tapestry
 from textile.core.twill import run_twill
-from textile.yarns.compositor.canvas import Canvas
-from textile.yarns.weave import run_voice_agent
+from textile.yarns.canvas.canvas import Canvas
+from textile.yarns.weave.weave import run_voice_agent
 
 console = Console()
 

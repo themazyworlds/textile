@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from textile.core.base import CapabilityTier, Yarn, strand
 
-logger = logging.getLogger("textile.yarns.protocols.atspi")
+logger = logging.getLogger(__name__)
 
 
 _ATSPI_INITIALIZED = False
