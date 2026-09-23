@@ -6,16 +6,19 @@ Provides rich discovery, parameter schema help, execution routing, and diagnosti
 import argparse
 import difflib
 import json
+import time
 from typing import Any
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.table import Table
 from rich.tree import Tree
 
 from textile.core.loom import loom
 from textile.core.seams import seams
 from textile.core.skein import skein
+from textile.core.tapestry import core_tapestry, sensory_tapestry
 from textile.core.twill import run_twill
 from textile.yarns.compositor.canvas import Canvas
 from textile.yarns.weave import run_voice_agent
@@ -388,6 +391,116 @@ def cmd_call(args):
     print(result)
 
 
+def cmd_tapestry(args):
+    """Inspect and stream live engine task ledger and sensory blackboard."""
+    live = getattr(args, "live", False)
+    tasks_only = getattr(args, "tasks", False)
+    notices_only = getattr(args, "notices", False)
+    level_filter = getattr(args, "level", None)
+    json_output = getattr(args, "json_output", False)
+
+    if json_output:
+        state = {
+            "engine": core_tapestry.get_state(),
+            "sensory": sensory_tapestry.get_state(),
+        }
+        print(json.dumps(state, indent=2))
+        return
+
+    def _render_views() -> list[Any]:
+        views = []
+        # 1. Engine Task Ledger Table
+        if not notices_only:
+            active = core_tapestry.get_active_tasks()
+            history = core_tapestry.get_task_history(limit=15)
+
+            engine_table = Table(
+                title=f"Core Task Ledger • {len(active)} active running",
+                box=box.SIMPLE_HEAD,
+                show_edge=False,
+                header_style="bold bright_cyan",
+                pad_edge=False,
+            )
+            engine_table.add_column("Task ID", style="bold yellow", width=12)
+            engine_table.add_column("Strand", style="bold white", width=32)
+            engine_table.add_column("Status", width=14)
+            engine_table.add_column("Duration", justify="right", width=12)
+            engine_table.add_column("Args / Error", style="dim")
+
+            for t in active:
+                engine_table.add_row(
+                    t["task_id"][:8],
+                    t["strand_name"],
+                    "[bold green]RUNNING[/bold green]",
+                    "active",
+                    str(t.get("args") or ""),
+                )
+            for t in reversed(history):
+                status_str = "[green]SUCCESS[/green]" if t.get("success") else "[red]FAILED[/red]"
+                dur = f"{t.get('duration_ms', 0):.1f}ms" if t.get("duration_ms") is not None else "-"
+                err_or_args = t.get("error") or str(t.get("args") or "")
+                engine_table.add_row(
+                    t["task_id"][:8],
+                    t["strand_name"],
+                    status_str,
+                    dur,
+                    err_or_args,
+                )
+            views.append(engine_table)
+
+        # 2. Public Sensory Blackboard Table
+        if not tasks_only:
+            slots = sensory_tapestry.get_state().get("slots", {})
+            notices = sensory_tapestry.get_notices(level=level_filter, limit=15)
+
+            sensory_table = Table(
+                title=f"Sensory Blackboard • {len(slots)} slots • {len(notices)} notices",
+                box=box.SIMPLE_HEAD,
+                show_edge=False,
+                header_style="bold magenta",
+                pad_edge=False,
+            )
+            sensory_table.add_column("Time", style="dim", width=12)
+            sensory_table.add_column("Level", width=10)
+            sensory_table.add_column("Source", style="bold cyan", width=16)
+            sensory_table.add_column("Message", style="white")
+
+            _LEVEL_COLORS = {
+                "INFO": "dim white",
+                "NOTICE": "cyan",
+                "WARNING": "bold yellow",
+                "ERROR": "bold red",
+                "CRITICAL": "bold white on red",
+            }
+            for n in reversed(notices):
+                ts = n["timestamp"].split("T")[-1][:8] if "T" in n["timestamp"] else n["timestamp"][:8]
+                lvl = n["level"]
+                lvl_style = _LEVEL_COLORS.get(lvl, "white")
+                sensory_table.add_row(
+                    ts,
+                    f"[{lvl_style}]{lvl}[/{lvl_style}]",
+                    n["source"],
+                    n["message"],
+                )
+            views.append(sensory_table)
+        return views
+
+    if live:
+        console.print("[dim]Streaming live Tapestry updates (Ctrl+C to exit)...[/dim]\n")
+        try:
+            with Live(console=console, refresh_per_second=4) as live_display:
+                while True:
+                    views = _render_views()
+                    live_display.update(Group(*views))
+                    time.sleep(0.5)
+        except KeyboardInterrupt:
+            console.print("\n[dim]Stopped live Tapestry stream.[/dim]")
+    else:
+        for v in _render_views():
+            console.print(v)
+            console.print()
+
+
 def cmd_help_target(args, parser=None):
     """Display detailed parameter schema and help for a specific strand or yarn."""
     loom.initialize()
@@ -572,7 +685,31 @@ def main():
     p_seams.add_argument("--json", dest="json_output", action="store_true", help="Output audit report as JSON")
     p_seams.set_defaults(func=cmd_seams)
 
-    # 8. Call (Direct Strand Execution)
+    # 8. Tapestry (Live Engine Task Ledger & Sensory Blackboard)
+    p_tapestry = subparsers.add_parser(
+        "tapestry",
+        help="Inspect and stream live engine task ledger and sensory blackboard",
+    )
+    p_tapestry.add_argument(
+        "-f",
+        "--follow",
+        "--live",
+        dest="live",
+        action="store_true",
+        help="Stream Tapestry updates live in real-time",
+    )
+    p_tapestry.add_argument("--tasks", action="store_true", help="Display only core engine task ledger")
+    p_tapestry.add_argument("--notices", action="store_true", help="Display only sensory notices")
+    p_tapestry.add_argument(
+        "--level",
+        type=str,
+        choices=["info", "notice", "warning", "error", "critical"],
+        help="Filter notices by minimum level",
+    )
+    p_tapestry.add_argument("--json", dest="json_output", action="store_true", help="Output tapestry state as JSON")
+    p_tapestry.set_defaults(func=cmd_tapestry)
+
+    # 9. Call (Direct Strand Execution)
     p_call = subparsers.add_parser(
         "call",
         help="Execute any Textile strand directly (e.g. textile call wayland_clipboard_set text=hi)",
