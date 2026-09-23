@@ -519,7 +519,7 @@ class Yarn(ABC):
         """Return the yarn's sealed contract / advisory letter declared in its TOML manifest."""
         if self.manifest and self.manifest.contract:
             return self.manifest.contract.strip()
-        return self.__doc__.strip() if self.__doc__ else None
+        return None
 
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""

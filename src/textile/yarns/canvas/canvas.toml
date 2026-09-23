@@ -1,5 +1,5 @@
 [yarn]
-Name = "canvas"
+name = "canvas"
 publisher = "textile"
 version = "1.0.0"
 manifest_version = 1

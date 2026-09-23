@@ -23,7 +23,7 @@ The Textile automation subsystem operates on a layered, protocol-first fabric ma
 ├─────────────────┬────────────────┬─────────────────┬─────────────┤
 │  Layer 150      │  Layer 100     │  Layer 50       │  Layer 10   │
 │  Session Yarn   │  Compositor    │  Protocol Yarns │  Core POSIX │
-│  (UWSM)         │  (Hyprland)    │  (AT-SPI, D-Bus)│  (FS, Proc) │
+│  (UWSM)         │  (Hyprland)    │  (D-Bus, Polkit)│  (FS, Proc) │
 └─────────────────┴────────────────┴─────────────────┴─────────────┘
 ```
 
@@ -34,7 +34,7 @@ The Textile automation subsystem operates on a layered, protocol-first fabric ma
 5. **`Strands` (Tools & Actions)**: Individual callable operations written with Pydantic v2 `@strand` decorators across fabric layers:
    - **Layer 150 (Session Lifecycle)**: `uwsm_status`, `uwsm_stop`, `uwsm_finalize`.
    - **Layer 100 (Compositor & Canvas)**: `hyprland_dispatch`, `hyprland_focus_window`, `caelestia_*`, `canvas_*`.
-   - **Layer 50 (Semantic Protocols)**: `atspi_*`, `polkit_*`, `dbus_*`, `clipboard_*`, `ydotool_*`, `journal_*`.
+   - **Layer 50 (Semantic Protocols)**: `polkit_*`, `dbus_*`, `clipboard_*`, `ydotool_*`, `journal_*`.
    - **Layer 10 (Core POSIX)**: `file_*`, `inotify_*`, `process_*`, `sensors_*`, `packagekit_*`, `run_command`, `search_web`, `fetch_webpage`, `capture_screen`.
 
 
@@ -44,7 +44,6 @@ Every yarn lives in its own self-contained directory under `src/textile/yarns/`:
 
 ```
 src/textile/yarns/
-├── atspi/           # AT-SPI accessibility protocol yarn & AT-SPI tree parser
 ├── basics/          # Core web search, webpage fetch, and basic utilities yarn
 ├── caelestia/       # Caelestia shell UI launcher & sidebar control yarn
 ├── canvas/          # Quickshell Canvas QML UI, emotive state, and mood yarn
@@ -116,76 +115,6 @@ Textile maintains real-time state and diagnostics:
 | `audit_yarn_integrity` | Perform system-wide integrity and health audit of all yarns and strands | (none) |
 | `run_system_tests` | Run the full test suite and return pass/fail report | (none) |
 | `cancel_live_task` | Cancel an active live background task | `strand_name` |
-
----
-
-## Universal Linux Semantic GUI Automation (`atspi_*`)
-
-AT-SPI provides direct, protocol-level control over all graphical elements.
-
-### Available Tools
-
-| Tool | Purpose | Example Call |
-|---|---|---|
-| `atspi_list_apps` | List all running GUI applications on the a11y bus | `atspi_list_apps()` |
-| `atspi_get_tree` | Dump accessible hierarchy of an app | `atspi_get_tree(app_name="safeeyes", max_depth=5)` |
-| `atspi_find_elements` | Search elements by query, role, or state | `atspi_find_elements(app_name="safeeyes", query="long break", role="spin button")` |
-| `atspi_get_focused` | Retrieve current focused widget | `atspi_get_focused()` |
-| `atspi_do_action` | Trigger native action (click, toggle, activate) | `atspi_do_action(app_name="safeeyes", element_name="Breaks")` |
-| `atspi_select` | Select tab, list item, or dropdown option | `atspi_select(app_name="pavucontrol", element_name="Profile:", index=1)` |
-| `atspi_set_value` | Set value on slider or progress bar | `atspi_set_value(app_name="pavucontrol", element_name="Volume", value=75.0)` |
-| `atspi_set_text` | Replace text in entry, spin button, or password dialog | `atspi_set_text(text="60", app_name="safeeyes", element_name="long break interval")` |
-| `atspi_insert_text` | Insert text at specific character index | `atspi_insert_text(text="hello", position=-1, app_name="editor")` |
-| `atspi_generate_key` | Synthesize keypress, hotkey combo, or string | `atspi_generate_key(combo="ctrl+c")` |
-| `atspi_click_element`| Coordinate-accurate synthetic mouse click | `atspi_click_element(app_name="safeeyes", element_name="Close")` |
-| `atspi_get_element_bounds` | Retrieve widget bounds & screen center coordinates | `atspi_get_element_bounds(app_name="safeeyes", element_name="Settings")` |
-
----
-
-## Universal UI Interaction Recipes
-
-### 1. Modifying Numerical Inputs & Spin Buttons (e.g., Safe Eyes, GIMP)
-GTK/Qt spin buttons often have blank names (`name=""`) with descriptive labels in preceding sibling widgets and section headers in parent containers.
-- **How to target**: Use natural query names. The engine automatically synthesizes contextual names like `"Long Breaks: Interval between two breaks (in minutes)"`.
-- **How to change**: Call `atspi_set_text`:
-  ```python
-  atspi_set_text(text="60", app_name="safeeyes", element_name="long break interval")
-  ```
-
-### 2. Toggling Switches & Checkboxes
-- **How to target**: Search by switch label or section context.
-- **How to toggle**: Call `atspi_do_action`:
-  ```python
-  atspi_do_action(app_name="safeeyes", element_name="Strict break", action_name="toggle")
-  ```
-
-### 3. Interacting with Dropdown Menus & Combo Boxes (e.g., Pavucontrol, Control Center)
-Modern GTK4 `GtkDropDown` and `GtkComboBox` widgets wrap an internal toggle button and implement the AT-SPI `Selection` interface directly on the container.
-- **To Open the Dropdown**: Call `atspi_do_action` (automatically delegates to the internal toggle button):
-  ```python
-  atspi_do_action(app_name="pavucontrol", element_name="Profile:")
-  ```
-- **To Select an Option by Index**: Call `atspi_select`:
-  ```python
-  atspi_select(app_name="pavucontrol", element_name="Profile:", index=1)
-  ```
-
-### 4. Navigating Page Tabs & Tab Lists
-- **How to switch tabs**: Call `atspi_do_action` or `atspi_select` with the tab's exact name. If the tab list uses standard selection protocol, the engine routes directly to `Parent.Selection.select_child`:
-  ```python
-  atspi_do_action(app_name="safeeyes", element_name="Settings")
-  atspi_do_action(app_name="safeeyes", element_name="Breaks")
-  atspi_do_action(app_name="safeeyes", element_name="Plugins")
-  ```
-
-### 5. Automated Privilege Escalation via Polkit + D-Bus
-When triggering privileged system operations over D-Bus (such as `systemd` unit restarts):
-1. **Execute D-Bus call**: `dbus_call(bus="system", destination="org.freedesktop.systemd1", path="/org/freedesktop/systemd1", interface="org.freedesktop.systemd1.Manager", method="RestartUnit", signature="ss", args='["bluetooth.service", "replace"]')`.
-2. **Interactive Polkit Authentication**: The D-Bus layer automatically includes `ALLOW_INTERACTIVE_AUTHORIZATION`, popping up the native authentication dialog.
-3. **Automate Password Entry**:
-   ```python
-   atspi_set_text(text="<password>", app_name="polkit", press_enter=True)
-   ```
 
 ---
 
