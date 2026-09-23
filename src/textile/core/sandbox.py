@@ -191,6 +191,7 @@ class BubblewrapBuilder:
             "--symlink", "usr/bin", "/bin",
             "--symlink", "usr/bin", "/sbin",
             "--ro-bind-try", "/etc", "/etc",
+            "--ro-bind-try", "/sys", "/sys",
             "--dev", "/dev",
             "--proc", "/proc",
         ])

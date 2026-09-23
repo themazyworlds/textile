@@ -161,16 +161,27 @@ class SensorsAPI:
     def get_cpu_frequencies(self) -> list[dict[str, Any]]:
         cpu_dir = Path("/sys/devices/system/cpu")
         freqs = []
-        if not cpu_dir.exists():
-            return freqs
-        for c_dir in sorted(cpu_dir.glob("cpu[0-9]*")):
-            cur_freq_file = c_dir / "cpufreq" / "scaling_cur_freq"
-            gov_file = c_dir / "cpufreq" / "scaling_governor"
-            if cur_freq_file.exists():
-                with contextlib.suppress(OSError, ValueError, TypeError):
-                    freq_mhz = round(int(cur_freq_file.read_text().strip()) / 1000.0, 1)
-                    gov = gov_file.read_text().strip() if gov_file.exists() else "unknown"
-                    freqs.append({"core": c_dir.name, "freq": f"{freq_mhz} MHz", "governor": gov})
+        if cpu_dir.exists():
+            for c_dir in sorted(cpu_dir.glob("cpu[0-9]*")):
+                cur_freq_file = c_dir / "cpufreq" / "scaling_cur_freq"
+                gov_file = c_dir / "cpufreq" / "scaling_governor"
+                if cur_freq_file.exists():
+                    with contextlib.suppress(OSError, ValueError, TypeError):
+                        freq_mhz = round(int(cur_freq_file.read_text().strip()) / 1000.0, 1)
+                        gov = gov_file.read_text().strip() if gov_file.exists() else "unknown"
+                        freqs.append({"core": c_dir.name, "freq": f"{freq_mhz} MHz", "governor": gov})
+
+        if not freqs:
+            with contextlib.suppress(Exception):
+                p_freqs = psutil.cpu_freq(percpu=True)
+                if p_freqs:
+                    for i, pf in enumerate(p_freqs):
+                        freqs.append({
+                            "core": f"cpu{i}",
+                            "freq": f"{round(pf.current, 1)} MHz",
+                            "governor": "unknown",
+                        })
+
         return freqs
 
 
