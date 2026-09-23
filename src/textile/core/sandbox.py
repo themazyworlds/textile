@@ -12,9 +12,78 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_dbus_session_bind() -> list[str]:
+    """Resolve dynamic D-Bus session bus socket file mount without mounting entire /run."""
+    addr = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if addr.startswith("unix:path="):
+        sock_path = addr.split("unix:path=")[1].split(",")[0]
+        if os.path.exists(sock_path):
+            return ["--ro-bind", sock_path, sock_path, "--setenv", "DBUS_SESSION_BUS_ADDRESS", addr]
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        default_sock = os.path.join(runtime, "bus")
+        if os.path.exists(default_sock):
+            fallback_addr = f"unix:path={default_sock}"
+            return ["--ro-bind", default_sock, default_sock, "--setenv", "DBUS_SESSION_BUS_ADDRESS", fallback_addr]
+    return []
+
+
+def _resolve_dbus_system_bind() -> list[str]:
+    """Resolve dynamic D-Bus system bus socket file mount."""
+    for sock_path in ["/run/dbus/system_bus_socket", "/var/run/dbus/system_bus_socket"]:
+        if os.path.exists(sock_path):
+            return ["--ro-bind", sock_path, sock_path]
+    return []
+
+
+def _resolve_display_bind() -> list[str]:
+    """Resolve dynamic Wayland / X11 display socket mounts."""
+    args = []
+    wayland_display = os.environ.get("WAYLAND_DISPLAY")
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if wayland_display and runtime:
+        wl_sock = os.path.join(runtime, wayland_display)
+        if os.path.exists(wl_sock):
+            args.extend([
+                "--ro-bind", wl_sock, wl_sock,
+                "--setenv", "WAYLAND_DISPLAY", wayland_display,
+                "--setenv", "XDG_RUNTIME_DIR", runtime,
+            ])
+    x11_display = os.environ.get("DISPLAY")
+    if x11_display:
+        args.extend(["--setenv", "DISPLAY", x11_display])
+        x11_sock = os.path.join("/", "tmp", ".X11-unix")
+        if os.path.exists(x11_sock):
+            args.extend(["--ro-bind", x11_sock, x11_sock])
+    return args
+
+
+def _resolve_sound_bind() -> list[str]:
+    """Resolve dynamic PipeWire / PulseAudio sound socket mounts."""
+    args = []
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        pw_sock = os.path.join(runtime, "pipewire-0")
+        if os.path.exists(pw_sock):
+            args.extend(["--ro-bind", pw_sock, pw_sock])
+        pulse_dir = os.path.join(runtime, "pulse")
+        if os.path.exists(pulse_dir):
+            args.extend(["--ro-bind", pulse_dir, pulse_dir])
+    return args
+
+
+KNOWN_RESOURCES: dict[str, Callable[[], list[str]]] = {
+    "dbus-session": _resolve_dbus_session_bind,
+    "dbus-system": _resolve_dbus_system_bind,
+    "display": _resolve_display_bind,
+    "sound": _resolve_sound_bind,
+}
 
 # Syscall numbers on x86_64
 SYS_landlock_create_ruleset = 444
@@ -164,6 +233,7 @@ class BubblewrapSandbox:
         tier: str,
         workspace_root: str | Path | None = None,
         allow_network: bool = False,
+        resources: list[str] | None = None,
     ) -> list[str]:
         """
         Wrap command in a bwrap sandbox container tailored to the capability tier.
@@ -201,6 +271,15 @@ class BubblewrapSandbox:
             "--tmpfs", container_tmp,
             "--tmpfs", container_home,
         ]
+
+        # Securely resolve declared resources from KNOWN_RESOURCES catalog (Flatpak/Snap model)
+        if resources:
+            for res_name in resources:
+                clean_res = str(res_name).strip().lower()
+                if clean_res in KNOWN_RESOURCES:
+                    bwrap_args.extend(KNOWN_RESOURCES[clean_res]())
+                else:
+                    logger.warning(f"Unrecognized sandbox resource request '{res_name}' ignored.")
 
         if not allow_network:
             bwrap_args.append("--unshare-all")

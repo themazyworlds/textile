@@ -108,6 +108,7 @@ class Strand:
     args_schema: type[BaseModel] | None = None
     tier: CapabilityTier = CapabilityTier.INTERACT
     isolated: bool = False
+    resources: list[str] = field(default_factory=list)
 
     def to_mcp_definition(self) -> dict[str, Any]:
         """Convert strand schema into Model Context Protocol format."""
@@ -405,6 +406,7 @@ class YarnManifest(BaseModel):
     description: str = ""
     contract: str = ""
     dependencies: DependenciesManifest = Field(default_factory=DependenciesManifest)
+    resources: list[str] = Field(default_factory=list)
 
     @property
     def python_dependencies(self) -> list[str]:
@@ -425,9 +427,11 @@ class YarnManifest(BaseModel):
         try:
             yarn_data = raw_data.get("yarn", {})
             deps_data = raw_data.get("dependencies", {})
+            res_data = raw_data.get("yarn", {}).get("resources", raw_data.get("resources", []))
             data = {
                 **yarn_data,
                 "dependencies": deps_data,
+                "resources": res_data,
             }
             return cls.model_validate(data)
         except ValidationError as e:
@@ -630,6 +634,7 @@ class Yarn(ABC):
         tier_val = _parse_tier(getattr(method, "_strand_tier", CapabilityTier.INTERACT))
 
         explicit_isolated = getattr(method, "_strand_isolated", None)
+        strand_resources = getattr(method, "_strand_resources", None) or getattr(self.manifest, "resources", [])
         if explicit_isolated is not None:
             isolated = bool(explicit_isolated)
         else:
@@ -681,6 +686,7 @@ class Yarn(ABC):
             args_schema=args_model,
             tier=tier_val,
             isolated=isolated,
+            resources=strand_resources,
         )
 
     def build_strand(
@@ -695,6 +701,7 @@ class Yarn(ABC):
         timeout: float = 30.0,
         capability: str | None = None,
         tier: CapabilityTier | str = CapabilityTier.INTERACT,
+        resources: list[str] | None = None,
     ) -> Strand:
         """Helper to build a Strand dynamically."""
         if isinstance(tier, CapabilityTier):
@@ -728,6 +735,7 @@ class Yarn(ABC):
         )
         params = schema.get("properties", {})
         req_list = schema.get("required", []) if schema_model else (required or [])
+        res_list = resources or getattr(self.manifest, "resources", [])
 
         def _safe_handler(args: dict[str, Any]) -> str:
             val_err, coerced = validate_strand_arguments(
@@ -754,6 +762,7 @@ class Yarn(ABC):
             args_schema=schema_model,
             tier=tier_val,
             isolated=is_isolated,
+            resources=res_list,
         )
 
     def _run_isolated(
@@ -787,7 +796,9 @@ class Yarn(ABC):
         env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
 
         if BubblewrapSandbox.is_available() and tier_str.upper() != "PRIVILEGED":
-            cmd = BubblewrapSandbox.wrap_command(cmd, tier=tier_str, workspace_root=cwd)
+            matching_strand = next((s for s in self.get_strands() if s.name == strand_name), None)
+            res_list = matching_strand.resources if matching_strand else getattr(self.manifest, "resources", [])
+            cmd = BubblewrapSandbox.wrap_command(cmd, tier=tier_str, workspace_root=cwd, resources=res_list)
 
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False, env=env)

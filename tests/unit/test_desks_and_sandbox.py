@@ -4,6 +4,7 @@ Unit tests for Textile Tier Passes & Desks (Object Capabilities) and Landlock Sa
 
 import sys
 import tempfile
+import unittest.mock
 from pathlib import Path
 
 import pytest
@@ -139,4 +140,18 @@ class TestBubblewrapSandbox:
             res_write = subprocess.run(wrapped_write, capture_output=True, text=True, check=False)
             assert res_write.returncode != 0
             assert "Read-only file system" in res_write.stderr
+
+    def test_wrap_command_known_resources(self):
+        cmd = ["echo", "test"]
+        with unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/test_bus.sock"}):
+            with tempfile.NamedTemporaryFile(suffix=".sock") as dummy_sock:
+                dummy_addr = f"unix:path={dummy_sock.name}"
+                with unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": dummy_addr}):
+                    wrapped = BubblewrapSandbox.wrap_command(
+                        cmd, tier="OBSERVE", workspace_root="/tmp", resources=["dbus-session", "invalid-resource"]
+                    )
+                    assert "--ro-bind" in wrapped
+                    assert dummy_sock.name in wrapped
+                    assert "--setenv" in wrapped
+                    assert "DBUS_SESSION_BUS_ADDRESS" in wrapped
 
