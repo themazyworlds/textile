@@ -334,10 +334,10 @@ class FileIO:
             return f"Error changing directory: {e}"
 
     def stat(self, path: str) -> dict[str, Any]:
-        file_path = self._resolve(path)
-        if not file_path.exists():
-            return {"error": f"Path '{file_path}' does not exist."}
         try:
+            file_path = self._resolve(path)
+            if not file_path.exists():
+                return {"error": f"Path '{file_path}' does not exist."}
             st = os.stat(file_path)
             return {
                 "path": str(file_path),
@@ -356,10 +356,10 @@ class FileIO:
             return {"error": f"Error querying stat: {e}"}
 
     def chmod(self, path: str, mode: str | int) -> str:
-        file_path = self._resolve(path)
-        if not file_path.exists():
-            return f"Error: Path '{file_path}' does not exist."
         try:
+            file_path = self._resolve(path)
+            if not file_path.exists():
+                return f"Error: Path '{file_path}' does not exist."
             mode_int = int(mode.strip(), 8) if isinstance(mode, str) else int(mode)
             os.chmod(file_path, mode_int)
             mode_oct = oct(stat.S_IMODE(os.stat(file_path).st_mode))
@@ -368,8 +368,8 @@ class FileIO:
             return f"Error changing permissions: {e}"
 
     def disk_usage(self, path: str = ".") -> dict[str, Any]:
-        target = self._resolve(path)
         try:
+            target = self._resolve(path)
             usage = shutil.disk_usage(target)
             total, used, free = usage.total, usage.used, usage.free
             used_pct = round((used / total * 100), 2) if total > 0 else 0.0
