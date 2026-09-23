@@ -14,11 +14,13 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 from textile.core.base import Yarn, strand
 
 
 class SensorsAPI:
-    """Hardware Telemetry API powered by libsensors C Library / sensors JSON / sysfs."""
+    """Hardware Telemetry API powered by libsensors C Library / sensors JSON / psutil / sysfs."""
 
     def __init__(self):
         self._libsensors = None
@@ -42,7 +44,7 @@ class SensorsAPI:
     def is_available(self) -> bool:
         if self._libsensors or shutil.which("sensors"):
             return True
-        return os.path.exists("/sys/class/hwmon")
+        return os.path.exists("/sys/class/hwmon") or os.path.exists("/sys/class/thermal")
 
     def get_sensor_data(self) -> dict[str, Any]:
         sensors_bin = shutil.which("sensors")
@@ -54,7 +56,45 @@ class SensorsAPI:
                     idx = raw_out.find("{")
                     if idx != -1:
                         data = json.loads(raw_out[idx:])
-                        return self._format_sensors_json(data)
+                        res_dict = self._format_sensors_json(data)
+                        if res_dict and (res_dict.get("cpu") or res_dict.get("other") or res_dict.get("fans")):
+                            return res_dict
+
+        # Fallback to psutil
+        with contextlib.suppress(Exception):
+            p_data: dict[str, Any] = {"cpu": {}, "gpu": {}, "fans": {}, "battery": {}, "other": {}}
+            temps = psutil.sensors_temperatures()
+            if temps:
+                max_cpu = 0.0
+                for name, entries in temps.items():
+                    for entry in entries:
+                        label = entry.label or name
+                        val_c = round(entry.current, 1)
+                        name_lower = name.lower()
+                        if "coretemp" in name_lower or "k10temp" in name_lower or "cpu" in name_lower:
+                            p_data["cpu"][f"{name} {label}".strip()] = f"{val_c}°C"
+                            max_cpu = max(max_cpu, val_c)
+                        elif "gpu" in name_lower or "nvidia" in name_lower or "amdgpu" in name_lower:
+                            p_data["gpu"][f"{name} {label}".strip()] = f"{val_c}°C"
+                        else:
+                            p_data["other"][f"{name} {label}".strip()] = f"{val_c}°C"
+                if max_cpu > 0:
+                    p_data["max_cpu_temp"] = f"{max_cpu}°C"
+
+            fans = psutil.sensors_fans()
+            if fans:
+                for name, entries in fans.items():
+                    for entry in entries:
+                        label = entry.label or name
+                        p_data["fans"][f"{name} {label}".strip()] = f"{int(entry.current)} RPM"
+
+            batt = psutil.sensors_battery()
+            if batt:
+                p_data["battery"] = {"percent": f"{round(batt.percent, 1)}%", "plugged": batt.power_plugged}
+
+            if p_data["cpu"] or p_data["fans"] or p_data["battery"] or p_data["other"]:
+                return p_data
+
         return self._read_sysfs_hwmon()
 
     def _format_sensors_json(self, raw_data: dict[str, Any]) -> dict[str, Any]:
@@ -131,7 +171,6 @@ class SensorsAPI:
                     freq_mhz = round(int(cur_freq_file.read_text().strip()) / 1000.0, 1)
                     gov = gov_file.read_text().strip() if gov_file.exists() else "unknown"
                     freqs.append({"core": c_dir.name, "freq": f"{freq_mhz} MHz", "governor": gov})
-        return freqs
         return freqs
 
 
