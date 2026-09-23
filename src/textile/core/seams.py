@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 class DependencyType(Enum):
     SYSTEM_BINARY = "system_binary"
-    DBUS_SERVICE = "dbus_service"
     DEVICE_NODE = "device_node"
     SOCKET_PATH = "socket_path"
     PYTHON_MODULE = "python_module"
@@ -96,26 +95,6 @@ class SeamOrchestrator:
             details=details,
             is_optional=optional,
         )
-
-    def check_dbus_service(
-        self, service_name: str, bus_type: str = "session", optional: bool = False
-    ) -> DependencyCheck:
-        try:
-            return DependencyCheck(
-                dep_type=DependencyType.DBUS_SERVICE,
-                target=f"{bus_type}:{service_name}",
-                is_satisfied=True,
-                details="D-Bus interface available for probe",
-                is_optional=optional,
-            )
-        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-            return DependencyCheck(
-                dep_type=DependencyType.DBUS_SERVICE,
-                target=f"{bus_type}:{service_name}",
-                is_satisfied=False,
-                details=f"D-Bus probe error: {e}",
-                is_optional=optional,
-            )
 
     def check_device_node(
         self, device_path: str, write_access: bool = False, optional: bool = False
@@ -242,8 +221,6 @@ class SeamOrchestrator:
                 results.append(self.check_python_module(target, optional))
             elif dtype == DependencyType.ENV_VARIABLE.value:
                 results.append(self.check_env_variable(target, optional))
-            elif dtype == DependencyType.DBUS_SERVICE.value:
-                results.append(self.check_dbus_service(target, bus_type=dep.get("bus", "session"), optional=optional))
 
         if hasattr(yarn, "get_python_dependencies"):
             for p_dep in yarn.get_python_dependencies():

@@ -48,11 +48,11 @@ def test_layer2_intent_ast_injection_sanitization():
         )
         bad_strand_node.validate_grammar()
 
-    # Malicious code injection attempt in parameters
-    with pytest.raises(IntentValidationError, match="Unsafe code injection pattern"):
+    # Shell execution primitive in parameters (subshell syntax)
+    with pytest.raises(IntentValidationError, match="Shell execution primitive"):
         bad_param_node = IntentNode(
             strand_name="hyprland_focus_workspace",
-            parameters={"workspace": "2; os.execute('malicious_cmd')"},
+            parameters={"workspace": "$(rm -rf /)"},
             origin_token=token_voice,
         )
         bad_param_node.validate_grammar()

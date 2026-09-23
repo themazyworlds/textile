@@ -11,8 +11,9 @@ import time
 import uuid
 from typing import Any
 
-from textile.core.base import LAYER_BASE, Strand, Weft, Yarn
-from textile.core.skein import Skein, skein
+from textile.core.base import LAYER_BASE, CapabilityTier, Strand, Weft, Yarn
+from textile.core.context import OriginToken, TrustLevel
+from textile.core.skein import PolicyViolationError, Skein, skein
 from textile.core.tapestry import core_tapestry
 from textile.core.warp import WarpEvent, warp
 
@@ -103,8 +104,14 @@ class Loom:
         self.initialize()
         return [strand.to_mcp_definition() for strand in self.get_all_strands()]
 
-    async def execute(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
-        """Native asynchronous strand execution."""
+    async def execute(
+        self,
+        strand_name: str,
+        args: dict[str, Any],
+        caller: str | None = None,
+        origin_token: OriginToken | None = None,
+    ) -> str:
+        """Native asynchronous strand execution with Layer 1/3 security policy enforcement."""
         self.initialize()
         strand = self.strands.get(strand_name)
         yarn = self._strand_to_yarn.get(strand_name)
@@ -118,6 +125,24 @@ class Loom:
             if active_y.name != yarn.name:
                 strand, yarn = active_s, active_y
                 handler = strand.handler or handler
+
+        # --- Layer 1/3: Origin Trust & Capability Policy Gate ---
+        # Default: local seat (trusted IDE / CLI caller). Callers supplying an explicit
+        # OriginToken (e.g. data from an external web source) are evaluated strictly.
+        token = origin_token or OriginToken.create_local_voice()
+        trust = token.trust_level
+        tier = strand.tier
+
+        if trust == TrustLevel.NONE and tier in (
+            CapabilityTier.MUTATE,
+            CapabilityTier.PRIVILEGED,
+            CapabilityTier.SYSTEM_EXEC,
+        ):
+            raise PolicyViolationError(
+                f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
+                f"is denied execution of {tier} strand '{strand.name}'."
+            )
+        # --- End Policy Gate ---
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
@@ -151,7 +176,13 @@ class Loom:
                 },
             )
 
-    def execute_sync(self, strand_name: str, args: dict[str, Any], caller: str | None = None) -> str:
+    def execute_sync(
+        self,
+        strand_name: str,
+        args: dict[str, Any],
+        caller: str | None = None,
+        origin_token: OriginToken | None = None,
+    ) -> str:
         """Synchronous bridge for CLI and non-async environments."""
         try:
             loop = asyncio.get_running_loop()
@@ -160,8 +191,10 @@ class Loom:
 
         if loop and loop.is_running():
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, self.execute(strand_name, args, caller=caller)).result()
-        return asyncio.run(self.execute(strand_name, args, caller=caller))
+                return pool.submit(
+                    asyncio.run, self.execute(strand_name, args, caller=caller, origin_token=origin_token)
+                ).result()
+        return asyncio.run(self.execute(strand_name, args, caller=caller, origin_token=origin_token))
 
     def get_all_wefts(self) -> list[Weft]:
         """Return all active Weft attunements sorted by priority."""

@@ -17,11 +17,16 @@ class IntentValidationError(Exception):
     pass
 
 
-UNSAFE_INJECTION_PATTERNS = [
-    re.compile(r";\s*(?:rm|sudo|pkexec|systemctl|chmod|chown|os\.execute|exec|eval)\b", re.IGNORECASE),
-    re.compile(r"&&\s*(?:rm|sudo|pkexec|systemctl|chmod|chown|os\.execute|exec|eval)\b", re.IGNORECASE),
-    re.compile(r"\|\|\s*(?:rm|sudo|pkexec|systemctl|chmod|chown|os\.execute|exec|eval)\b", re.IGNORECASE),
-    re.compile(r"\b(?:os\.execute|os\.system|subprocess\.Popen|eval\s*\(|exec\s*\()\b", re.IGNORECASE),
+# Detects shell execution *mechanisms* (subshells, backticks, Python exec primitives).
+# We do NOT blacklist specific command names — those are meaningless without a shell interpreter.
+# These patterns catch the structural primitives that would be dangerous in *any* language.
+SHELL_EXEC_PRIMITIVES = [
+    re.compile(r"\$\("),                                          # Subshell: $(...)
+    re.compile(r"`[^`]+`"),                                       # Backtick subshell: `cmd`
+    re.compile(r"\b(?:eval|exec)\s*\(", re.IGNORECASE),          # Python eval(/exec( calls
+    re.compile(r"\bos\.system\s*\(", re.IGNORECASE),             # os.system(
+    re.compile(r"\bsubprocess\s*\.", re.IGNORECASE),              # subprocess.* calls
+    re.compile(r"\bimportlib\s*\.\s*import_module\s*\(", re.IGNORECASE),  # Dynamic imports
 ]
 
 
@@ -43,10 +48,10 @@ class IntentNode(BaseModel):
 
     def _check_param_injection(self, value: Any) -> None:
         if isinstance(value, str):
-            for pattern in UNSAFE_INJECTION_PATTERNS:
+            for pattern in SHELL_EXEC_PRIMITIVES:
                 if pattern.search(value):
                     raise IntentValidationError(
-                        f"Unsafe code injection pattern detected in intent parameter value: '{value}'"
+                        f"Shell execution primitive detected in intent parameter: '{value}'"
                     )
         elif isinstance(value, dict):
             for v in value.values():

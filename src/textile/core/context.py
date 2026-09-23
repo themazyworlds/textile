@@ -48,11 +48,17 @@ class OriginToken(BaseModel):
 
     @classmethod
     def create_local_seat(cls, seat_id: str = "local_seat") -> Self:
+        seat = SeatContext()
+        if not seat.is_authenticated_local_user():
+            raise PermissionError(
+                f"Cannot create LOCAL_SEAT origin token: no authenticated local display session detected "
+                f"(uid={seat.uid}, display={seat.display})."
+            )
         return cls(
             origin_id=seat_id,
             origin_type=OriginType.LOCAL_SEAT,
             trust_level=TrustLevel.HIGH,
-            metadata={"uid": os.getuid(), "display": os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")},
+            metadata={"uid": seat.uid, "display": seat.display},
         )
 
     @classmethod

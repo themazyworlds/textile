@@ -184,14 +184,16 @@ class Skein:
 
         res = target_strand.handler(intent.parameters)
 
-        # 5. Layer 4 Transaction Stack Registration
-        transaction_stack.push(
-            Transaction(
-                strand_name=target_strand.name,
-                parameters=intent.parameters,
-                result_data=res,
+        # 5. Layer 4: Register only state-mutating transactions on the undo stack.
+        # OBSERVE and INTERACT strands are read-only — no undo entry needed.
+        if tier in (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
+            transaction_stack.push(
+                Transaction(
+                    strand_name=target_strand.name,
+                    parameters=intent.parameters,
+                    result_data=res,
+                )
             )
-        )
 
         return str(res) if res is not None else "ok"
 
