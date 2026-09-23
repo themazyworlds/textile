@@ -129,3 +129,38 @@ class SeatContext:
 
     def is_authenticated_local_user(self) -> bool:
         return self.uid == os.getuid() and self.display is not None
+
+
+class PolicyViolationError(PermissionError):
+    """Raised when an operation violates Layer 1/3 security policy matrix."""
+    pass
+
+
+def verify_security_policy(
+    token: OriginToken,
+    tier: Any,
+    strand_name: str,
+) -> None:
+    """Canonical single-source-of-truth security policy gate.
+
+    Verifies caller's OriginToken trust level against the strand's capability tier.
+    Raises PolicyViolationError if execution is denied.
+    """
+    trust = token.trust_level
+    tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
+    mutating_tiers = ("mutate", "privileged", "system_exec")
+
+    denied = False
+    if trust == TrustLevel.NONE:
+        denied = tier_val in mutating_tiers
+    elif trust == TrustLevel.LOW:
+        denied = tier_val in (*mutating_tiers, "interact")
+    elif trust == TrustLevel.MEDIUM:
+        denied = tier_val in mutating_tiers
+
+    if denied:
+        raise PolicyViolationError(
+            f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
+            f"is denied execution of '{tier_val}' strand '{strand_name}'."
+        )
+

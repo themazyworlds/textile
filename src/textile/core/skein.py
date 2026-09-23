@@ -13,16 +13,13 @@ from pathlib import Path
 
 import textile.yarns
 from textile.core.base import CapabilityTier, Strand, Yarn, YarnManifest
-from textile.core.context import TrustLevel
+from textile.core.context import PolicyViolationError, verify_security_policy
 from textile.core.intent import IntentNode, IntentValidationError
 from textile.core.transaction import Transaction, transaction_stack
 
 logger = logging.getLogger(__name__)
 
-
-class PolicyViolationError(Exception):
-    """Raised when an intent execution violates Security Policy constraints."""
-    pass
+__all__ = ["PolicyViolationError", "Skein", "skein"]
 
 
 class Skein:
@@ -164,30 +161,8 @@ class Skein:
 
         _, target_strand = target
 
-        # 3. Layer 3 Policy Verification — full trust-tier matrix.
-        # Each trust level is enforced against the strand's capability tier.
-        # This matches the documented contract in context.py exactly.
-        trust = intent.origin_token.trust_level
-        tier = target_strand.tier
-
-        _MUTATING_TIERS = (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
-
-        denied = False
-        if trust == TrustLevel.NONE:
-            # Zero trust: no execution power whatsoever for mutating operations.
-            denied = tier in _MUTATING_TIERS
-        elif trust == TrustLevel.LOW:
-            # Observe-only: can only read/query state, no interactions or mutations.
-            denied = tier in (*_MUTATING_TIERS, CapabilityTier.INTERACT)
-        elif trust == TrustLevel.MEDIUM:
-            # Observe + Interact: cannot mutate system state.
-            denied = tier in _MUTATING_TIERS
-
-        if denied:
-            raise PolicyViolationError(
-                f"Security Policy Violation: Origin '{intent.origin_token.origin_id}' "
-                f"(trust={trust}) is denied execution of '{tier}' strand '{target_strand.name}'."
-            )
+        # 3. Layer 3 Policy Verification — canonical single-source-of-truth gate.
+        verify_security_policy(intent.origin_token, target_strand.tier, target_strand.name)
 
         # 4. In-Memory Execution
         if target_strand.handler is None:
@@ -197,7 +172,7 @@ class Skein:
 
         # 5. Layer 4: Register only state-mutating transactions on the undo stack.
         # OBSERVE and INTERACT strands are read-only — no undo entry needed.
-        if tier in (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
+        if target_strand.tier in (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
             transaction_stack.push(
                 Transaction(
                     strand_name=target_strand.name,

@@ -11,9 +11,9 @@ import time
 import uuid
 from typing import Any
 
-from textile.core.base import LAYER_BASE, CapabilityTier, Strand, Weft, Yarn
-from textile.core.context import OriginToken, TrustLevel
-from textile.core.skein import PolicyViolationError, Skein, skein
+from textile.core.base import LAYER_BASE, Strand, Weft, Yarn
+from textile.core.context import OriginToken, verify_security_policy
+from textile.core.skein import Skein, skein
 from textile.core.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
 from textile.core.warp import WarpEvent, warp
 
@@ -127,26 +127,11 @@ class Loom:
                 handler = strand.handler or handler
 
         # --- Layer 1/3: Origin Trust & Capability Policy Gate ---
-        # Mirrors the full trust-tier matrix in skein.compile_and_execute_intent().
-        # Both execution paths must enforce the same contract.
         token = origin_token or OriginToken.create_local_voice()
         trust = token.trust_level
         tier = strand.tier
 
-        _MUTATING_TIERS = (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
-        denied = False
-        if trust == TrustLevel.NONE:
-            denied = tier in _MUTATING_TIERS
-        elif trust == TrustLevel.LOW:
-            denied = tier in (*_MUTATING_TIERS, CapabilityTier.INTERACT)
-        elif trust == TrustLevel.MEDIUM:
-            denied = tier in _MUTATING_TIERS
-
-        if denied:
-            raise PolicyViolationError(
-                f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
-                f"is denied execution of '{tier}' strand '{strand.name}'."
-            )
+        verify_security_policy(token, tier, strand.name)
         # --- End Policy Gate ---
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
