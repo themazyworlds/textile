@@ -1,5 +1,5 @@
 """
-Textile Skein - Yarn Discovery, Lifecycle, and Configuration Registry.
+Textile Skein - Layer 3 Symbolic Intent Compiler, Policy Engine, and Yarn Registry.
 """
 
 import importlib
@@ -12,13 +12,21 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 import textile.yarns
-from textile.core.base import Yarn, YarnManifest
+from textile.core.base import CapabilityTier, Strand, Yarn, YarnManifest
+from textile.core.context import TrustLevel
+from textile.core.intent import IntentNode, IntentValidationError
+from textile.core.transaction import Transaction, transaction_stack
 
 logger = logging.getLogger(__name__)
 
 
+class PolicyViolationError(Exception):
+    """Raised when an intent execution violates Security Policy constraints."""
+    pass
+
+
 class Skein:
-    """Manages yarn discovery, configuration, and runtime health."""
+    """Manages yarn discovery, intent compilation, policy verification, and runtime health."""
 
     def __init__(self, config_dir: Path | None = None):
         self._lock = threading.RLock()
@@ -134,6 +142,58 @@ class Skein:
                     except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                         logger.debug(f"Yarn '{name}' availability check failed: {e}")
             return active
+
+    def get_strand_by_name(self, strand_name: str) -> tuple[Yarn, Strand] | None:
+        """Find registered active Yarn and Strand object for a given strand name."""
+        active_yarns = self.get_active_yarns()
+        for yarn in active_yarns.values():
+            for strand_obj in yarn.get_strands():
+                if strand_obj.name == strand_name:
+                    return yarn, strand_obj
+        return None
+
+    def compile_and_execute_intent(self, intent: IntentNode) -> str:
+        """Layer 3: Validate grammar, verify origin security policy, compile intent, and execute transactionally."""
+        # 1. Grammar & Injection Sanitization
+        intent.validate_grammar()
+
+        # 2. Resolve Strand
+        target = self.get_strand_by_name(intent.strand_name)
+        if not target:
+            raise IntentValidationError(f"Strand '{intent.strand_name}' is not registered or active.")
+
+        _, target_strand = target
+
+        # 3. Layer 3 Policy Verification against Origin Trust Level
+        trust = intent.origin_token.trust_level
+        tier = target_strand.tier
+
+        if trust == TrustLevel.NONE and tier in (
+            CapabilityTier.MUTATE,
+            CapabilityTier.PRIVILEGED,
+            CapabilityTier.SYSTEM_EXEC,
+        ):
+            raise PolicyViolationError(
+                f"Security Policy Violation: Origin '{intent.origin_token.origin_id}' (trust level: {trust}) "
+                f"is denied execution of {tier} strand '{target_strand.name}'."
+            )
+
+        # 4. In-Memory Execution
+        if target_strand.handler is None:
+            raise IntentValidationError(f"Strand '{target_strand.name}' has no registered handler.")
+
+        res = target_strand.handler(intent.parameters)
+
+        # 5. Layer 4 Transaction Stack Registration
+        transaction_stack.push(
+            Transaction(
+                strand_name=target_strand.name,
+                parameters=intent.parameters,
+                result_data=res,
+            )
+        )
+
+        return str(res) if res is not None else "ok"
 
     def _load_config(self) -> None:
         try:
