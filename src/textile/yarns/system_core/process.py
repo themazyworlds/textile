@@ -55,7 +55,10 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, subprocess.SubprocessError) as e:
             return f"Error launching application: {e}"
 
-    @strand(description="List running system processes with PID, CPU/memory usage, user, and command line.", tier=CapabilityTier.OBSERVE)
+    @strand(
+        description="List running system processes with PID, CPU/memory usage, user, and command line.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def process_list(self, filter: str | None = None) -> list[dict[str, Any]]:
         """List running system processes with PID, CPU/memory usage, user, and command line.
 

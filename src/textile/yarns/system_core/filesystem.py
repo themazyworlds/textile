@@ -518,7 +518,10 @@ class FilesystemStorage(Yarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(description="Read contents of a text file with optional start and end line ranges.", tier=CapabilityTier.OBSERVE)
+    @strand(
+        description="Read contents of a text file with optional start and end line ranges.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def file_read(self, path: str, start_line: int | None = None, end_line: int | None = None) -> str:
         """Read contents of a text file with optional start and end line ranges.
 

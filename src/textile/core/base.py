@@ -340,6 +340,7 @@ def _exec_sync_strand(
     req_list: list[str],
     isolated: bool,
     timeout: float,
+    tier: CapabilityTier = CapabilityTier.INTERACT,
 ) -> str:
     val_err, coerced = validate_strand_arguments(
         strand_name, args, schema_model=args_model, parameters=params, required=req_list
@@ -347,7 +348,7 @@ def _exec_sync_strand(
     if val_err:
         return val_err
     if isolated:
-        return yarn._run_isolated(strand_name, coerced, timeout=timeout)
+        return yarn._run_isolated(strand_name, coerced, timeout=timeout, tier=tier)
     try:
         res = method(**coerced)
         if isinstance(res, (dict, list)):
@@ -367,6 +368,7 @@ def _create_invoker(
     isolated: bool,
     is_async: bool,
     timeout: float,
+    tier: CapabilityTier = CapabilityTier.INTERACT,
 ) -> Callable[[dict[str, Any]], Any]:
     if is_async:
         async def _async_invoker(args: dict[str, Any]) -> str:
@@ -375,7 +377,9 @@ def _create_invoker(
         return _async_invoker
 
     def _sync_invoker(args: dict[str, Any]) -> str:
-        return _exec_sync_strand(yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout)
+        return _exec_sync_strand(
+            yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout, tier
+        )
 
     return _sync_invoker
 
@@ -663,7 +667,7 @@ class Yarn(ABC):
         params, req_list = schema.get("properties", {}), schema.get("required", [])
 
         invoker = _create_invoker(
-            self, method, strand_name, args_model, params, req_list, isolated, is_async, timeout
+            self, method, strand_name, args_model, params, req_list, isolated, is_async, timeout, tier=tier_val
         )
 
         return Strand(
@@ -732,7 +736,7 @@ class Yarn(ABC):
             if val_err:
                 return val_err
             if is_isolated:
-                return self._run_isolated(name, coerced, timeout=timeout)
+                return self._run_isolated(name, coerced, timeout=timeout, tier=tier_val)
             try:
                 res = handler(coerced)
                 return str(res) if res is not None else "ok"
@@ -752,12 +756,19 @@ class Yarn(ABC):
             isolated=is_isolated,
         )
 
-    def _run_isolated(self, strand_name: str, args: dict[str, Any], timeout: float = 30.0) -> str:
+    def _run_isolated(
+        self,
+        strand_name: str,
+        args: dict[str, Any],
+        timeout: float = 30.0,
+        tier: CapabilityTier | str = CapabilityTier.INTERACT,
+    ) -> str:
         """Run strand in an isolated ephemeral subprocess using `uv`."""
         uv_bin = shutil.which("uv")
         if not uv_bin:
             return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
 
+        tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
         cmd = [uv_bin, "run", "--quiet"]
         for dep in self.get_python_dependencies():
             cmd.extend(["--with", str(dep)])
@@ -768,6 +779,7 @@ class Yarn(ABC):
             self.__class__.__name__,
             strand_name,
             json.dumps(args),
+            tier_str,
         ])
         env = dict(os.environ)
         python_path = env.get("PYTHONPATH", "")
