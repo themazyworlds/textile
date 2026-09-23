@@ -5,7 +5,7 @@ This document is the definitive, self-contained reference guide for AI agents in
 
 ---
 
-## 🏛️ System Architecture Overview
+## System Architecture Overview
 
 The Textile automation subsystem operates on a layered, protocol-first fabric managed by **Skein**, **Loom**, and **Twill**:
 
@@ -38,7 +38,7 @@ The Textile automation subsystem operates on a layered, protocol-first fabric ma
    - **Layer 10 (Core POSIX)**: `file_*`, `inotify_*`, `process_*`, `sensors_*`, `packagekit_*`, `run_command`, `search_web`, `fetch_webpage`, `capture_screen`.
 
 
-### 📁 Yarn Directory Layout
+### Yarn Directory Layout
 
 Every yarn lives in its own self-contained directory under `src/textile/yarns/`:
 
@@ -66,7 +66,7 @@ src/textile/yarns/
 
 ---
 
-## 🔒 Security Architecture & Policy Enforcement
+## Security Architecture & Policy Enforcement
 
 Textile implements a unified security model across all execution paths.
 
@@ -84,7 +84,7 @@ Policy checks are defined strictly in `src/textile/core/context.py` via `verify_
 
 ---
 
-## 🛡️ PolicyKit-1 & Privilege Escalation (`polkit_*`)
+## PolicyKit-1 & Privilege Escalation (`polkit_*`)
 
 Textile owns its full privilege lifecycle without hardcoded hacks.
 
@@ -106,7 +106,7 @@ The system has active pre-authorization rules configured in `/etc/polkit-1/rules
 
 ---
 
-## 🎭 Textile State & System Health
+## Textile State & System Health
 
 Textile maintains real-time state and diagnostics:
 
@@ -119,7 +119,7 @@ Textile maintains real-time state and diagnostics:
 
 ---
 
-## 🌐 Universal Linux Semantic GUI Automation (`atspi_*`)
+## Universal Linux Semantic GUI Automation (`atspi_*`)
 
 AT-SPI provides direct, protocol-level control over all graphical elements.
 
@@ -142,7 +142,7 @@ AT-SPI provides direct, protocol-level control over all graphical elements.
 
 ---
 
-## 📖 Universal UI Interaction Recipes
+## Universal UI Interaction Recipes
 
 ### 1. Modifying Numerical Inputs & Spin Buttons (e.g., Safe Eyes, GIMP)
 GTK/Qt spin buttons often have blank names (`name=""`) with descriptive labels in preceding sibling widgets and section headers in parent containers.
@@ -189,7 +189,7 @@ When triggering privileged system operations over D-Bus (such as `systemd` unit 
 
 ---
 
-## 🖥️ Window Management & Compositor Control (`hyprland_*`)
+## Window Management & Compositor Control (`hyprland_*`)
 
 Direct Hyprland socket IPC for window, workspace, and layout management:
 
@@ -219,7 +219,7 @@ hyprland_get_night_light()                 # Check active status & PID
 
 ---
 
-## ⚡ POSIX Process, Filesystem & Kernel Monitoring
+## POSIX Process, Filesystem & Kernel Monitoring
 
 - **`inotify_*` (Linux Kernel Real-Time Filesystem Monitoring)**:
   - Add Watch: `inotify_watch(path="/path/to/dir", events="create,modify,delete,move", recursive=True)`
