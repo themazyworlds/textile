@@ -1,10 +1,13 @@
 """
 Textile Tapestry - Core Task Ledger & Open Sensory Blackboard.
+Uses SQLite WAL mode for high-speed, thread-safe, and process-safe IPC persistence.
 """
 
+import contextlib
 import json
 import logging
 import os
+import sqlite3
 import tempfile
 import threading
 from collections import deque
@@ -59,54 +62,77 @@ def _get_runtime_dir() -> Path:
     return p
 
 
+def _get_db_path() -> Path:
+    return _get_runtime_dir() / "tapestry.db"
+
+
+def _init_db(conn: sqlite3.Connection) -> None:
+    with conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS active_tasks (
+                task_id TEXT PRIMARY KEY,
+                strand_name TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                args_json TEXT,
+                tier TEXT,
+                trust_level TEXT,
+                tainted INTEGER DEFAULT 0
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS task_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT,
+                strand_name TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                duration_ms REAL,
+                success INTEGER,
+                error TEXT,
+                tier TEXT,
+                trust_level TEXT,
+                tainted INTEGER DEFAULT 0,
+                args_json TEXT
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS slots (
+                key TEXT PRIMARY KEY,
+                val_json TEXT
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS notices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                level TEXT NOT NULL,
+                source TEXT NOT NULL,
+                message TEXT NOT NULL,
+                data_json TEXT
+            );
+        """)
+
+
+def _get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(_get_db_path(), timeout=10.0)
+    _init_db(conn)
+    return conn
+
+
 class CoreTapestry:
     """
     Core Task Ledger: Strictly manages engine execution, active strand tasks,
     runtime execution history, and task cancellation.
-    Synchronizes state across processes via tmpfs shared runtime directory.
+    Synchronizes state across processes via SQLite WAL mode in shared runtime directory.
     """
 
     def __init__(self, max_history: int = 50, persist: bool = False):
         self._max_history = max_history
         self._persist = persist
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._active_tasks: dict[str, TaskRecord] = {}
         self._task_history: deque[TaskRecord] = deque(maxlen=max_history)
-
-    def _sync_to_disk(self) -> None:
-        if not self._persist:
-            return
-        try:
-            rdir = _get_runtime_dir()
-            target = rdir / "tasks.json"
-            tmp = rdir / "tasks.json.tmp"
-            data = {
-                "active_tasks": {tid: t.model_dump() for tid, t in self._active_tasks.items()},
-                "task_history": [t.model_dump() for t in self._task_history],
-            }
-            tmp.write_text(json.dumps(data), encoding="utf-8")
-            tmp.replace(target)
-        except (OSError, TypeError, ValueError) as e:
-            logger.debug("Error syncing CoreTapestry: %s", e)
-
-    def _load_from_disk(self) -> None:
-        if not self._persist:
-            return
-        try:
-            target = _get_runtime_dir() / "tasks.json"
-            if target.exists():
-                data = json.loads(target.read_text(encoding="utf-8"))
-                loaded_active = {}
-                for tid, tdict in data.get("active_tasks", {}).items():
-                    loaded_active[tid] = TaskRecord(**tdict)
-                self._active_tasks = loaded_active
-
-                loaded_history = deque(maxlen=self._max_history)
-                for tdict in data.get("task_history", []):
-                    loaded_history.append(TaskRecord(**tdict))
-                self._task_history = loaded_history
-        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
-            logger.debug("Error loading CoreTapestry: %s", e)
 
     def record_task_start(
         self,
@@ -127,9 +153,29 @@ class CoreTapestry:
             tainted=tainted,
         )
         with self._lock:
-            self._load_from_disk()
             self._active_tasks[task_id] = record
-            self._sync_to_disk()
+            if self._persist:
+                try:
+                    with _get_connection() as conn:
+                        query = """
+                            INSERT OR REPLACE INTO active_tasks
+                            (task_id, strand_name, start_time, args_json, tier, trust_level, tainted)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """
+                        conn.execute(
+                            query,
+                            (
+                                record.task_id,
+                                record.strand_name,
+                                record.start_time,
+                                json.dumps(record.args),
+                                record.tier,
+                                record.trust_level,
+                                1 if record.tainted else 0,
+                            ),
+                        )
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("CoreTapestry DB error on start: %s", e)
         return record
 
     def record_task_end(
@@ -140,14 +186,62 @@ class CoreTapestry:
         error: str | None = None,
     ) -> TaskRecord | None:
         with self._lock:
-            self._load_from_disk()
             record = self._active_tasks.pop(task_id, None)
+            if not record and self._persist:
+                try:
+                    with _get_connection() as conn:
+                        cur = conn.cursor()
+                        query = """
+                            SELECT strand_name, start_time, args_json, tier, trust_level, tainted
+                            FROM active_tasks WHERE task_id = ?
+                        """
+                        cur.execute(query, (task_id,))
+                        row = cur.fetchone()
+                        if row:
+                            record = TaskRecord(
+                                task_id=task_id,
+                                strand_name=row[0],
+                                start_time=row[1],
+                                args=json.loads(row[2]) if row[2] else {},
+                                tier=row[3],
+                                trust_level=row[4],
+                                tainted=bool(row[5]),
+                            )
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("CoreTapestry DB query error: %s", e)
+
             if record:
                 record.success = success
                 record.duration_ms = duration_ms
                 record.error = error
                 self._task_history.append(record)
-                self._sync_to_disk()
+                if self._persist:
+                    try:
+                        with _get_connection() as conn:
+                            conn.execute("DELETE FROM active_tasks WHERE task_id = ?", (task_id,))
+                            query = """
+                                INSERT INTO task_history
+                                (task_id, strand_name, start_time, duration_ms, success, error,
+                                 tier, trust_level, tainted, args_json)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """
+                            conn.execute(
+                                query,
+                                (
+                                    record.task_id,
+                                    record.strand_name,
+                                    record.start_time,
+                                    record.duration_ms,
+                                    1 if record.success else 0,
+                                    record.error,
+                                    record.tier,
+                                    record.trust_level,
+                                    1 if record.tainted else 0,
+                                    json.dumps(record.args),
+                                ),
+                            )
+                    except (sqlite3.Error, OSError) as e:
+                        logger.debug("CoreTapestry DB error on end: %s", e)
         return record
 
     def cancel_task(self, identifier: str) -> str:
@@ -156,24 +250,102 @@ class CoreTapestry:
             return "Error: No task identifier or strand name specified to cancel."
 
         with self._lock:
-            self._load_from_disk()
             for tid, task in list(self._active_tasks.items()):
                 if clean_id in (tid, task.strand_name):
                     self._active_tasks.pop(tid, None)
-                    self._sync_to_disk()
+                    if self._persist:
+                        try:
+                            with _get_connection() as conn:
+                                conn.execute("DELETE FROM active_tasks WHERE task_id = ?", (tid,))
+                        except (sqlite3.Error, OSError) as e:
+                            logger.debug("CoreTapestry DB cancel error: %s", e)
                     return f"Successfully cancelled active task '{task.strand_name}' (ID: {tid})."
+
+            if self._persist:
+                try:
+                    with _get_connection() as conn:
+                        cur = conn.cursor()
+                        query = """
+                            SELECT task_id, strand_name FROM active_tasks
+                            WHERE task_id = ? OR strand_name = ?
+                        """
+                        cur.execute(query, (clean_id, clean_id))
+                        row = cur.fetchone()
+                        if row:
+                            tid, sname = row[0], row[1]
+                            conn.execute("DELETE FROM active_tasks WHERE task_id = ?", (tid,))
+                            return f"Successfully cancelled active task '{sname}' (ID: {tid})."
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("CoreTapestry DB search cancel error: %s", e)
+
         return f"No active task matching '{clean_id}' currently running."
 
     def get_active_tasks(self) -> list[dict[str, Any]]:
         with self._lock:
-            self._load_from_disk()
-            return [t.model_dump() for t in self._active_tasks.values()]
+            if not self._persist:
+                return [t.model_dump() for t in self._active_tasks.values()]
+            try:
+                with _get_connection() as conn:
+                    cur = conn.cursor()
+                    query = """
+                        SELECT task_id, strand_name, start_time, args_json, tier, trust_level, tainted
+                        FROM active_tasks
+                    """
+                    cur.execute(query)
+                    tasks = []
+                    for row in cur.fetchall():
+                        tasks.append(
+                            TaskRecord(
+                                task_id=row[0],
+                                strand_name=row[1],
+                                start_time=row[2],
+                                args=json.loads(row[3]) if row[3] else {},
+                                tier=row[4],
+                                trust_level=row[5],
+                                tainted=bool(row[6]),
+                            ).model_dump()
+                        )
+                    return tasks
+            except (sqlite3.Error, OSError) as e:
+                logger.debug("CoreTapestry get_active_tasks DB error: %s", e)
+                return [t.model_dump() for t in self._active_tasks.values()]
 
     def get_task_history(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._lock:
-            self._load_from_disk()
-            items = list(self._task_history)
-        return [t.model_dump() for t in items[-limit:]]
+            if not self._persist:
+                items = list(self._task_history)
+                return [t.model_dump() for t in items[-limit:]]
+            try:
+                with _get_connection() as conn:
+                    cur = conn.cursor()
+                    query = """
+                        SELECT task_id, strand_name, start_time, duration_ms, success, error,
+                               tier, trust_level, tainted, args_json
+                        FROM task_history ORDER BY id DESC LIMIT ?
+                    """
+                    cur.execute(query, (limit,))
+                    rows = cur.fetchall()
+                    history = []
+                    for row in reversed(rows):
+                        history.append(
+                            TaskRecord(
+                                task_id=row[0],
+                                strand_name=row[1],
+                                start_time=row[2],
+                                duration_ms=row[3],
+                                success=bool(row[4]),
+                                error=row[5],
+                                tier=row[6],
+                                trust_level=row[7],
+                                tainted=bool(row[8]),
+                                args=json.loads(row[9]) if row[9] else {},
+                            ).model_dump()
+                        )
+                    return history
+            except (sqlite3.Error, OSError) as e:
+                logger.debug("CoreTapestry get_task_history DB error: %s", e)
+                items = list(self._task_history)
+                return [t.model_dump() for t in items[-limit:]]
 
     def clear(self) -> None:
         """Clear active tasks and execution history."""
@@ -181,7 +353,12 @@ class CoreTapestry:
             self._active_tasks.clear()
             self._task_history.clear()
             if self._persist:
-                self._sync_to_disk()
+                try:
+                    with _get_connection() as conn:
+                        conn.execute("DELETE FROM active_tasks")
+                        conn.execute("DELETE FROM task_history")
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("CoreTapestry clear DB error: %s", e)
 
     def get_state(self) -> dict[str, Any]:
         """Return snapshot of running engine tasks and recent execution history."""
@@ -195,46 +372,15 @@ class SensoryTapestry:
     """
     Open Sensory Blackboard: Retained state slots and stitched alert/notice feed
     accessible to all yarns, plugins, and daemons across processes.
+    Synchronizes state across processes via SQLite WAL mode.
     """
 
     def __init__(self, max_notices: int = 100, persist: bool = False):
         self._max_notices = max_notices
         self._persist = persist
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._slots: dict[str, Any] = {}
         self._notices: deque[Notice] = deque(maxlen=max_notices)
-
-    def _sync_to_disk(self) -> None:
-        if not self._persist:
-            return
-        try:
-            rdir = _get_runtime_dir()
-            target = rdir / "sensory.json"
-            tmp = rdir / "sensory.json.tmp"
-            data = {
-                "slots": self._slots,
-                "notices": [n.model_dump() for n in self._notices],
-            }
-            tmp.write_text(json.dumps(data), encoding="utf-8")
-            tmp.replace(target)
-        except (OSError, TypeError, ValueError) as e:
-            logger.debug("Error syncing SensoryTapestry: %s", e)
-
-    def _load_from_disk(self) -> None:
-        if not self._persist:
-            return
-        try:
-            target = _get_runtime_dir() / "sensory.json"
-            if target.exists():
-                data = json.loads(target.read_text(encoding="utf-8"))
-                for k, v in data.get("slots", {}).items():
-                    self._slots[k] = v
-                loaded_notices = deque(maxlen=self._max_notices)
-                for ndict in data.get("notices", []):
-                    loaded_notices.append(Notice(**ndict))
-                self._notices = loaded_notices
-        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
-            logger.debug("Error loading SensoryTapestry: %s", e)
 
     def stitch(
         self,
@@ -259,9 +405,26 @@ class SensoryTapestry:
             data=data or {},
         )
         with self._lock:
-            self._load_from_disk()
             self._notices.append(notice)
-            self._sync_to_disk()
+            if self._persist:
+                try:
+                    with _get_connection() as conn:
+                        query = """
+                            INSERT INTO notices (timestamp, level, source, message, data_json)
+                            VALUES (?, ?, ?, ?, ?)
+                        """
+                        conn.execute(
+                            query,
+                            (
+                                notice.timestamp,
+                                notice.level.value,
+                                notice.source,
+                                notice.message,
+                                json.dumps(notice.data),
+                            ),
+                        )
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("SensoryTapestry stitch DB error: %s", e)
 
         # Broadcast simultaneously to Warp for real-time streaming listeners
         try:
@@ -273,16 +436,36 @@ class SensoryTapestry:
 
     def set_slot(self, key: str, value: Any) -> None:
         """Set a retained state slot in the sensory blackboard."""
+        clean_key = str(key).strip()
         with self._lock:
-            self._load_from_disk()
-            self._slots[str(key).strip()] = value
-            self._sync_to_disk()
+            self._slots[clean_key] = value
+            if self._persist:
+                try:
+                    with _get_connection() as conn:
+                        query = """
+                            INSERT INTO slots (key, val_json) VALUES (?, ?)
+                            ON CONFLICT(key) DO UPDATE SET val_json=excluded.val_json
+                        """
+                        conn.execute(query, (clean_key, json.dumps(value)))
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("SensoryTapestry set_slot DB error: %s", e)
 
     def get_slot(self, key: str, default: Any = None) -> Any:
         """Get a retained state slot value."""
+        clean_key = str(key).strip()
         with self._lock:
-            self._load_from_disk()
-            return self._slots.get(str(key).strip(), default)
+            if not self._persist:
+                return self._slots.get(clean_key, default)
+            try:
+                with _get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT val_json FROM slots WHERE key = ?", (clean_key,))
+                    row = cur.fetchone()
+                    if row and row[0] is not None:
+                        return json.loads(row[0])
+            except (sqlite3.Error, OSError, json.JSONDecodeError) as e:
+                logger.debug("SensoryTapestry get_slot DB error: %s", e)
+            return self._slots.get(clean_key, default)
 
     def get_notices(
         self,
@@ -302,17 +485,52 @@ class SensoryTapestry:
                 target_lvl = level
 
         with self._lock:
-            self._load_from_disk()
-            items = list(self._notices)
+            if not self._persist:
+                items = list(self._notices)
+                filtered = []
+                for n in items:
+                    if target_lvl and n.level != target_lvl:
+                        continue
+                    if source and n.source.lower() != str(source).lower().strip():
+                        continue
+                    filtered.append(n.model_dump())
+                return filtered[-limit:]
 
-        filtered = []
-        for n in items:
-            if target_lvl and n.level != target_lvl:
-                continue
-            if source and n.source.lower() != str(source).lower().strip():
-                continue
-            filtered.append(n.model_dump())
-        return filtered[-limit:]
+            try:
+                with _get_connection() as conn:
+                    cur = conn.cursor()
+                    query = "SELECT timestamp, level, source, message, data_json FROM notices"
+                    params: list[Any] = []
+                    conditions = []
+                    if target_lvl:
+                        conditions.append("level = ?")
+                        params.append(target_lvl.value)
+                    if source:
+                        conditions.append("LOWER(source) = ?")
+                        params.append(str(source).lower().strip())
+                    if conditions:
+                        query += " WHERE " + " AND ".join(conditions)
+                    query += " ORDER BY id DESC LIMIT ?"
+                    params.append(limit)
+
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
+                    result = []
+                    for row in reversed(rows):
+                        result.append(
+                            Notice(
+                                timestamp=row[0],
+                                level=NoticeLevel(row[1]),
+                                source=row[2],
+                                message=row[3],
+                                data=json.loads(row[4]) if row[4] else {},
+                            ).model_dump()
+                        )
+                    return result
+            except (sqlite3.Error, OSError, json.JSONDecodeError) as e:
+                logger.debug("SensoryTapestry get_notices DB error: %s", e)
+                items = list(self._notices)
+                return [n.model_dump() for n in items[-limit:]]
 
     def clear(self) -> None:
         """Clear all sensory state slots and notices."""
@@ -320,21 +538,41 @@ class SensoryTapestry:
             self._slots.clear()
             self._notices.clear()
             if self._persist:
-                self._sync_to_disk()
+                try:
+                    with _get_connection() as conn:
+                        conn.execute("DELETE FROM slots")
+                        conn.execute("DELETE FROM notices")
+                except (sqlite3.Error, OSError) as e:
+                    logger.debug("SensoryTapestry clear DB error: %s", e)
 
     def get_state(self) -> dict[str, Any]:
         """Return snapshot of sensory state slots and recent stitched notices."""
         with self._lock:
-            self._load_from_disk()
-            slots_copy = dict(self._slots)
-        return {
-            "slots": slots_copy,
-            "recent_notices": self.get_notices(limit=20),
-        }
+            if not self._persist:
+                return {
+                    "slots": dict(self._slots),
+                    "recent_notices": self.get_notices(limit=20),
+                }
+            try:
+                with _get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT key, val_json FROM slots")
+                    slots_copy = {}
+                    for row in cur.fetchall():
+                        with contextlib.suppress(json.JSONDecodeError, TypeError):
+                            slots_copy[row[0]] = json.loads(row[1]) if row[1] else None
+                    return {
+                        "slots": slots_copy,
+                        "recent_notices": self.get_notices(limit=20),
+                    }
+            except (sqlite3.Error, OSError) as e:
+                logger.debug("SensoryTapestry get_state DB error: %s", e)
+                return {
+                    "slots": dict(self._slots),
+                    "recent_notices": self.get_notices(limit=20),
+                }
 
 
 # Global Shared Singletons (persisted to runtime tmpfs for cross-process IPC)
 core_tapestry = CoreTapestry(persist=True)
 sensory_tapestry = SensoryTapestry(persist=True)
-
-

@@ -1,11 +1,14 @@
 """
 Textile Warp - Universal Real-Time Pub/Sub Sensory & Event Bus.
+Powered by pyee EventEmitter.
 """
 
 import logging
 from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
+
+from pyee.base import EventEmitter
 
 logger = logging.getLogger(__name__)
 
@@ -25,34 +28,29 @@ Topic = WarpEvent | str
 
 
 class Warp:
-    """Universal string-and-enum Pub/Sub Event Bus for desktop sensory streaming."""
+    """Universal string-and-enum Pub/Sub Event Bus powered by pyee EventEmitter."""
 
     def __init__(self):
-        self._subscribers: dict[str, list[Callable[[Any], None]]] = {}
+        self._ee = EventEmitter()
 
     def _normalize_topic(self, topic: Topic) -> str:
         return topic.value if isinstance(topic, WarpEvent) else str(topic).strip()
 
-    def subscribe(self, topic: Topic, callback: Callable[[Any], None]):
+    def subscribe(self, topic: Topic, callback: Callable[[Any], None]) -> Callable[[Any], None]:
         key = self._normalize_topic(topic)
-        if key not in self._subscribers:
-            self._subscribers[key] = []
-        if callback not in self._subscribers[key]:
-            self._subscribers[key].append(callback)
+        self._ee.on(key, callback)
+        return callback
 
-    def unsubscribe(self, topic: Topic, callback: Callable[[Any], None]):
+    def unsubscribe(self, topic: Topic, callback: Callable[[Any], None]) -> None:
         key = self._normalize_topic(topic)
-        if key in self._subscribers and callback in self._subscribers[key]:
-            self._subscribers[key].remove(callback)
+        self._ee.remove_listener(key, callback)
 
-    def publish(self, topic: Topic, data: Any = None):
+    def publish(self, topic: Topic, data: Any = None) -> None:
         key = self._normalize_topic(topic)
-        for cb in list(self._subscribers.get(key, [])):
-            try:
-                cb(data)
-            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                logger.debug(f"Warp subscriber error on '{key}': {e}")
+        try:
+            self._ee.emit(key, data)
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+            logger.debug("Warp subscriber error on '%s': %s", key, e)
 
 
 warp = Warp()
-

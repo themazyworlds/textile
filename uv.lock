@@ -1993,6 +1993,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pyee"
+version = "14.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/f1/fdedc2c75c3e31a330659c85e5793bb18b3397981fbf0844c6dee5b18926/pyee-14.0.0.tar.gz", hash = "sha256:76dd0f4314ecd27f02dc73589dea7fd3853f9b6176d8ef9b122860657e3602de", size = 98760, upload-time = "2026-08-13T04:26:11.021Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/12/5347938b1f9a6453f0dbdfcc3e2388a1320ef9b9ec17fbefbc4ab647ea98/pyee-14.0.0-py3-none-any.whl", hash = "sha256:3ac2d3229a9677f7de2c33d7f52fe25b638a46b19c413fea2edc8c6d0a644e4d", size = 15553, upload-time = "2026-08-13T04:26:09.916Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2396,6 +2408,7 @@ dependencies = [
     { name = "mss" },
     { name = "pillow" },
     { name = "pydantic" },
+    { name = "pyee" },
     { name = "pyxclip" },
     { name = "rich" },
 ]
@@ -2416,6 +2429,7 @@ requires-dist = [
     { name = "mss", specifier = ">=10.2.0" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "pyee", specifier = ">=13.0.0" },
     { name = "pyxclip", specifier = ">=0.2.3" },
     { name = "rich", specifier = ">=15.0.0" },
 ]
