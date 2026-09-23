@@ -322,12 +322,12 @@ class FileIO:
         return os.getcwd()
 
     def chdir(self, path: str) -> str:
-        target = self._resolve(path)
-        if not target.exists():
-            return f"Error: Directory '{target}' does not exist."
-        if not target.is_dir():
-            return f"Error: '{target}' is not a directory."
         try:
+            target = self._resolve(path)
+            if not target.exists():
+                return f"Error: Directory '{target}' does not exist."
+            if not target.is_dir():
+                return f"Error: '{target}' is not a directory."
             os.chdir(target)
             return f"Working directory changed to: {os.getcwd()}"
         except (OSError, ValueError, TypeError) as e:
@@ -425,12 +425,12 @@ class FileIO:
         return {"mounted_disks": disk_overview, "total_mounts_scanned": len(disk_overview)}
 
     def read(self, path: str, start_line: int | None = None, end_line: int | None = None) -> str:
-        file_path = self._resolve(path)
-        if not file_path.exists():
-            return f"Error: File '{file_path}' does not exist."
-        if file_path.is_dir():
-            return f"Error: '{file_path}' is a directory."
         try:
+            file_path = self._resolve(path)
+            if not file_path.exists():
+                return f"Error: File '{file_path}' does not exist."
+            if file_path.is_dir():
+                return f"Error: '{file_path}' is a directory."
             with open(file_path, encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
             if start_line is not None or end_line is not None:
@@ -442,8 +442,8 @@ class FileIO:
             return f"Error reading file: {e}"
 
     def write(self, path: str, content: str, atomic: bool = True) -> str:
-        file_path = self._resolve(path)
         try:
+            file_path = self._resolve(path)
             file_path.parent.mkdir(parents=True, exist_ok=True)
             if atomic:
                 with tempfile.NamedTemporaryFile("w", dir=str(file_path.parent), delete=False, encoding="utf-8") as tf:
@@ -458,10 +458,10 @@ class FileIO:
             return f"Error writing to file: {e}"
 
     def replace(self, path: str, target: str, replacement: str) -> str:
-        file_path = self._resolve(path)
-        if not file_path.exists():
-            return f"Error: File '{file_path}' does not exist."
         try:
+            file_path = self._resolve(path)
+            if not file_path.exists():
+                return f"Error: File '{file_path}' does not exist."
             with open(file_path, encoding="utf-8", errors="replace") as f:
                 content = f.read()
             if target not in content:
@@ -474,11 +474,11 @@ class FileIO:
             return f"Error replacing in file: {e}"
 
     def list_dir(self, path: str = ".", recursive: bool = False, max_items: int = 50) -> list[dict[str, Any]]:
-        dir_path = self._resolve(path)
-        if not dir_path.exists() or not dir_path.is_dir():
-            return [{"error": f"Directory '{dir_path}' does not exist."}]
-        results = []
         try:
+            dir_path = self._resolve(path)
+            if not dir_path.exists() or not dir_path.is_dir():
+                return [{"error": f"Directory '{dir_path}' does not exist."}]
+            results = []
             with os.scandir(dir_path) as it:
                 for entry in it:
                     is_d = entry.is_dir(follow_symlinks=False)
@@ -497,9 +497,9 @@ class FileIO:
             return [{"error": str(e)}]
 
     def find(self, directory: str, pattern: str, max_results: int = 30) -> list[str]:
-        dir_path = self._resolve(directory)
-        matches = []
         try:
+            dir_path = self._resolve(directory)
+            matches = []
             for root, _, files in os.walk(dir_path):
                 for f in files:
                     if fnmatch.fnmatch(f, pattern):
