@@ -8,6 +8,7 @@ import shutil
 import subprocess
 
 from textile.core.base import (
+    CapabilityTier,
     Yarn,
     resolve_terminal_and_shell,
     strand,
@@ -68,7 +69,7 @@ class UWSM(Yarn):
         except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching app via UWSM: {e}"
 
-    @strand(description="Check UWSM session status and systemd user unit hierarchy.")
+    @strand(description="Check UWSM session status and systemd user unit hierarchy.", tier=CapabilityTier.OBSERVE)
     def uwsm_status(self, unit: str | None = None) -> str:
         """Check UWSM session status and systemd user unit hierarchy.
 
@@ -76,7 +77,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("status", unit or "")
 
-    @strand(description="Check UWSM environment compatibility and systemd support.")
+    @strand(description="Check UWSM environment compatibility and systemd support.", tier=CapabilityTier.OBSERVE)
     def uwsm_check(self, target: str | None = None) -> str:
         """Check UWSM environment compatibility and systemd support.
 
@@ -84,7 +85,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("check", target or "")
 
-    @strand(description="Stop a UWSM systemd user unit or active session.")
+    @strand(description="Stop a UWSM systemd user unit or active session.", tier=CapabilityTier.PRIVILEGED)
     def uwsm_stop(self, unit: str | None = None) -> str:
         """Stop a UWSM systemd user unit or active session.
 
@@ -92,7 +93,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("stop", unit or "")
 
-    @strand(description="Finalize UWSM environment variables and session cleanup.")
+    @strand(description="Finalize UWSM environment variables and session cleanup.", tier=CapabilityTier.PRIVILEGED)
     def uwsm_finalize(self, target: str | None = None) -> str:
         """Finalize UWSM environment variables and session cleanup.
 

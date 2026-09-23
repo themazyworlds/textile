@@ -13,7 +13,7 @@ import time
 import warnings
 from typing import Any, Literal
 
-from textile.core.base import Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 
 logger = logging.getLogger("textile.yarns.protocols.atspi")
 
@@ -821,13 +821,19 @@ class AtspiAccessibility(Yarn):
     def is_available(self) -> bool:
         return atspi_api.is_available()
 
-    @strand(description="List all running graphical applications on the Linux AT-SPI accessibility bus.")
+    @strand(
+        description="List all running graphical applications on the Linux AT-SPI accessibility bus.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def atspi_list_apps(self) -> dict[str, Any]:
         """List all running graphical applications on the Linux AT-SPI accessibility bus."""
         apps = atspi_api.list_applications()
         return {"count": len(apps), "applications": apps}
 
-    @strand(description="Retrieve the semantic accessibility element tree of a target application.")
+    @strand(
+        description="Retrieve the semantic accessibility element tree of a target application.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def atspi_get_tree(
         self,
         app_name: str | None = None,
@@ -842,7 +848,10 @@ class AtspiAccessibility(Yarn):
         """
         return atspi_api.get_tree(app_name=app_name, max_depth=max_depth, include_bounds=include_bounds)
 
-    @strand(description="Search for accessible UI elements matching name, role, text content, or state.")
+    @strand(
+        description="Search for accessible UI elements matching name, role, text content, or state.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def atspi_find_elements(
         self,
         query: str | None = None,
@@ -864,13 +873,16 @@ class AtspiAccessibility(Yarn):
         )
         return {"matches_count": len(elements), "elements": elements}
 
-    @strand(description="Get the currently focused accessible UI widget.")
+    @strand(description="Get the currently focused accessible UI widget.", tier=CapabilityTier.OBSERVE)
     def atspi_get_focused(self) -> dict[str, Any]:
         """Get the currently focused accessible UI widget."""
         focused = atspi_api.get_focused_element()
         return {"focused_element": focused}
 
-    @strand(description="Execute a native accessible action (click, press, activate, toggle) on a widget.")
+    @strand(
+        description="Execute a native accessible action (click, press, activate, toggle) on a widget.",
+        tier=CapabilityTier.INTERACT,
+    )
     def atspi_do_action(
         self,
         element_path: str | None = None,
@@ -895,7 +907,7 @@ class AtspiAccessibility(Yarn):
             action_index=action_index,
         )
 
-    @strand(description="Select a tab, radio button, or item from a list.")
+    @strand(description="Select a tab, radio button, or item from a list.", tier=CapabilityTier.INTERACT)
     def atspi_select(
         self,
         element_path: str | None = None,
@@ -914,7 +926,10 @@ class AtspiAccessibility(Yarn):
             element_path=element_path, app_name=app_name, element_name=element_name, index=index
         )
 
-    @strand(description="Directly set or replace the text contents of an editable UI field.")
+    @strand(
+        description="Directly set or replace the text contents of an editable UI field.",
+        tier=CapabilityTier.INTERACT,
+    )
     def atspi_set_text(
         self,
         text: str,
@@ -942,7 +957,7 @@ class AtspiAccessibility(Yarn):
             press_enter=press_enter,
         )
 
-    @strand(description="Insert text at a character offset in an editable widget.")
+    @strand(description="Insert text at a character offset in an editable widget.", tier=CapabilityTier.INTERACT)
     def atspi_insert_text(
         self,
         text: str,
@@ -967,7 +982,10 @@ class AtspiAccessibility(Yarn):
             element_name=element_name,
         )
 
-    @strand(description="Set the numerical value of a slider, progress bar, or spin box.")
+    @strand(
+        description="Set the numerical value of a slider, progress bar, or spin box.",
+        tier=CapabilityTier.INTERACT,
+    )
     def atspi_set_value(
         self,
         value: float,
@@ -989,7 +1007,10 @@ class AtspiAccessibility(Yarn):
             element_name=element_name,
         )
 
-    @strand(description="Synthesize keyboard text, single named keys, or hotkey combinations.")
+    @strand(
+        description="Synthesize keyboard text, single named keys, or hotkey combinations.",
+        tier=CapabilityTier.INTERACT,
+    )
     def atspi_generate_key(
         self,
         text: str | None = None,
@@ -1015,7 +1036,10 @@ class AtspiAccessibility(Yarn):
             return {"success": success, "method": "string_synth", "text": text}
         return {"success": False, "error": "Provide combo, key, or text."}
 
-    @strand(description="Click on an accessible UI element by dispatching a mouse event to its coordinates.")
+    @strand(
+        description="Click on an accessible UI element by dispatching a mouse event to its coordinates.",
+        tier=CapabilityTier.INTERACT,
+    )
     def atspi_click_element(
         self,
         element_path: str | None = None,
@@ -1040,7 +1064,10 @@ class AtspiAccessibility(Yarn):
             double_click=double_click,
         )
 
-    @strand(description="Get exact screen bounding rectangle for any accessible UI element.")
+    @strand(
+        description="Get exact screen bounding rectangle for any accessible UI element.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def atspi_get_element_bounds(
         self,
         element_path: str | None = None,

@@ -15,7 +15,7 @@ try:
 except ImportError:
     pyxclip = None
 
-from textile.core.base import Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 from textile.yarns.compositor.hyprland import hyprland_ipc
 
 
@@ -88,7 +88,8 @@ class Ydotool(Yarn):
         return True
 
     @strand(
-        description="Type text, commands, or passwords directly into active focused window or terminal."
+        description="Type text, commands, or passwords directly into active focused window or terminal.",
+        tier=CapabilityTier.INTERACT,
     )
     def type_text(self, text: str, press_enter: bool = True, delay_ms: int = 12) -> str:
         """Type text, commands, or passwords directly into the active focused window.
@@ -146,7 +147,7 @@ class Ydotool(Yarn):
 
         return "Error: Virtual keyboard daemon (ydotool) could not connect."
 
-    @strand(description="Press a specific keyboard key or hotkey combination.")
+    @strand(description="Press a specific keyboard key or hotkey combination.", tier=CapabilityTier.INTERACT)
     def press_key(self, key: str, modifiers: str | None = None) -> str:
         """Press a specific keyboard key or hotkey combination.
 
@@ -194,7 +195,7 @@ class Ydotool(Yarn):
 
         return "Error: ydotool is not available."
 
-    @strand(description="Paste text or clipboard content into the active focused window.")
+    @strand(description="Paste text or clipboard content into the active focused window.", tier=CapabilityTier.INTERACT)
     def paste_text(
         self,
         text: str | None = None,
