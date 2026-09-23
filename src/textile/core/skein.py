@@ -164,18 +164,29 @@ class Skein:
 
         _, target_strand = target
 
-        # 3. Layer 3 Policy Verification against Origin Trust Level
+        # 3. Layer 3 Policy Verification — full trust-tier matrix.
+        # Each trust level is enforced against the strand's capability tier.
+        # This matches the documented contract in context.py exactly.
         trust = intent.origin_token.trust_level
         tier = target_strand.tier
 
-        if trust == TrustLevel.NONE and tier in (
-            CapabilityTier.MUTATE,
-            CapabilityTier.PRIVILEGED,
-            CapabilityTier.SYSTEM_EXEC,
-        ):
+        _MUTATING_TIERS = (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
+
+        denied = False
+        if trust == TrustLevel.NONE:
+            # Zero trust: no execution power whatsoever for mutating operations.
+            denied = tier in _MUTATING_TIERS
+        elif trust == TrustLevel.LOW:
+            # Observe-only: can only read/query state, no interactions or mutations.
+            denied = tier in (*_MUTATING_TIERS, CapabilityTier.INTERACT)
+        elif trust == TrustLevel.MEDIUM:
+            # Observe + Interact: cannot mutate system state.
+            denied = tier in _MUTATING_TIERS
+
+        if denied:
             raise PolicyViolationError(
-                f"Security Policy Violation: Origin '{intent.origin_token.origin_id}' (trust level: {trust}) "
-                f"is denied execution of {tier} strand '{target_strand.name}'."
+                f"Security Policy Violation: Origin '{intent.origin_token.origin_id}' "
+                f"(trust={trust}) is denied execution of '{tier}' strand '{target_strand.name}'."
             )
 
         # 4. In-Memory Execution

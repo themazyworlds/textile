@@ -127,20 +127,25 @@ class Loom:
                 handler = strand.handler or handler
 
         # --- Layer 1/3: Origin Trust & Capability Policy Gate ---
-        # Default: local seat (trusted IDE / CLI caller). Callers supplying an explicit
-        # OriginToken (e.g. data from an external web source) are evaluated strictly.
+        # Mirrors the full trust-tier matrix in skein.compile_and_execute_intent().
+        # Both execution paths must enforce the same contract.
         token = origin_token or OriginToken.create_local_voice()
         trust = token.trust_level
         tier = strand.tier
 
-        if trust == TrustLevel.NONE and tier in (
-            CapabilityTier.MUTATE,
-            CapabilityTier.PRIVILEGED,
-            CapabilityTier.SYSTEM_EXEC,
-        ):
+        _MUTATING_TIERS = (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
+        denied = False
+        if trust == TrustLevel.NONE:
+            denied = tier in _MUTATING_TIERS
+        elif trust == TrustLevel.LOW:
+            denied = tier in (*_MUTATING_TIERS, CapabilityTier.INTERACT)
+        elif trust == TrustLevel.MEDIUM:
+            denied = tier in _MUTATING_TIERS
+
+        if denied:
             raise PolicyViolationError(
                 f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
-                f"is denied execution of {tier} strand '{strand.name}'."
+                f"is denied execution of '{tier}' strand '{strand.name}'."
             )
         # --- End Policy Gate ---
 

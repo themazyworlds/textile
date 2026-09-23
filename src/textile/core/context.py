@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OriginType(StrEnum):
@@ -29,7 +29,13 @@ class TrustLevel(StrEnum):
 
 
 class OriginToken(BaseModel):
-    """Cryptographic/session token representing the source and trust of an intent."""
+    """Cryptographic/session token representing the source and trust of an intent.
+
+    Frozen: trust_level and origin_type cannot be mutated after creation.
+    An attacker must never be able to escalate their own trust in memory.
+    """
+
+    model_config = ConfigDict(frozen=True)
 
     origin_id: str
     origin_type: OriginType
