@@ -15,7 +15,7 @@ import subprocess
 import time
 from typing import Any, Literal
 
-from textile.core.base import Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 
 
 class HyprlandIPC:
@@ -867,6 +867,7 @@ class Hyprland(Yarn):
     @strand(
         description="Launch application or shell command via Hyprland exec dispatcher.",
         capability="desktop.app_launcher",
+        tier=CapabilityTier.PRIVILEGED,
     )
     def hyprland_launch_app(self, command: str) -> str:
         """Launch application or shell command via Hyprland exec dispatcher.
