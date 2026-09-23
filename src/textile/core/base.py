@@ -111,15 +111,17 @@ class Strand:
 
     def to_mcp_definition(self) -> dict[str, Any]:
         """Convert strand schema into Model Context Protocol format."""
+        tier_str = str(self.tier.value).upper() if hasattr(self.tier, "value") else str(self.tier).upper()
+        desc = f"[Capability Tier: {tier_str}] {self.description}"
         if self.args_schema:
             return {
                 "name": self.name,
-                "description": self.description,
+                "description": desc,
                 "inputSchema": self.args_schema.model_json_schema(),
             }
         return {
             "name": self.name,
-            "description": self.description,
+            "description": desc,
             "inputSchema": {
                 "type": "object",
                 "properties": self.parameters,

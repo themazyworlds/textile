@@ -14,7 +14,7 @@ from typing import Any
 from textile.core.base import LAYER_BASE, CapabilityTier, Strand, Weft, Yarn
 from textile.core.context import OriginToken, TrustLevel
 from textile.core.skein import PolicyViolationError, Skein, skein
-from textile.core.tapestry import core_tapestry
+from textile.core.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
 from textile.core.warp import WarpEvent, warp
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,16 @@ class Loom:
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
-        core_tapestry.record_task_start(task_id, strand_name, args)
+        tier_val = tier.value if hasattr(tier, "value") else str(tier)
+        trust_val = trust.value if hasattr(trust, "value") else str(trust)
+        core_tapestry.record_task_start(
+            task_id,
+            strand_name,
+            args,
+            tier=tier_val,
+            trust_level=trust_val,
+            tainted=token.tainted,
+        )
         warp.publish(
             WarpEvent.TOOL_EXECUTION_START,
             {"task_id": task_id, "strand": strand_name, "caller": effective_caller},
@@ -170,6 +179,23 @@ class Loom:
         finally:
             dur = (time.perf_counter() - t0) * 1000.0
             core_tapestry.record_task_end(task_id, success=success, duration_ms=dur, error=err)
+            msg = (
+                f"Executed '{strand_name}' [{tier_val.upper()}] ({dur:.1f}ms)"
+                if success
+                else f"Failed '{strand_name}': {err}"
+            )
+            sensory_tapestry.stitch(
+                level=NoticeLevel.INFO if success else NoticeLevel.ERROR,
+                source=strand_name,
+                message=msg,
+                data={
+                    "caller": effective_caller,
+                    "args": args,
+                    "tier": tier_val,
+                    "trust_level": trust_val,
+                    "tainted": token.tainted,
+                },
+            )
             warp.publish(
                 WarpEvent.TOOL_EXECUTION_DONE,
                 {

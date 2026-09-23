@@ -414,6 +414,38 @@ def cmd_tapestry(args):
             active = core_tapestry.get_active_tasks()
             history = core_tapestry.get_task_history(limit=15)
 
+            def _format_tier(tier: str | None) -> str:
+                if not tier:
+                    return "-"
+                t = str(tier).lower()
+                if t == "observe":
+                    return "[cyan]OBSERVE[/cyan]"
+                if t == "interact":
+                    return "[green]INTERACT[/green]"
+                if t == "mutate":
+                    return "[bold yellow]MUTATE[/bold yellow]"
+                if t == "privileged":
+                    return "[bold magenta]PRIVILEGED[/bold magenta]"
+                if t == "system_exec":
+                    return "[bold red]SYS_EXEC[/bold red]"
+                return f"[white]{tier}[/white]"
+
+            def _format_trust(trust: str | None, tainted: bool = False) -> str:
+                if tainted:
+                    return "[bold white on red]TAINTED[/bold white on red]"
+                if not trust:
+                    return "-"
+                tr = str(trust).lower()
+                if tr == "high":
+                    return "[bold green]HIGH[/bold green]"
+                if tr == "medium":
+                    return "[yellow]MEDIUM[/yellow]"
+                if tr == "low":
+                    return "[dim yellow]LOW[/dim yellow]"
+                if tr == "none":
+                    return "[bold red]NONE[/bold red]"
+                return f"[white]{trust}[/white]"
+
             engine_table = Table(
                 title=f"Core Task Ledger • {len(active)} active running",
                 box=box.SIMPLE_HEAD,
@@ -421,16 +453,20 @@ def cmd_tapestry(args):
                 header_style="bold bright_cyan",
                 pad_edge=False,
             )
-            engine_table.add_column("Task ID", style="bold yellow", width=12)
-            engine_table.add_column("Strand", style="bold white", width=32)
-            engine_table.add_column("Status", width=14)
-            engine_table.add_column("Duration", justify="right", width=12)
+            engine_table.add_column("Task ID", style="bold yellow", width=10)
+            engine_table.add_column("Strand", style="bold white", width=28)
+            engine_table.add_column("Tier", width=12)
+            engine_table.add_column("Trust / Taint", width=14)
+            engine_table.add_column("Status", width=12)
+            engine_table.add_column("Duration", justify="right", width=10)
             engine_table.add_column("Args / Error", style="dim")
 
             for t in active:
                 engine_table.add_row(
                     t["task_id"][:8],
                     t["strand_name"],
+                    _format_tier(t.get("tier")),
+                    _format_trust(t.get("trust_level"), t.get("tainted", False)),
                     "[bold green]RUNNING[/bold green]",
                     "active",
                     str(t.get("args") or ""),
@@ -442,6 +478,8 @@ def cmd_tapestry(args):
                 engine_table.add_row(
                     t["task_id"][:8],
                     t["strand_name"],
+                    _format_tier(t.get("tier")),
+                    _format_trust(t.get("trust_level"), t.get("tainted", False)),
                     status_str,
                     dur,
                     err_or_args,
