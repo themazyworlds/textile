@@ -143,28 +143,7 @@ canvas_ctl = CanvasController()
 
 
 class Canvas(Yarn):
-    """Quickshell Emotive Canvas & Mood System Yarn.
-
-    The Canvas avatar is your physical, visual face on the Linux desktop.
-    ALWAYS interleave rich semantic mood and gaze tags frequently throughout your speech stream to reflect
-    your inner thought processes, reactions, and conversational turns in real-time.
-    Available semantic tags:
-    - Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>,
-      <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>,
-      <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
-    - Gaze tags: <gaze:X,Y> (where X is -16.0 to 16.0, Y is -12.0 to 12.0)
-
-    Frequent multi-tag usage in a single turn makes your avatar exceptionally fluid, expressive, and alive.
-    """
-
-    contract = """Canvas is your physical, emotive face on the Linux desktop.
-You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags across your natural speech/text:
-- Mood tags: <mood:neutral>, <mood:happy>, <mood:excited>, <mood:celebrating>, <mood:thinking>,
-  <mood:focused>, <mood:listening>, <mood:curious>, <mood:calm>, <mood:shy>, <mood:mischievous>,
-  <mood:confused>, <mood:surprised>, <mood:alert>, <mood:sleepy>, <mood:error>, <mood:glitch>
-- Gaze tags: <gaze:X,Y> (where X is -16.0 to 16.0, Y is -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right)
-- Example: "<mood:curious> Let's see what you need... <mood:thinking> checking workspace now... <mood:happy> Done!"
-- The forehead gemstone automatically pulses harmonic water ripples when you initiate system tools."""
+    """Quickshell Emotive Canvas & Mood System Yarn."""
 
     def is_available(self) -> bool:
         return bool(shutil.which("quickshell") or shutil.which("qs"))
@@ -260,9 +239,7 @@ You are strongly encouraged to interleave 2-4 inline semantic mood and gaze tags
         """Close the Quickshell Canvas UI window."""
         return canvas_ctl.close()
 
-    @strand(
-        description="Set canvas mood (e.g. neutral, happy, excited, celebrating, thinking, focused, listening)."
-    )
+    @strand(description="Set canvas mood (e.g. neutral, happy, excited, celebrating, thinking, focused, listening).")
     def canvas_set_mood(self, mood: str = "neutral") -> str:
         """Set canvas mood.
 
