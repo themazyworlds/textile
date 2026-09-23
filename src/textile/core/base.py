@@ -21,6 +21,7 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, ValidationError, create_model
 
+from textile.core.sandbox import BubblewrapSandbox
 from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import warp
 
@@ -785,6 +786,9 @@ class Yarn(ABC):
         python_path = env.get("PYTHONPATH", "")
         cwd = os.getcwd()
         env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
+
+        if BubblewrapSandbox.is_available() and tier_str.upper() != "PRIVILEGED":
+            cmd = BubblewrapSandbox.wrap_command(cmd, tier=tier_str, workspace_root=cwd)
 
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False, env=env)

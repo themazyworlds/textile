@@ -9,7 +9,10 @@ even if code attempts `import os; os.remove(...)`.
 import ctypes
 import logging
 import os
+import shutil
+import subprocess
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +127,94 @@ class LandlockSandbox:
         except (OSError, AttributeError, RuntimeError) as e:
             logger.debug("Error applying Landlock sandbox: %s", e)
             return False
+
+
+class BubblewrapSandbox:
+    """
+    Linux Bubblewrap (bwrap) unprivileged container isolation manager.
+    Enforces namespace isolation (mount, PID, IPC, network) and workspace confinement.
+    Zero hardcoded file blacklists; mounts /home as an empty tmpfs and binds
+    strictly the target workspace.
+    """
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """Check if bubblewrap (bwrap) executable is present and working."""
+        if sys.platform != "linux":
+            return False
+        bwrap_path = shutil.which("bwrap")
+        if not bwrap_path:
+            return False
+        try:
+            res = subprocess.run(
+                [bwrap_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+            return res.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    @classmethod
+    def wrap_command(
+        cls,
+        cmd: list[str],
+        tier: str,
+        workspace_root: str | Path | None = None,
+        allow_network: bool = False,
+    ) -> list[str]:
+        """
+        Wrap command in a bwrap sandbox container tailored to the capability tier.
+
+        - OBSERVE / INTERACT: Read-only workspace (--ro-bind), isolated network, empty /home.
+        - MUTATE: Read-write workspace (--bind), isolated network, empty /home.
+        - PRIVILEGED: Host execution (no bwrap wrapping, controlled via caller seat).
+        """
+        bwrap_path = shutil.which("bwrap")
+        if not bwrap_path:
+            return cmd
+
+        tier_upper = str(tier).upper()
+        if "PRIVILEGED" in tier_upper:
+            # Privileged tier operations interact directly with system / seat
+            return cmd
+
+        is_writable = "MUTATE" in tier_upper
+
+        ws = Path(workspace_root or os.getcwd()).resolve()
+
+        bwrap_args = [
+            bwrap_path,
+            "--ro-bind", "/usr", "/usr",
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/lib", "/lib64",
+            "--symlink", "usr/bin", "/bin",
+            "--ro-bind-try", "/etc", "/etc",
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--tmpfs", "/tmp",  # noqa: S108 - In-memory container tmpfs
+            "--tmpfs", "/home",
+        ]
+
+        if not allow_network:
+            bwrap_args.append("--unshare-all")
+        else:
+            bwrap_args.extend(["--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts"])
+
+        # Bind workspace
+        bind_flag = "--bind" if is_writable else "--ro-bind"
+        bwrap_args.extend([bind_flag, str(ws), str(ws)])
+        bwrap_args.extend(["--chdir", str(ws)])
+        bwrap_args.extend(["--setenv", "PATH", os.environ.get("PATH", "/usr/bin:/bin")])
+        bwrap_args.extend(["--setenv", "UV_CACHE_DIR", "/tmp/uv_cache"])  # noqa: S108 - Sandboxed container cache
+
+        # Pass python path if present
+        python_path = os.environ.get("PYTHONPATH")
+        if python_path:
+            bwrap_args.extend(["--setenv", "PYTHONPATH", python_path])
+
+        bwrap_args.extend(cmd)
+        return bwrap_args
+
