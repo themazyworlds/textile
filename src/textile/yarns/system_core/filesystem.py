@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.guardrails import ScopedPath
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,8 @@ class InotifyAPI:
         return self._fd
 
     def _resolve_path(self, path: str) -> str:
-        return str(Path(os.path.expanduser(path.strip() or ".")).resolve())
+        scoped = ScopedPath(root=Path.home())
+        return str(scoped.resolve(path.strip() or "."))
 
     def _parse_mask(self, mask: int | str | list[str]) -> int:
         if isinstance(mask, int):
@@ -313,9 +315,8 @@ class FileIO:
     """File reader, writer, in-place editor, and POSIX filesystem interface."""
 
     def _resolve(self, path: str) -> Path:
-        if not path or path.strip() == "":
-            return Path.cwd()
-        return Path(os.path.expanduser(path)).resolve()
+        scoped = ScopedPath(root=Path.home())
+        return scoped.resolve(path or ".")
 
     def getcwd(self) -> str:
         return os.getcwd()

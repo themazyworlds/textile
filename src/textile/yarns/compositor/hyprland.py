@@ -80,12 +80,13 @@ class HyprlandIPC:
         except json.JSONDecodeError:
             return None
 
-    def dispatch(self, lua_disp_call: str) -> str:
-        return self.eval_lua(f"return hl.dispatch({lua_disp_call})")
+    def dispatch(self, dispatcher: str, args: str = "") -> str:
+        cmd = f"dispatch {dispatcher} {args}".strip()
+        return self.send_raw(cmd).strip()
 
     def focus_workspace(self, workspace: str) -> str:
         ws_str = str(workspace).strip()
-        return self.dispatch(f'hl.dsp.focus({{ workspace = "{ws_str}" }})')
+        return self.dispatch("workspace", ws_str)
 
     @staticmethod
     def _detect_terminal() -> str:
@@ -315,7 +316,7 @@ class HyprlandIPC:
             return "Error: No target window specified."
         win = self.resolve_window(target_clean)
         if win and "address" in win:
-            return self.dispatch(f'hl.dsp.focus({{ window = "address:{win["address"]}" }})')
+            return self.dispatch("focuswindow", f"address:{win['address']}")
         return f"Error: No open window found matching '{target_clean}'."
 
     def close_window(self, target: str | None = None) -> str:
@@ -323,67 +324,49 @@ class HyprlandIPC:
             target_clean = str(target).strip()
             win = self.resolve_window(target_clean)
             if win and "address" in win:
-                return self.dispatch(f'hl.dsp.window.close({{ window = "address:{win["address"]}" }})')
+                return self.dispatch("closewindow", f"address:{win['address']}")
             return f"Error: No open window found matching '{target_clean}'."
-        return self.dispatch("hl.dsp.window.close({})")
+        return self.dispatch("killactive")
 
     def move_to_workspace(self, workspace: str, target: str | None = None, silent: bool = False) -> str:
         ws_str = str(workspace).strip()
-        current_ws = None
-        if silent:
-            act = self.get_active_workspace()
-            current_ws = act.get("name") or act.get("id")
-
+        disp = "movetoworkspacesilent" if silent else "movetoworkspace"
         if target and str(target).strip():
             target_clean = str(target).strip()
             win = self.resolve_window(target_clean)
             if win and "address" in win:
-                win_addr = win["address"]
-                res = self.dispatch(f'hl.dsp.window.move({{ window = "address:{win_addr}", workspace = "{ws_str}" }})')
-                if silent and current_ws:
-                    self.focus_workspace(str(current_ws))
-                return res
+                return self.dispatch(disp, f"{ws_str},address:{win['address']}")
             return f"Error: No open window found matching '{target_clean}'."
-
-        res = self.dispatch(f'hl.dsp.window.move({{ workspace = "{ws_str}" }})')
-        if silent and current_ws:
-            self.focus_workspace(str(current_ws))
-        return res
+        return self.dispatch(disp, ws_str)
 
     def window_action(self, action: str, target: str | None = None) -> str:
         act = action.lower().strip()
-        if act in ("close", "kill"):
-            return self.close_window(target=target)
-
-        win_param = ""
+        win_addr = ""
         if target and str(target).strip():
             target_clean = str(target).strip()
             win = self.resolve_window(target_clean)
             if not win or "address" not in win:
                 return f"Error: No open window found matching '{target_clean}'."
-            win_param = f', window = "address:{win["address"]}"'
+            win_addr = f"address:{win['address']}"
 
-            if act in ("fullscreen", "toggle_fullscreen"):
-                win_addr = win["address"]
-                self.dispatch(f'hl.dsp.focus({{ window = "address:{win_addr}" }})')
-                return self.dispatch(
-                    f'hl.dsp.window.fullscreen({{ mode = "fullscreen", window = "address:{win_addr}" }})'
-                )
-
-        if act in ("float", "togglefloating"):
-            return self.dispatch(f"hl.dsp.window.float({{{win_param.lstrip(', ')}}})")
+        if act in ("close", "kill"):
+            return self.close_window(target=target)
+        elif act in ("float", "togglefloating"):
+            return self.dispatch("togglefloating", win_addr)
         elif act in ("fullscreen", "toggle_fullscreen"):
-            return self.dispatch(f"hl.dsp.window.fullscreen({{{win_param.lstrip(', ')}}})")
+            if win_addr:
+                self.dispatch("focuswindow", win_addr)
+            return self.dispatch("fullscreen", "0")
         elif act == "pin":
-            return self.dispatch(f"hl.dsp.window.pin({{{win_param.lstrip(', ')}}})")
+            return self.dispatch("pin", win_addr)
         elif act == "center":
-            return self.dispatch(f"hl.dsp.window.center({{{win_param.lstrip(', ')}}})")
+            return self.dispatch("centerwindow")
         else:
-            return self.dispatch(f"hl.dsp.window.{act}({{{win_param.lstrip(', ')}}})")
+            return self.dispatch(act, win_addr)
 
     def focus_direction(self, direction: str) -> str:
         dir_clean = direction.lower().strip()
-        return self.dispatch(f'hl.dsp.focus({{ direction = "{dir_clean}" }})')
+        return self.dispatch("movefocus", dir_clean)
 
     def move_window(
         self,
@@ -393,22 +376,9 @@ class HyprlandIPC:
         relative: bool = True,
         target: str | None = None,
     ) -> str:
-        rel_str = "true" if relative else "false"
-        win_param = ""
-        if target and str(target).strip():
-            target_clean = str(target).strip()
-            win = self.resolve_window(target_clean)
-            if not win or "address" not in win:
-                return f"Error: No open window found matching '{target_clean}'."
-            win_param = f', window = "address:{win["address"]}"'
-
         if direction:
-            dir_clean = direction.lower().strip()
-            return self.dispatch(f'hl.dsp.window.move({{ direction = "{dir_clean}"{win_param} }})')
-
-        return self.dispatch(
-            f'hl.dsp.window.move({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})'
-        )
+            return self.dispatch("movewindow", direction.lower().strip())
+        return self.dispatch("moveactive", f"{int(delta_x)} {int(delta_y)}")
 
     def resize_window(
         self,
@@ -417,17 +387,7 @@ class HyprlandIPC:
         relative: bool = True,
         target: str | None = None,
     ) -> str:
-        rel_str = "true" if relative else "false"
-        win_param = ""
-        if target and str(target).strip():
-            target_clean = str(target).strip()
-            win = self.resolve_window(target_clean)
-            if not win or "address" not in win:
-                return f"Error: No open window found matching '{target_clean}'."
-            win_param = f', window = "address:{win["address"]}"'
-        return self.dispatch(
-            f'hl.dsp.window.resize({{ x = {int(delta_x)}, y = {int(delta_y)}, relative = {rel_str}{win_param} }})'
-        )
+        return self.dispatch("resizeactive", f"{int(delta_x)} {int(delta_y)}")
 
     def exec_app(self, app: str, is_tui: bool = False, title: str | None = None) -> str:
         app_clean = app.strip()
@@ -447,8 +407,7 @@ class HyprlandIPC:
         else:
             cmd = app_clean
 
-        escaped_cmd = cmd.replace('\\', '\\\\').replace('"', '\\"')
-        return self.dispatch(f'hl.dsp.exec_cmd("{escaped_cmd}")')
+        return self.dispatch("exec", cmd)
 
     def get_active_workspace(self) -> dict[str, Any]:
         res = self.send_json("j/activeworkspace")
@@ -466,18 +425,12 @@ class HyprlandIPC:
         res = self.send_json("j/clients")
         return res if isinstance(res, list) else []
 
-    def eval_lua(self, lua_code: str) -> str:
-        return self.send_raw(f"eval {lua_code}").strip()
-
     def set_monitor(self, output: str, mode: str, position: str = "0x0", scale: float = 1.25) -> str:
         out_clean = output.strip()
         mode_clean = mode.strip()
         pos_clean = position.strip()
-        code = (
-            f'hl.monitor({{ output = "{out_clean}", mode = "{mode_clean}", '
-            f'position = "{pos_clean}", scale = {scale} }})'
-        )
-        res = self.eval_lua(code)
+        cmd = f"keyword monitor {out_clean},{mode_clean},{pos_clean},{scale}"
+        res = self.send_raw(cmd).strip()
         return f"Monitor '{out_clean}' configured to {mode_clean} at {pos_clean} (scale {scale}): {res}"
 
     def get_monitors(self) -> list[dict[str, Any]]:

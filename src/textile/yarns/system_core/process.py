@@ -6,12 +6,14 @@ Layer 10 (Core POSIX).
 
 import contextlib
 import os
+import shlex
 import signal as sig_mod
 import subprocess
 import time
 from typing import Any
 
-from textile import Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.guardrails import AccessBoundaryError, SessionProcessGuard
 
 BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}
 MAX_PROC_SCAN_LIMIT = 50
@@ -34,9 +36,10 @@ class ProcessControl(Yarn):
     @strand(
         description="Launch a desktop application or background command (routed through UWSM scope if active).",
         capability="desktop.app_launcher",
+        tier=CapabilityTier.INTERACT,
     )
     def launch_app(self, app: str, is_tui: bool = False) -> str:
-        """Launch a desktop application or background command (routed through UWSM scope if active).
+        """Launch a desktop application or background command.
 
         :param app: Application command or binary to launch.
         :param is_tui: Whether to launch in a terminal.
@@ -45,13 +48,14 @@ class ProcessControl(Yarn):
         if not app_clean:
             return "Error: No application command provided."
         try:
-            proc = subprocess.Popen(app_clean, shell=True, start_new_session=True, cwd=os.getcwd())  # noqa: S602
+            argv = shlex.split(app_clean)
+            proc = subprocess.Popen(argv, shell=False, start_new_session=True, cwd=os.getcwd())
             self.register_bg_job(proc.pid, app_clean, "app")
             return f"Universal Launcher: Started '{app_clean}' in background (PID {proc.pid})."
-        except (OSError, subprocess.SubprocessError) as e:
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
             return f"Error launching application: {e}"
 
-    @strand(description="List running system processes with PID, CPU/memory usage, user, and command line.")
+    @strand(description="List running system processes with PID, CPU/memory usage, user, and command line.", tier=CapabilityTier.OBSERVE)
     def process_list(self, filter: str | None = None) -> list[dict[str, Any]]:
         """List running system processes with PID, CPU/memory usage, user, and command line.
 
@@ -77,7 +81,7 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return [{"error": f"Error scanning /proc: {e}"}]
 
-    @strand(description="Send a POSIX signal to terminate or signal a process by PID.")
+    @strand(description="Send a POSIX signal to terminate or signal a process by PID.", tier=CapabilityTier.MUTATE)
     def process_kill(self, pid: int, signal: str = "SIGTERM") -> str:
         """Send a POSIX signal to terminate or signal a process by PID.
 
@@ -86,10 +90,13 @@ class ProcessControl(Yarn):
         """
         sig_name = str(signal or "SIGTERM").strip().upper()
         try:
+            target_pid = SessionProcessGuard.verify_pid_in_session(int(pid))
             sig_num = getattr(sig_mod, sig_name, sig_mod.SIGTERM)
-            os.kill(int(pid), sig_num)
-            BACKGROUND_JOBS.pop(int(pid), None)
-            return f"Successfully sent signal {sig_name} ({sig_num}) to PID {pid}."
+            os.kill(target_pid, sig_num)
+            BACKGROUND_JOBS.pop(target_pid, None)
+            return f"Successfully sent signal {sig_name} ({sig_num}) to PID {target_pid}."
+        except AccessBoundaryError as e:
+            return f"Error: {e}"
         except ProcessLookupError:
             BACKGROUND_JOBS.pop(int(pid), None)
             return f"Process PID {pid} not found (already exited)."
@@ -145,7 +152,7 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return f"Error getting priority: {e}"
 
-    @strand(description="Set nice priority level (-20 to 19) of a process by PID.")
+    @strand(description="Set nice priority level (-20 to 19) of a process by PID.", tier=CapabilityTier.MUTATE)
     def process_set_priority(self, pid: int, priority: int = 0) -> str:
         """Set nice priority level (-20 to 19) of a process by PID.
 
@@ -155,7 +162,10 @@ class ProcessControl(Yarn):
         if not hasattr(os, "setpriority"):
             return "Error: Priority management not supported."
         try:
-            os.setpriority(os.PRIO_PROCESS, int(pid), int(priority))
-            return f"PID {pid} nice priority set to {priority}."
+            target_pid = SessionProcessGuard.verify_pid_in_session(int(pid))
+            os.setpriority(os.PRIO_PROCESS, target_pid, int(priority))
+            return f"PID {target_pid} nice priority set to {priority}."
+        except AccessBoundaryError as e:
+            return f"Error: {e}"
         except (OSError, ValueError, TypeError) as e:
             return f"Error setting priority: {e}"
