@@ -567,8 +567,8 @@ class TestLayer4TransactionStack:
         assert len(stack._stack) == 100  # 10 threads × 10 pushes
 
 
-class TestTaintTrackingAndConfirmation:
-    """Verifies Data Flow Taint Tracking and Privileged Human Confirmation Gates."""
+class TestTaintTracking:
+    """Verifies Data Flow Taint Tracking to eliminate Confused Deputy and indirect prompt injection."""
 
     def test_origin_token_taint_downgrades_to_none(self):
         token = OriginToken.create_local_voice("user_voice")
@@ -615,23 +615,4 @@ class TestTaintTrackingAndConfirmation:
         with pytest.raises(PolicyViolationError) as exc_info:
             skein.compile_and_execute_intent(intent)
         assert "denied execution" in str(exc_info.value)
-
-    def test_skein_privileged_confirmation_gate(self):
-        skein = Skein()
-        yarn = _mock_yarn("mock_sys", "reboot_machine", CapabilityTier.PRIVILEGED)
-        skein.all_yarns["mock_sys"] = yarn
-
-        token = OriginToken.create_local_voice("user_voice")
-        intent = IntentNode(strand_name="reboot_machine", origin_token=token)
-
-        # 1. User denies confirmation
-        skein.set_confirmation_callback(lambda strand, params: False)
-        with pytest.raises(PolicyViolationError) as exc_info:
-            skein.compile_and_execute_intent(intent)
-        assert "rejected by user confirmation" in str(exc_info.value)
-
-        # 2. User approves confirmation
-        skein.set_confirmation_callback(lambda strand, params: True)
-        res = skein.compile_and_execute_intent(intent)
-        assert res == "mock_ok"
 

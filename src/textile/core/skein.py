@@ -8,10 +8,8 @@ import inspect
 import json
 import logging
 import threading
-from collections.abc import Callable
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any
 
 import textile.yarns
 from textile.core.base import CapabilityTier, Strand, Yarn, YarnManifest
@@ -38,11 +36,6 @@ class Skein:
         self.all_yarns: dict[str, Yarn] = {}
         self._disabled_yarns: set[str] = set()
         self._initialized: bool = False
-        self._confirmation_callback: Callable[[str, dict[str, Any]], bool] | None = None
-
-    def set_confirmation_callback(self, callback: Callable[[str, dict[str, Any]], bool] | None) -> None:
-        """Register an interactive confirmation callback for PRIVILEGED operations."""
-        self._confirmation_callback = callback
 
     def load_yarns(self) -> None:
         """Dynamically discover and register all Yarns under textile.yarns."""
@@ -195,15 +188,6 @@ class Skein:
                 f"Security Policy Violation: Origin '{intent.origin_token.origin_id}' "
                 f"(trust={trust}) is denied execution of '{tier}' strand '{target_strand.name}'."
             )
-
-        # 3.5 Interactive Confirmation Gate for PRIVILEGED operations
-        if tier in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) and self._confirmation_callback is not None:
-            confirmed = self._confirmation_callback(target_strand.name, intent.parameters)
-            if not confirmed:
-                raise PolicyViolationError(
-                    f"Privileged Operation Denied: Execution of '{target_strand.name}' "
-                    "was rejected by user confirmation."
-                )
 
         # 4. In-Memory Execution
         if target_strand.handler is None:
