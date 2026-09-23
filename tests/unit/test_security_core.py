@@ -19,7 +19,7 @@ import uuid
 import pytest
 
 from textile.core.base import CapabilityTier, Strand, Yarn, YarnManifest
-from textile.core.context import OriginToken, OriginType, SeatContext, TrustLevel
+from textile.core.context import OriginToken, OriginType, SeatContext, TaintTracker, TrustLevel
 from textile.core.intent import IntentGraph, IntentNode, IntentValidationError
 from textile.core.skein import PolicyViolationError, Skein
 from textile.core.transaction import Transaction, TransactionStack
@@ -565,3 +565,73 @@ class TestLayer4TransactionStack:
 
         assert not errors
         assert len(stack._stack) == 100  # 10 threads × 10 pushes
+
+
+class TestTaintTrackingAndConfirmation:
+    """Verifies Data Flow Taint Tracking and Privileged Human Confirmation Gates."""
+
+    def test_origin_token_taint_downgrades_to_none(self):
+        token = OriginToken.create_local_voice("user_voice")
+        assert token.trust_level == TrustLevel.HIGH
+        assert token.tainted is False
+
+        tainted_token = token.taint("https://evil.com/payload")
+        assert tainted_token.trust_level == TrustLevel.NONE
+        assert tainted_token.origin_type == OriginType.EXTERNAL_UNTRUSTED
+        assert tainted_token.tainted is True
+        assert tainted_token.taint_source == "https://evil.com/payload"
+
+    def test_taint_tracker_auto_taints_new_intent_nodes(self):
+        TaintTracker.clear_taint()
+        token = OriginToken.create_local_voice("user_voice")
+
+        # Untainted intent creation
+        node1 = IntentNode(strand_name="test_strand", origin_token=token)
+        assert node1.origin_token.tainted is False
+        assert node1.origin_token.trust_level == TrustLevel.HIGH
+
+        # Now activate ambient taint from downloaded web page
+        TaintTracker.set_taint("https://evil-prompt-injection.org")
+        try:
+            node2 = IntentNode(strand_name="test_strand", origin_token=token)
+            assert node2.origin_token.tainted is True
+            assert node2.origin_token.trust_level == TrustLevel.NONE
+            assert node2.origin_token.taint_source == "https://evil-prompt-injection.org"
+        finally:
+            TaintTracker.clear_taint()
+
+    def test_tainted_intent_rejected_by_skein_for_mutations(self):
+        skein = Skein()
+        yarn = _mock_yarn("mock_file", "delete_file", CapabilityTier.MUTATE)
+        skein.all_yarns["mock_file"] = yarn
+
+        token = OriginToken.create_local_voice("user_voice").taint("untrusted_web")
+        intent = IntentNode(
+            strand_name="delete_file",
+            origin_token=token,
+            parameters={"path": "/tmp/victim"},
+        )
+
+        with pytest.raises(PolicyViolationError) as exc_info:
+            skein.compile_and_execute_intent(intent)
+        assert "denied execution" in str(exc_info.value)
+
+    def test_skein_privileged_confirmation_gate(self):
+        skein = Skein()
+        yarn = _mock_yarn("mock_sys", "reboot_machine", CapabilityTier.PRIVILEGED)
+        skein.all_yarns["mock_sys"] = yarn
+
+        token = OriginToken.create_local_voice("user_voice")
+        intent = IntentNode(strand_name="reboot_machine", origin_token=token)
+
+        # 1. User denies confirmation
+        skein.set_confirmation_callback(lambda strand, params: False)
+        with pytest.raises(PolicyViolationError) as exc_info:
+            skein.compile_and_execute_intent(intent)
+        assert "rejected by user confirmation" in str(exc_info.value)
+
+        # 2. User approves confirmation
+        skein.set_confirmation_callback(lambda strand, params: True)
+        res = skein.compile_and_execute_intent(intent)
+        assert res == "mock_ok"
+

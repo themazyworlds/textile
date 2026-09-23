@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from textile.core.context import OriginToken
+from textile.core.context import OriginToken, TaintTracker
 
 
 class IntentValidationError(Exception):
@@ -38,6 +38,14 @@ class IntentNode(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     origin_token: OriginToken
     description: str = ""
+
+    def model_post_init(self, __context: Any) -> None:
+        if TaintTracker.is_tainted() and not self.origin_token.tainted:
+            object.__setattr__(
+                self,
+                "origin_token",
+                self.origin_token.taint(TaintTracker.get_taint() or "ambient_untrusted_data"),
+            )
 
     def validate_grammar(self) -> None:
         """Sanitize parameters to ensure no raw subshell or code injection strings exist."""

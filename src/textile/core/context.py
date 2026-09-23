@@ -42,6 +42,24 @@ class OriginToken(BaseModel):
     trust_level: TrustLevel = TrustLevel.HIGH
     timestamp: float = Field(default_factory=time.time)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    tainted: bool = False
+    taint_source: str | None = None
+
+    def taint(self, source: str) -> Self:
+        """Derive an untrusted child token from tainted external data.
+
+        Prevents Confused Deputy and indirect prompt injection attacks by
+        downgrading trust_level to NONE whenever external data influences the intent.
+        """
+        return self.__class__(
+            origin_id=f"{self.origin_id}::tainted({source})",
+            origin_type=OriginType.EXTERNAL_UNTRUSTED,
+            trust_level=TrustLevel.NONE,
+            timestamp=time.time(),
+            metadata={**self.metadata, "tainted": True, "taint_source": source},
+            tainted=True,
+            taint_source=source,
+        )
 
     @classmethod
     def create_local_voice(cls, session_id: str = "local_voice") -> Self:
@@ -74,7 +92,32 @@ class OriginToken(BaseModel):
             origin_type=OriginType.EXTERNAL_UNTRUSTED,
             trust_level=TrustLevel.NONE,
             metadata={"uri": source_uri},
+            tainted=True,
+            taint_source=source_uri,
         )
+
+
+class TaintTracker:
+    """Ambient data flow taint tracker across LLM reasoning loops."""
+
+    _active_taint: str | None = None
+
+    @classmethod
+    def set_taint(cls, source: str) -> None:
+        cls._active_taint = source
+
+    @classmethod
+    def clear_taint(cls) -> None:
+        cls._active_taint = None
+
+    @classmethod
+    def get_taint(cls) -> str | None:
+        return cls._active_taint
+
+    @classmethod
+    def is_tainted(cls) -> bool:
+        return cls._active_taint is not None
+
 
 
 @dataclass
