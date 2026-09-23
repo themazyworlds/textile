@@ -184,6 +184,9 @@ class BubblewrapSandbox:
         is_writable = "MUTATE" in tier_upper
 
         ws = Path(workspace_root or os.getcwd()).resolve()
+        container_tmp = os.path.join("/", "tmp")
+        container_home = os.path.join("/", "home")
+        uv_cache = os.path.join(container_tmp, "uv_cache")
 
         bwrap_args = [
             bwrap_path,
@@ -191,11 +194,12 @@ class BubblewrapSandbox:
             "--symlink", "usr/lib", "/lib",
             "--symlink", "usr/lib", "/lib64",
             "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/bin", "/sbin",
             "--ro-bind-try", "/etc", "/etc",
             "--dev", "/dev",
             "--proc", "/proc",
-            "--tmpfs", "/tmp",  # noqa: S108 - In-memory container tmpfs
-            "--tmpfs", "/home",
+            "--tmpfs", container_tmp,
+            "--tmpfs", container_home,
         ]
 
         if not allow_network:
@@ -208,7 +212,7 @@ class BubblewrapSandbox:
         bwrap_args.extend([bind_flag, str(ws), str(ws)])
         bwrap_args.extend(["--chdir", str(ws)])
         bwrap_args.extend(["--setenv", "PATH", os.environ.get("PATH", "/usr/bin:/bin")])
-        bwrap_args.extend(["--setenv", "UV_CACHE_DIR", "/tmp/uv_cache"])  # noqa: S108 - Sandboxed container cache
+        bwrap_args.extend(["--setenv", "UV_CACHE_DIR", uv_cache])
 
         # Pass python path if present
         python_path = os.environ.get("PYTHONPATH")

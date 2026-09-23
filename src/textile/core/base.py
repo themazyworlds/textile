@@ -405,7 +405,6 @@ class YarnManifest(BaseModel):
     description: str = ""
     contract: str = ""
     dependencies: DependenciesManifest = Field(default_factory=DependenciesManifest)
-    permissions: list[str] = Field(default_factory=list)
 
     @property
     def python_dependencies(self) -> list[str]:
@@ -426,11 +425,9 @@ class YarnManifest(BaseModel):
         try:
             yarn_data = raw_data.get("yarn", {})
             deps_data = raw_data.get("dependencies", {})
-            perms_data = raw_data.get("permissions", [])
             data = {
                 **yarn_data,
                 "dependencies": deps_data,
-                "permissions": perms_data,
             }
             return cls.model_validate(data)
         except ValidationError as e:
