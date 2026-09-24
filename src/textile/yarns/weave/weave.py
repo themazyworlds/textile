@@ -24,6 +24,10 @@ _basic_hyphenator: Any = None
 with contextlib.suppress(Exception):
     from livekit.agents.tokenize import _basic_hyphenator
 
+# Prewarm numpy.fft import at process start to avoid 200ms event loop import stall on NumPy 2.x
+with contextlib.suppress(Exception):
+    import numpy.fft  # noqa: F401
+
 server = AgentServer()
 
 MOOD_TAG_REGEX = re.compile(r"<mood:([a-zA-Z_-]+)>", re.IGNORECASE)
