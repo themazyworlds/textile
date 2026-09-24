@@ -10,6 +10,7 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
+from textile.core.context import OriginToken
 from textile.core.loom import loom
 
 
@@ -63,9 +64,15 @@ def create_twill_server() -> Server:
     @app.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
         try:
-            res_text = await loom.execute(name, arguments or {})
+            try:
+                token = OriginToken.create_local_seat(seat_id="twill_mcp_client")
+            except PermissionError:
+                token = OriginToken.create_external_untrusted("twill_unauthenticated_client")
+            res_text = await loom.execute(name, arguments or {}, caller="twill_mcp", origin_token=token)
             return [types.TextContent(type="text", text=str(res_text))]
-        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError) as e:
+        except (
+            AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError, PermissionError
+        ) as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
 
     return app

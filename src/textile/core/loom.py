@@ -127,7 +127,13 @@ class Loom:
                 handler = strand.handler or handler
 
         # --- Layer 1/3: Origin Trust & Capability Policy Gate ---
-        token = origin_token or OriginToken.create_local_voice()
+        if origin_token is not None:
+            token = origin_token
+        else:
+            try:
+                token = OriginToken.create_local_seat()
+            except PermissionError:
+                token = OriginToken.create_external_untrusted("unauthenticated_caller")
         trust = token.trust_level
         tier = strand.tier
 
