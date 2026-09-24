@@ -259,7 +259,7 @@ def strand(
     name: str | None = None,
     description: str | None = None,
     capability: str | None = None,
-    tier: CapabilityTier | str | None = None,
+    tier: CapabilityTier | Literal["observe", "interact", "mutate", "privileged", "system_exec"] | None = None,
     isolated: bool | None = None,
     timeout: float = 30.0,
 ):
@@ -267,7 +267,7 @@ def strand(
     if tier is None:
         raise ValueError(
             "Strand decorator must explicitly declare a capability tier "
-            "(e.g., @strand(..., tier=CapabilityTier.OBSERVE))."
+            "(e.g., @strand(..., tier='observe') or @strand(..., tier='interact'))."
         )
 
     def decorator(fn: Any) -> Any:

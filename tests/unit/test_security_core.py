@@ -263,7 +263,7 @@ class TestLayer3PolicyEngine:
     # --- Trust-tier matrix: NONE ---
 
     def test_none_trust_blocked_from_mutate(self):
-        yarn = _mock_yarn("fs", "file_write", CapabilityTier.MUTATE)
+        yarn = _mock_yarn("fs", "file_write", "mutate")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="file_write",
@@ -274,7 +274,7 @@ class TestLayer3PolicyEngine:
             s.compile_and_execute_intent(intent)
 
     def test_none_trust_blocked_from_privileged(self):
-        yarn = _mock_yarn("sys", "pkg_install", CapabilityTier.PRIVILEGED)
+        yarn = _mock_yarn("sys", "pkg_install", "privileged")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="pkg_install",
@@ -285,7 +285,7 @@ class TestLayer3PolicyEngine:
             s.compile_and_execute_intent(intent)
 
     def test_none_trust_blocked_from_system_exec(self):
-        yarn = _mock_yarn("shell", "run_cmd", CapabilityTier.SYSTEM_EXEC)
+        yarn = _mock_yarn("shell", "run_cmd", "system_exec")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="run_cmd",
@@ -297,7 +297,7 @@ class TestLayer3PolicyEngine:
 
     def test_none_trust_allowed_to_observe(self):
         """TrustLevel.NONE can still read state — zero trust ≠ zero access to reads."""
-        yarn = _mock_yarn("monitor", "read_state", CapabilityTier.OBSERVE)
+        yarn = _mock_yarn("monitor", "read_state", "observe")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="read_state",
@@ -310,7 +310,7 @@ class TestLayer3PolicyEngine:
     # --- Trust-tier matrix: LOW ---
 
     def test_low_trust_blocked_from_interact(self):
-        yarn = _mock_yarn("ui", "show_notification", CapabilityTier.INTERACT)
+        yarn = _mock_yarn("ui", "show_notification", "interact")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="show_notification",
@@ -325,7 +325,7 @@ class TestLayer3PolicyEngine:
             s.compile_and_execute_intent(intent)
 
     def test_low_trust_blocked_from_mutate(self):
-        yarn = _mock_yarn("fs", "file_write", CapabilityTier.MUTATE)
+        yarn = _mock_yarn("fs", "file_write", "mutate")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="file_write",
@@ -340,7 +340,7 @@ class TestLayer3PolicyEngine:
             s.compile_and_execute_intent(intent)
 
     def test_low_trust_allowed_to_observe(self):
-        yarn = _mock_yarn("sensor", "read_cpu", CapabilityTier.OBSERVE)
+        yarn = _mock_yarn("sensor", "read_cpu", "observe")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="read_cpu",
@@ -357,7 +357,7 @@ class TestLayer3PolicyEngine:
     # --- Trust-tier matrix: MEDIUM ---
 
     def test_medium_trust_blocked_from_mutate(self):
-        yarn = _mock_yarn("fs", "file_write", CapabilityTier.MUTATE)
+        yarn = _mock_yarn("fs", "file_write", "mutate")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="file_write",
@@ -372,7 +372,7 @@ class TestLayer3PolicyEngine:
             s.compile_and_execute_intent(intent)
 
     def test_medium_trust_allowed_to_interact(self):
-        yarn = _mock_yarn("ui", "notify", CapabilityTier.INTERACT)
+        yarn = _mock_yarn("ui", "notify", "interact")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="notify",
@@ -387,7 +387,7 @@ class TestLayer3PolicyEngine:
         assert result == "mock_ok"
 
     def test_medium_trust_allowed_to_observe(self):
-        yarn = _mock_yarn("sensor", "read_state", CapabilityTier.OBSERVE)
+        yarn = _mock_yarn("sensor", "read_state", "observe")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="read_state",
@@ -403,7 +403,7 @@ class TestLayer3PolicyEngine:
 
     # --- Trust-tier matrix: HIGH ---
 
-    @pytest.mark.parametrize("tier", list(CapabilityTier))
+    @pytest.mark.parametrize("tier", ["observe", "interact", "mutate", "privileged", "system_exec"])
     def test_high_trust_allowed_all_tiers(self, tier):
         yarn = _mock_yarn("full", f"strand_{tier}", tier)
         s = _isolated_skein(yarn)
@@ -444,7 +444,7 @@ class TestLayer3PolicyEngine:
         from textile.core.transaction import transaction_stack
         transaction_stack.clear()
 
-        yarn = _mock_yarn("fs", "file_write_tx", CapabilityTier.MUTATE)
+        yarn = _mock_yarn("fs", "file_write_tx", "mutate")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="file_write_tx",
@@ -460,7 +460,7 @@ class TestLayer3PolicyEngine:
         from textile.core.transaction import transaction_stack
         transaction_stack.clear()
 
-        yarn = _mock_yarn("sensor", "read_state_obs", CapabilityTier.OBSERVE)
+        yarn = _mock_yarn("sensor", "read_state_obs", "observe")
         s = _isolated_skein(yarn)
         intent = IntentNode(
             strand_name="read_state_obs",
@@ -602,7 +602,7 @@ class TestTaintTracking:
 
     def test_tainted_intent_rejected_by_skein_for_mutations(self):
         skein = Skein()
-        yarn = _mock_yarn("mock_file", "delete_file", CapabilityTier.MUTATE)
+        yarn = _mock_yarn("mock_file", "delete_file", "mutate")
         skein.all_yarns["mock_file"] = yarn
 
         token = OriginToken.create_local_voice("user_voice").taint("untrusted_web")

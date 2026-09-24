@@ -16,7 +16,7 @@ from typing import Any
 
 import psutil
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 
 
 class SensorsAPI:
@@ -194,7 +194,7 @@ class Sensors(Yarn):
 
     @strand(
         description="Retrieve hardware telemetry (temperatures, fans, voltages, power) via lm_sensors / sysfs.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def sensors_get_telemetry(self) -> dict[str, Any]:
         """Retrieve hardware telemetry (temperatures, fans, voltages, power) via lm_sensors / sysfs."""
@@ -202,7 +202,7 @@ class Sensors(Yarn):
 
     @strand(
         description="Retrieve live CPU core frequencies (MHz) and scaling governors across CPU cores.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def sensors_get_cpu_freqs(self) -> list[dict[str, Any]]:
         """Retrieve live CPU core frequencies (MHz) and scaling governors across CPU cores."""

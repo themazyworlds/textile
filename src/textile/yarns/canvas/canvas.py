@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from textile.core.base import CapabilityTier, Yarn, strand, weft
+from textile.core.base import Yarn, strand, weft
 from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import WarpEvent
 
@@ -154,7 +154,7 @@ class Canvas(Yarn):
             tier = str(event.get("tier", "") or "").lower()
             strand = str(event.get("strand", "") or "")
             # Passive read-only OBSERVE strands and internal Canvas UI strands do not trigger ripples
-            if tier == CapabilityTier.OBSERVE.value or strand.startswith("canvas_"):
+            if tier == "observe" or strand.startswith("canvas_"):
                 return
             canvas_ctl.call_ipc("triggerRipple")
 
@@ -227,19 +227,19 @@ class Canvas(Yarn):
         """Handle real-time streaming eye gaze attunement."""
         canvas_ctl.call_ipc("setGaze", str(x), str(y))
 
-    @strand(description="Launch the Quickshell Canvas UI window.", tier=CapabilityTier.INTERACT)
+    @strand(description="Launch the Quickshell Canvas UI window.", tier="interact")
     def canvas_launch(self) -> str:
         """Launch the Quickshell Canvas UI window."""
         return canvas_ctl.launch()
 
-    @strand(description="Close the Quickshell Canvas UI window.", tier=CapabilityTier.INTERACT)
+    @strand(description="Close the Quickshell Canvas UI window.", tier="interact")
     def canvas_close(self) -> str:
         """Close the Quickshell Canvas UI window."""
         return canvas_ctl.close()
 
     @strand(
         description="Set canvas mood (e.g. neutral, happy, excited, celebrating, thinking, focused, listening).",
-        tier=CapabilityTier.INTERACT,
+        tier="interact",
     )
     def canvas_set_mood(self, mood: str = "neutral") -> str:
         """Set canvas mood.
@@ -251,7 +251,7 @@ class Canvas(Yarn):
         res = canvas_ctl.call_ipc("setMood", clean_mood)
         return f"Mood set to '{clean_mood}' ({res})"
 
-    @strand(description="Set canvas fine-grained expression state.", tier=CapabilityTier.INTERACT)
+    @strand(description="Set canvas fine-grained expression state.", tier="interact")
     def canvas_set_expression(self, expression: str = "neutral") -> str:
         """Set canvas fine-grained expression state.
 
@@ -262,7 +262,7 @@ class Canvas(Yarn):
         res = canvas_ctl.call_ipc("setExpression", clean_expr)
         return f"Expression set to '{clean_expr}' ({res})"
 
-    @strand(description="Toggle canvas speaking/talking mouth animation.", tier=CapabilityTier.INTERACT)
+    @strand(description="Toggle canvas speaking/talking mouth animation.", tier="interact")
     def canvas_set_talking(self, talking: bool = True) -> str:
         """Toggle canvas speaking/talking mouth animation.
 
@@ -272,7 +272,7 @@ class Canvas(Yarn):
         res = canvas_ctl.call_ipc("setTalking", "true" if talking else "false")
         return f"Talking animation set to {talking} ({res})"
 
-    @strand(description="Toggle canvas listening visual state.", tier=CapabilityTier.INTERACT)
+    @strand(description="Toggle canvas listening visual state.", tier="interact")
     def canvas_set_listening(self, listening: bool = True) -> str:
         """Toggle canvas listening visual state.
 
@@ -282,7 +282,7 @@ class Canvas(Yarn):
         res = canvas_ctl.call_ipc("setListening", "true" if listening else "false")
         return f"Listening state set to {listening} ({res})"
 
-    @strand(description="Set manual canvas eye gaze offsets.", tier=CapabilityTier.INTERACT)
+    @strand(description="Set manual canvas eye gaze offsets.", tier="interact")
     def canvas_set_gaze(self, x: float = 0.0, y: float = 0.0) -> str:
         """Set manual canvas eye gaze offsets.
 
@@ -292,13 +292,13 @@ class Canvas(Yarn):
         res = canvas_ctl.call_ipc("setGaze", str(x), str(y))
         return f"Gaze set to ({x}, {y}) ({res})"
 
-    @strand(description="Reset canvas eye gaze to cursor tracking.", tier=CapabilityTier.INTERACT)
+    @strand(description="Reset canvas eye gaze to cursor tracking.", tier="interact")
     def canvas_reset_gaze(self) -> str:
         """Reset canvas eye gaze to cursor tracking."""
         res = canvas_ctl.call_ipc("resetGaze")
         return f"Gaze reset to cursor tracking ({res})"
 
-    @strand(description="Customize canvas face feature and background colors.", tier=CapabilityTier.INTERACT)
+    @strand(description="Customize canvas face feature and background colors.", tier="interact")
     def canvas_set_color(self, feature_color: str = "", bg_color: str = "") -> str:
         """Customize canvas face feature and background colors.
 
@@ -308,7 +308,7 @@ class Canvas(Yarn):
         res = canvas_ctl.call_ipc("setColor", feature_color, bg_color)
         return f"Canvas colors updated ({res})"
 
-    @strand(description="Get full real-time mood and canvas face state.", tier=CapabilityTier.OBSERVE)
+    @strand(description="Get full real-time mood and canvas face state.", tier="observe")
     def canvas_get_state(self) -> dict[str, Any]:
         """Get full real-time mood and canvas face state."""
         state = {

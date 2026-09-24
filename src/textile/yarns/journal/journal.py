@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from typing import Any, Literal
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 
 PRIORITY_NAMES = {
     0: "emerg",
@@ -209,7 +209,7 @@ class Journal(Yarn):
 
     @strand(
         description="Query systemd journal logs with structured filtering by unit, priority, time range, or grep.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def journal_query(
         self,
@@ -252,7 +252,7 @@ class Journal(Yarn):
 
     @strand(
         description="Fast diagnostic tool to retrieve recent system and user error logs.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def journal_get_errors(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Fast diagnostic tool to retrieve recent system and user error logs.
@@ -264,7 +264,7 @@ class Journal(Yarn):
 
     @strand(
         description="Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def journal_get_kernel(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.

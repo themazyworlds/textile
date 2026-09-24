@@ -9,7 +9,7 @@ import subprocess
 import sys
 from typing import Any
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 from textile.core.seams import seams
 from textile.core.tapestry import core_tapestry, sensory_tapestry
 
@@ -22,7 +22,7 @@ class Basics(Yarn):
 
     @strand(
         description="Get the open sensory blackboard snapshot.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def textile_get_sensory_state(self) -> dict[str, Any]:
         """Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts)."""
@@ -30,7 +30,7 @@ class Basics(Yarn):
 
     @strand(
         description="Get full snapshot of the sensory blackboard state slots and notices.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def textile_get_state(self) -> dict[str, Any]:
         """Get full snapshot of the sensory blackboard state slots and notices."""
@@ -38,7 +38,7 @@ class Basics(Yarn):
 
     @strand(
         description="Get the core engine execution state (active running tasks and execution history).",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def textile_get_engine_state(self) -> dict[str, Any]:
         """Get the core engine execution state (active running tasks and execution history)."""
@@ -46,7 +46,7 @@ class Basics(Yarn):
 
     @strand(
         description="Cancel/terminate a currently running strand execution by its task ID or strand name.",
-        tier=CapabilityTier.MUTATE,
+        tier="mutate",
     )
     def cancel_live_task(self, strand_name: str) -> str:
         """Cancel/terminate a currently running strand execution by its task ID or strand name.
@@ -57,7 +57,7 @@ class Basics(Yarn):
 
     @strand(
         description="Audit system-wide yarn health, runtime dependencies, layer overrides, and schemas.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def audit_yarn_integrity(self) -> dict[str, Any]:
         """Audit system-wide yarn health, runtime dependencies, layer overrides, and schemas."""
@@ -65,7 +65,7 @@ class Basics(Yarn):
 
     @strand(
         description="Run the full Textile system diagnostic unit, integration, and E2E test suite.",
-        tier=CapabilityTier.PRIVILEGED,
+        tier="privileged",
     )
     def run_system_tests(self) -> str:
         """Run the full Textile system diagnostic unit, integration, and E2E test suite."""

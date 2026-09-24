@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 
 MAX_WEBPAGE_BODY_CHARS = 12000
 
@@ -161,7 +161,7 @@ class WebResearch(Yarn):
 
     @strand(
         description="Search the internet for documentation, API references, or error solutions.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def search_web(self, query: str) -> str:
         """Search the internet for documentation, code examples, API references, or solutions.
@@ -172,7 +172,7 @@ class WebResearch(Yarn):
 
     @strand(
         description="Fetch and read the text content of a web page URL.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def fetch_webpage(self, url: str) -> str:
         """Fetch and read the text content of a web page URL.

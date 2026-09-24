@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 from textile.core.guardrails import ScopedPath
 
 logger = logging.getLogger(__name__)
@@ -520,7 +520,7 @@ class FilesystemStorage(Yarn):
 
     @strand(
         description="Read contents of a text file with optional start and end line ranges.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def file_read(self, path: str, start_line: int | None = None, end_line: int | None = None) -> str:
         """Read contents of a text file with optional start and end line ranges.
@@ -531,7 +531,7 @@ class FilesystemStorage(Yarn):
         """
         return file_io.read(path, start_line=start_line, end_line=end_line)
 
-    @strand(description="Write or overwrite text content to a target file path.", tier=CapabilityTier.MUTATE)
+    @strand(description="Write or overwrite text content to a target file path.", tier="mutate")
     def file_write(self, path: str, content: str) -> str:
         """Write or overwrite text content to a target file path.
 
@@ -540,7 +540,7 @@ class FilesystemStorage(Yarn):
         """
         return file_io.write(path, content=content, atomic=True)
 
-    @strand(description="Replace exact text substring within a target file.", tier=CapabilityTier.MUTATE)
+    @strand(description="Replace exact text substring within a target file.", tier="mutate")
     def file_replace(self, path: str, target: str, replacement: str = "") -> str:
         """Replace exact text substring within a target file.
 

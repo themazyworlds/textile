@@ -195,7 +195,7 @@ class TestYarnArchitecture(unittest.TestCase):
         json.loads(st_raw) if isinstance(st_raw, str) else st_raw
 
     def test_capability_tiers_and_auto_isolation(self):
-        from textile.core.base import CapabilityTier, strand
+        from textile.core.base import strand
 
         class TierTestYarn(Yarn):
             def __init__(self):
@@ -203,28 +203,28 @@ class TestYarnArchitecture(unittest.TestCase):
 
             def is_available(self): return True
 
-            @strand(description="Read telemetry", tier=CapabilityTier.OBSERVE)
+            @strand(description="Read telemetry", tier="observe")
             def read_stat(self) -> str:
                 return "stat_ok"
 
-            @strand(description="Elevated command execution", tier=CapabilityTier.PRIVILEGED)
+            @strand(description="Elevated command execution", tier="privileged")
             def admin_task(self) -> str:
                 return "admin_ok"
 
-            @strand(description="Custom command runner", tier=CapabilityTier.SYSTEM_EXEC)
+            @strand(description="Custom command runner", tier="system_exec")
             def exec_task(self) -> str:
                 return "exec_ok"
 
         yarn = TierTestYarn()
         strands = {s.name: s for s in yarn.get_strands()}
 
-        self.assertEqual(strands["read_stat"].tier, CapabilityTier.OBSERVE)
+        self.assertEqual(strands["read_stat"].tier, "observe")
         self.assertFalse(strands["read_stat"].isolated)
 
-        self.assertEqual(strands["admin_task"].tier, CapabilityTier.PRIVILEGED)
+        self.assertEqual(strands["admin_task"].tier, "privileged")
         self.assertTrue(strands["admin_task"].isolated)
 
-        self.assertEqual(strands["exec_task"].tier, CapabilityTier.SYSTEM_EXEC)
+        self.assertEqual(strands["exec_task"].tier, "system_exec")
         self.assertTrue(strands["exec_task"].isolated)
 
     def test_weft_attunements_and_pydantic_coercion(self):

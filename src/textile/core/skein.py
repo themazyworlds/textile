@@ -12,7 +12,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 import textile.yarns
-from textile.core.base import CapabilityTier, Strand, Yarn, YarnManifest
+from textile.core.base import Strand, Yarn, YarnManifest
 from textile.core.context import PolicyViolationError, verify_security_policy
 from textile.core.intent import IntentNode, IntentValidationError
 from textile.core.transaction import Transaction, transaction_stack
@@ -172,7 +172,7 @@ class Skein:
 
         # 5. Layer 4: Register only state-mutating transactions on the undo stack.
         # OBSERVE and INTERACT strands are read-only — no undo entry needed.
-        if target_strand.tier in (CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC):
+        if target_strand.tier in ("mutate", "privileged", "system_exec"):
             transaction_stack.push(
                 Transaction(
                     strand_name=target_strand.name,

@@ -28,7 +28,7 @@ else:
         Variant = Any
         MessageBus = Any
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 
 MAX_INT_32_BITS = 31
 
@@ -234,7 +234,7 @@ class DBus(Yarn):
     def is_available(self) -> bool:
         return bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.path.exists("/run/dbus/system_bus_socket"))
 
-    @strand(description="Call any D-Bus method on the session or system bus.", tier=CapabilityTier.PRIVILEGED)
+    @strand(description="Call any D-Bus method on the session or system bus.", tier="privileged")
     def dbus_call(
         self,
         destination: str,
@@ -283,7 +283,7 @@ class DBus(Yarn):
 
     @strand(
         description="Get a single property or all properties (GetAll) from a D-Bus object interface.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def dbus_get_property(
         self,
@@ -316,7 +316,7 @@ class DBus(Yarn):
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error reading D-Bus property: {e}"
 
-    @strand(description="Set a writable D-Bus property on an object interface.", tier=CapabilityTier.MUTATE)
+    @strand(description="Set a writable D-Bus property on an object interface.", tier="mutate")
     def dbus_set_property(
         self,
         destination: str,
@@ -365,7 +365,7 @@ class DBus(Yarn):
 
     @strand(
         description="Introspect a D-Bus node to discover available interfaces, methods, signals, and properties.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def dbus_introspect(
         self,

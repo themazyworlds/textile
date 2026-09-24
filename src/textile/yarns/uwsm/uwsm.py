@@ -8,7 +8,6 @@ import shutil
 import subprocess
 
 from textile.core.base import (
-    CapabilityTier,
     Yarn,
     resolve_terminal_and_shell,
     strand,
@@ -35,7 +34,7 @@ class UWSM(Yarn):
     @strand(
         description="Launch a desktop application in a systemd scope via UWSM.",
         capability="desktop.app_launcher",
-        tier=CapabilityTier.INTERACT,
+        tier="interact",
     )
     def launch_app(self, command: str, is_tui: bool = False, args: list[str] | None = None) -> str:
         """Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.
@@ -70,7 +69,7 @@ class UWSM(Yarn):
         except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching app via UWSM: {e}"
 
-    @strand(description="Check UWSM session status and systemd user unit hierarchy.", tier=CapabilityTier.OBSERVE)
+    @strand(description="Check UWSM session status and systemd user unit hierarchy.", tier="observe")
     def uwsm_status(self, unit: str | None = None) -> str:
         """Check UWSM session status and systemd user unit hierarchy.
 
@@ -78,7 +77,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("status", unit or "")
 
-    @strand(description="Check UWSM environment compatibility and systemd support.", tier=CapabilityTier.OBSERVE)
+    @strand(description="Check UWSM environment compatibility and systemd support.", tier="observe")
     def uwsm_check(self, target: str | None = None) -> str:
         """Check UWSM environment compatibility and systemd support.
 
@@ -86,7 +85,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("check", target or "")
 
-    @strand(description="Stop a UWSM systemd user unit or active session.", tier=CapabilityTier.PRIVILEGED)
+    @strand(description="Stop a UWSM systemd user unit or active session.", tier="privileged")
     def uwsm_stop(self, unit: str | None = None) -> str:
         """Stop a UWSM systemd user unit or active session.
 
@@ -94,7 +93,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("stop", unit or "")
 
-    @strand(description="Finalize UWSM environment variables and session cleanup.", tier=CapabilityTier.PRIVILEGED)
+    @strand(description="Finalize UWSM environment variables and session cleanup.", tier="privileged")
     def uwsm_finalize(self, target: str | None = None) -> str:
         """Finalize UWSM environment variables and session cleanup.
 

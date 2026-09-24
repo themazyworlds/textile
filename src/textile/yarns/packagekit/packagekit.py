@@ -25,7 +25,7 @@ else:
         Variant = Any
         MessageBus = Any
 
-from textile.core.base import CapabilityTier, Yarn, strand
+from textile.core.base import Yarn, strand
 
 logger = logging.getLogger(__name__)
 
@@ -452,7 +452,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Search for available or installed packages via PackageKit D-Bus.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def packagekit_search(self, query: str = "", limit: int = 25) -> list[dict[str, Any]]:
         """Search packages by name or keyword across distribution repositories.
@@ -464,7 +464,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Install one or more packages non-interactively via PackageKit D-Bus with Polkit authorization.",
-        tier=CapabilityTier.PRIVILEGED,
+        tier="privileged",
     )
     def packagekit_install(self, packages: str) -> str:
         """Install one or more packages.
@@ -476,7 +476,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Remove one or more installed packages via PackageKit D-Bus.",
-        tier=CapabilityTier.PRIVILEGED,
+        tier="privileged",
     )
     def packagekit_remove(self, packages: str, autoremove: bool = False) -> str:
         """Remove one or more packages.
@@ -489,7 +489,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Get package metadata, description, license, and repo info via PackageKit D-Bus.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def packagekit_get_details(self, package: str) -> dict[str, Any]:
         """Get detailed metadata for a package.
@@ -500,7 +500,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Check for pending package and system software updates via PackageKit D-Bus.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def packagekit_check_updates(self) -> list[dict[str, Any]]:
         """Check for pending system updates."""
@@ -508,7 +508,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Find which package provides a specific file path or binary via PackageKit D-Bus.",
-        tier=CapabilityTier.OBSERVE,
+        tier="observe",
     )
     def packagekit_what_provides(self, file_path: str) -> str:
         """Find package providing a specific file.
@@ -519,7 +519,7 @@ class PackageKit(Yarn):
 
     @strand(
         description="Refresh package manager repository metadata cache via PackageKit D-Bus.",
-        tier=CapabilityTier.PRIVILEGED,
+        tier="privileged",
     )
     def packagekit_refresh_cache(self, force: bool = False) -> str:
         """Refresh package repository cache.
