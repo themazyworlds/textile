@@ -295,6 +295,17 @@ class TestLayer3PolicyEngine:
         with pytest.raises(PolicyViolationError):
             s.compile_and_execute_intent(intent)
 
+    def test_none_trust_blocked_from_interact(self):
+        yarn = _mock_yarn("ui", "show_notification", "interact")
+        s = _isolated_skein(yarn)
+        intent = IntentNode(
+            strand_name="show_notification",
+            parameters={"message": "hi"},
+            origin_token=OriginToken.create_external_untrusted("https://evil.com"),
+        )
+        with pytest.raises(PolicyViolationError):
+            s.compile_and_execute_intent(intent)
+
     def test_none_trust_allowed_to_observe(self):
         """TrustLevel.NONE can still read state — zero trust ≠ zero access to reads."""
         yarn = _mock_yarn("monitor", "read_state", "observe")
@@ -414,6 +425,13 @@ class TestLayer3PolicyEngine:
         )
         result = s.compile_and_execute_intent(intent)
         assert result == "mock_ok"
+
+    def test_unhandled_trust_level_fails_closed(self):
+        from textile.core.context import verify_security_policy
+        token = OriginToken.create_local_voice()
+        object.__setattr__(token, "trust_level", "invalid_trust_level")
+        with pytest.raises(PolicyViolationError):
+            verify_security_policy(token, "observe", "read_state")
 
     # --- Policy ordering: grammar checked before strand lookup ---
 

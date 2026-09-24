@@ -136,6 +136,14 @@ class PolicyViolationError(PermissionError):
     pass
 
 
+ALLOWED_TIERS: dict[TrustLevel, set[str]] = {
+    TrustLevel.HIGH: {"observe", "interact", "mutate", "privileged", "system_exec"},
+    TrustLevel.MEDIUM: {"observe", "interact"},
+    TrustLevel.LOW: {"observe"},
+    TrustLevel.NONE: {"observe"},
+}
+
+
 def verify_security_policy(
     token: OriginToken,
     tier: Any,
@@ -148,19 +156,12 @@ def verify_security_policy(
     """
     trust = token.trust_level
     tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
-    mutating_tiers = ("mutate", "privileged", "system_exec")
 
-    denied = False
-    if trust == TrustLevel.NONE:
-        denied = tier_val in mutating_tiers
-    elif trust == TrustLevel.LOW:
-        denied = tier_val in (*mutating_tiers, "interact")
-    elif trust == TrustLevel.MEDIUM:
-        denied = tier_val in mutating_tiers
-
-    if denied:
+    allowed_tiers = ALLOWED_TIERS.get(trust, set())
+    if tier_val not in allowed_tiers:
         raise PolicyViolationError(
             f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
             f"is denied execution of '{tier_val}' strand '{strand_name}'."
         )
+
 
