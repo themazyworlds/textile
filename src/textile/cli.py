@@ -1,13 +1,9 @@
 """
 Textile Main CLI Entry Point.
-Routes to Typer CLI Application.
+Routes to textile.core.cli.main.
 """
 
-from textile.core.cli_typer import app
-
-
-def main():
-    app()
+from textile.core.cli import main
 
 if __name__ == "__main__":
     main()
