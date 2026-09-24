@@ -4,6 +4,7 @@ Provides standard MCP stdio JSON-RPC tool/strand dispatching aggregated across a
 """
 
 import asyncio
+import os
 import sys
 
 from mcp import types
@@ -68,7 +69,8 @@ def create_twill_server() -> Server:
                 token = OriginToken.create_local_seat(seat_id="twill_mcp_client")
             except PermissionError:
                 token = OriginToken.create_external_untrusted("twill_unauthenticated_client")
-            res_text = await loom.execute(name, arguments or {}, caller="twill_mcp", origin_token=token)
+            effective_caller = os.getenv("TEXTILE_CALLER", "twill_mcp")
+            res_text = await loom.execute(name, arguments or {}, caller=effective_caller, origin_token=token)
             return [types.TextContent(type="text", text=str(res_text))]
         except (
             AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError, PermissionError

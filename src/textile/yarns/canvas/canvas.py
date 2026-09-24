@@ -151,13 +151,13 @@ class Canvas(Yarn):
     def on_load(self) -> None:
         def _on_tool_start(data: Any) -> None:
             event = data if isinstance(data, dict) else {}
-            caller = event.get("caller", "")
-            strand = event.get("strand", "")
+            caller = str(event.get("caller", "") or "").lower()
+            strand = str(event.get("strand", "") or "")
             # Ignore internal Canvas UI strands and passive state inspections
             if strand.startswith(("canvas_", "textile_get_")):
                 return
-            # The forehead gemstone only ripples when an actual system/agent tool task is channeled by Weave
-            if caller == "weave":
+            # The forehead gemstone ripples whenever an agent tool task is executed
+            if not caller or caller in ("weave", "twill_mcp", "twill", "cli") or "weave" in caller:
                 canvas_ctl.call_ipc("triggerRipple")
 
         def _on_mood_change(data: Any) -> None:
