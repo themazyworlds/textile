@@ -306,8 +306,8 @@ class TestLayer3PolicyEngine:
         with pytest.raises(PolicyViolationError):
             s.compile_and_execute_intent(intent)
 
-    def test_none_trust_allowed_to_observe(self):
-        """TrustLevel.NONE can still read state — zero trust ≠ zero access to reads."""
+    def test_none_trust_blocked_from_observe(self):
+        """TrustLevel.NONE has zero execution power — blocked even from read-only observe strands."""
         yarn = _mock_yarn("monitor", "read_state", "observe")
         s = _isolated_skein(yarn)
         intent = IntentNode(
@@ -315,8 +315,8 @@ class TestLayer3PolicyEngine:
             parameters={},
             origin_token=OriginToken.create_external_untrusted("https://untrusted.com"),
         )
-        result = s.compile_and_execute_intent(intent)
-        assert result == "mock_ok"
+        with pytest.raises(PolicyViolationError):
+            s.compile_and_execute_intent(intent)
 
     # --- Trust-tier matrix: LOW ---
 

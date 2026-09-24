@@ -25,7 +25,7 @@ class TrustLevel(StrEnum):
     HIGH = "high"       # Full autonomous execution of observe, interact, and mutate strands
     MEDIUM = "medium"   # Execution of observe and interact strands
     LOW = "low"         # Observe-only strands
-    NONE = "none"       # Zero execution power (rejection of all mutative/privileged strands)
+    NONE = "none"       # Zero execution power (rejection of all strands including observe)
 
 
 class OriginToken(BaseModel):
@@ -140,7 +140,7 @@ ALLOWED_TIERS: dict[TrustLevel, set[str]] = {
     TrustLevel.HIGH: {"observe", "interact", "mutate", "privileged", "system_exec"},
     TrustLevel.MEDIUM: {"observe", "interact"},
     TrustLevel.LOW: {"observe"},
-    TrustLevel.NONE: {"observe"},
+    TrustLevel.NONE: set(),
 }
 
 
