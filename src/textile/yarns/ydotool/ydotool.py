@@ -147,7 +147,10 @@ class Ydotool(Yarn):
 
         return "Error: Virtual keyboard daemon (ydotool) could not connect."
 
-    @strand(description="Press a specific keyboard key or hotkey combination.", tier="interact")
+    @strand(
+        description="Press a specific keyboard key or hotkey combination.",
+        tier="interact",
+    )
     def press_key(self, key: str, modifiers: str | None = None) -> str:
         """Press a specific keyboard key or hotkey combination.
 
@@ -195,7 +198,10 @@ class Ydotool(Yarn):
 
         return "Error: ydotool is not available."
 
-    @strand(description="Paste text or clipboard content into the active focused window.", tier="interact")
+    @strand(
+        description="Paste text or clipboard content into the active focused window.",
+        tier="interact",
+    )
     def paste_text(
         self,
         text: str | None = None,

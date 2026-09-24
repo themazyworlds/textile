@@ -234,7 +234,10 @@ class DBus(Yarn):
     def is_available(self) -> bool:
         return bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.path.exists("/run/dbus/system_bus_socket"))
 
-    @strand(description="Call any D-Bus method on the session or system bus.", tier="privileged")
+    @strand(
+        description="Call any D-Bus method on the session or system bus.",
+        tier="privileged",
+    )
     def dbus_call(
         self,
         destination: str,
@@ -316,7 +319,10 @@ class DBus(Yarn):
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error reading D-Bus property: {e}"
 
-    @strand(description="Set a writable D-Bus property on an object interface.", tier="mutate")
+    @strand(
+        description="Set a writable D-Bus property on an object interface.",
+        tier="mutate",
+    )
     def dbus_set_property(
         self,
         destination: str,

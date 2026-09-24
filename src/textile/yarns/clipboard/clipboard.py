@@ -26,7 +26,10 @@ class Clipboard(Yarn):
             return False
         return bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
 
-    @strand(description="Read the current text content from the system clipboard.", tier="observe")
+    @strand(
+        description="Read the current text content from the system clipboard.",
+        tier="observe",
+    )
     def clipboard_get(self) -> str:
         """Read and return text from the system clipboard."""
         if pyxclip is None:
@@ -39,7 +42,10 @@ class Clipboard(Yarn):
                 return ""
             return f"Error reading clipboard: {e}"
 
-    @strand(description="Copy text content into the system clipboard.", tier="interact")
+    @strand(
+        description="Copy text content into the system clipboard.",
+        tier="interact",
+    )
     def clipboard_set(self, text: str) -> str:
         """Write text to the system clipboard.
 
@@ -53,7 +59,10 @@ class Clipboard(Yarn):
         except (AttributeError, OSError, RuntimeError, ValueError, TypeError) as e:
             return f"Error writing to clipboard: {e}"
 
-    @strand(description="Clear all content from the system clipboard.", tier="interact")
+    @strand(
+        description="Clear all content from the system clipboard.",
+        tier="interact",
+    )
     def clipboard_clear(self) -> str:
         """Clear the system clipboard."""
         if pyxclip is None:

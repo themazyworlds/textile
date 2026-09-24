@@ -75,7 +75,9 @@ class ScreenVision(Yarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(description="Capture a high-resolution screenshot snapshot of the active screen and windows.")
+    @strand(
+        description="Capture a high-resolution screenshot snapshot of the active screen and windows.",
+    )
     def capture_screen(self, purpose: str | None = None) -> str:
         """Capture a high-resolution screenshot snapshot of the active screen and windows.
 

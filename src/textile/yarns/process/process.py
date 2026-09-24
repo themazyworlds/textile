@@ -84,7 +84,10 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return [{"error": f"Error scanning /proc: {e}"}]
 
-    @strand(description="Send a POSIX signal to terminate or signal a process by PID.", tier="mutate")
+    @strand(
+        description="Send a POSIX signal to terminate or signal a process by PID.",
+        tier="mutate",
+    )
     def process_kill(self, pid: int, signal: str = "SIGTERM") -> str:
         """Send a POSIX signal to terminate or signal a process by PID.
 
@@ -108,7 +111,10 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return f"Error sending signal: {e}"
 
-    @strand(description="List background jobs spawned and tracked by Textile.", tier="observe")
+    @strand(
+        description="List background jobs spawned and tracked by Textile.",
+        tier="observe",
+    )
     def process_list_bg_jobs(self) -> dict[str, Any]:
         """List background jobs spawned and tracked by Textile."""
         now = time.time()
@@ -126,7 +132,10 @@ class ProcessControl(Yarn):
             BACKGROUND_JOBS.pop(p, None)
         return {"active_bg_jobs_count": len(active_jobs), "jobs": active_jobs}
 
-    @strand(description="Get CPU 1, 5, and 15-minute load averages and CPU core counts.", tier="observe")
+    @strand(
+        description="Get CPU 1, 5, and 15-minute load averages and CPU core counts.",
+        tier="observe",
+    )
     def process_get_loadavg(self) -> dict[str, Any]:
         """Get CPU 1, 5, and 15-minute load averages and CPU core counts."""
         try:
@@ -142,7 +151,10 @@ class ProcessControl(Yarn):
         except (OSError, AttributeError) as e:
             return {"error": f"Error reading load average: {e}"}
 
-    @strand(description="Get nice priority level of a running process by PID.", tier="observe")
+    @strand(
+        description="Get nice priority level of a running process by PID.",
+        tier="observe",
+    )
     def process_get_priority(self, pid: int) -> str:
         """Get nice priority level of a running process by PID.
 

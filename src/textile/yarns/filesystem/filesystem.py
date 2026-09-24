@@ -531,7 +531,10 @@ class FilesystemStorage(Yarn):
         """
         return file_io.read(path, start_line=start_line, end_line=end_line)
 
-    @strand(description="Write or overwrite text content to a target file path.", tier="mutate")
+    @strand(
+        description="Write or overwrite text content to a target file path.",
+        tier="mutate",
+    )
     def file_write(self, path: str, content: str) -> str:
         """Write or overwrite text content to a target file path.
 
@@ -540,7 +543,10 @@ class FilesystemStorage(Yarn):
         """
         return file_io.write(path, content=content, atomic=True)
 
-    @strand(description="Replace exact text substring within a target file.", tier="mutate")
+    @strand(
+        description="Replace exact text substring within a target file.",
+        tier="mutate",
+    )
     def file_replace(self, path: str, target: str, replacement: str = "") -> str:
         """Replace exact text substring within a target file.
 
@@ -550,7 +556,9 @@ class FilesystemStorage(Yarn):
         """
         return file_io.replace(path, target=target, replacement=replacement)
 
-    @strand(description="List files and directories within a target directory path.")
+    @strand(
+        description="List files and directories within a target directory path.",
+    )
     def file_list(self, path: str = ".") -> list[dict[str, Any]]:
         """List files and directories within a target directory path.
 
@@ -558,7 +566,9 @@ class FilesystemStorage(Yarn):
         """
         return file_io.list_dir(path or ".")
 
-    @strand(description="Search for files matching a glob pattern in a directory path.")
+    @strand(
+        description="Search for files matching a glob pattern in a directory path.",
+    )
     def file_find(self, path: str = ".", pattern: str = "*") -> list[str]:
         """Search for files matching a glob pattern in a directory path.
 
@@ -567,7 +577,9 @@ class FilesystemStorage(Yarn):
         """
         return file_io.find(path or ".", pattern=pattern or "*")
 
-    @strand(description="Get stat metadata, permissions, size, and timestamps for a file path.")
+    @strand(
+        description="Get stat metadata, permissions, size, and timestamps for a file path.",
+    )
     def file_stat(self, path: str) -> dict[str, Any]:
         """Get stat metadata, permissions, size, and timestamps for a file path.
 
@@ -575,7 +587,9 @@ class FilesystemStorage(Yarn):
         """
         return file_io.stat(path)
 
-    @strand(description="Change permissions mode for a file or directory path.")
+    @strand(
+        description="Change permissions mode for a file or directory path.",
+    )
     def file_chmod(self, path: str, mode: str) -> str:
         """Change permissions mode for a file or directory path.
 
@@ -584,7 +598,9 @@ class FilesystemStorage(Yarn):
         """
         return file_io.chmod(path, mode=mode)
 
-    @strand(description="Get total, used, and available disk usage for a storage path.")
+    @strand(
+        description="Get total, used, and available disk usage for a storage path.",
+    )
     def storage_disk_usage(self, path: str = "/") -> dict[str, Any]:
         """Get total, used, and available disk usage for a storage path.
 
@@ -592,12 +608,16 @@ class FilesystemStorage(Yarn):
         """
         return file_io.disk_usage(path or "/")
 
-    @strand(description="List mounted filesystems and storage devices.")
+    @strand(
+        description="List mounted filesystems and storage devices.",
+    )
     def storage_list_mounts(self) -> list[dict[str, Any]]:
         """List mounted filesystems and storage devices."""
         return file_io.list_mounts()
 
-    @strand(description="File system operations, directory navigation, permissions, and disk usage.")
+    @strand(
+        description="File system operations, directory navigation, permissions, and disk usage.",
+    )
     def file_op(
         self,
         operation: Literal[
@@ -671,7 +691,9 @@ class FilesystemStorage(Yarn):
             return handlers[op]()
         return f"Unknown file operation '{op}'."
 
-    @strand(description="Add a Linux inotify kernel watch on a file or directory.")
+    @strand(
+        description="Add a Linux inotify kernel watch on a file or directory.",
+    )
     def inotify_watch(self, path: str, events: str = "all", recursive: bool = False) -> dict[str, Any]:
         """Add a Linux inotify kernel watch on a file or directory.
 
@@ -681,7 +703,9 @@ class FilesystemStorage(Yarn):
         """
         return inotify_api.add_watch(path.strip(), events=events, recursive=recursive)
 
-    @strand(description="Wait synchronously for a specific filesystem event on a path.")
+    @strand(
+        description="Wait synchronously for a specific filesystem event on a path.",
+    )
     def inotify_wait_event(self, path: str, events: str = "all", timeout_seconds: float = 5.0) -> dict[str, Any]:
         """Wait synchronously for a specific filesystem event on a path.
 
@@ -691,7 +715,9 @@ class FilesystemStorage(Yarn):
         """
         return inotify_api.wait_for_event(path.strip(), events=events, timeout_seconds=timeout_seconds)
 
-    @strand(description="Poll and read available inotify kernel events from active watches.")
+    @strand(
+        description="Poll and read available inotify kernel events from active watches.",
+    )
     def inotify_read_events(self, timeout_ms: int = 100, max_events: int = 50) -> list[dict[str, Any]]:
         """Poll and read available inotify kernel events from active watches.
 
@@ -700,7 +726,9 @@ class FilesystemStorage(Yarn):
         """
         return inotify_api.read_events(timeout_ms=timeout_ms, max_events=max_events)
 
-    @strand(description="Remove an active inotify watch by descriptor ID or path.")
+    @strand(
+        description="Remove an active inotify watch by descriptor ID or path.",
+    )
     def inotify_unwatch(self, watch: str) -> dict[str, Any]:
         """Remove an active inotify watch by descriptor ID or path.
 
@@ -708,7 +736,9 @@ class FilesystemStorage(Yarn):
         """
         return inotify_api.remove_watch(watch)
 
-    @strand(description="List all active inotify watch descriptors and paths.")
+    @strand(
+        description="List all active inotify watch descriptors and paths.",
+    )
     def inotify_list_watches(self) -> list[dict[str, Any]]:
         """List all active inotify watch descriptors and paths."""
         return inotify_api.list_watches()
