@@ -7,5 +7,5 @@ layer = 50
 description = "D-Bus system and session bus inspection and call dispatching"
 
 [dependencies]
-python = ["sdbus"]
+python = ["dbus-fast", "sdbus"]
 system = []

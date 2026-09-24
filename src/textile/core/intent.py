@@ -14,18 +14,16 @@ from textile.core.context import OriginToken, TaintTracker
 
 class IntentValidationError(Exception):
     """Raised when an intent node violates grammar or contains raw code injection patterns."""
+
     pass
 
 
-# Detects shell execution *mechanisms* (subshells, backticks, Python exec primitives).
-# We do NOT blacklist specific command names — those are meaningless without a shell interpreter.
-# These patterns catch the structural primitives that would be dangerous in *any* language.
 SHELL_EXEC_PRIMITIVES = [
-    re.compile(r"\$\("),                                          # Subshell: $(...)
-    re.compile(r"`[^`]+`"),                                       # Backtick subshell: `cmd`
-    re.compile(r"\b(?:eval|exec)\s*\(", re.IGNORECASE),          # Python eval(/exec( calls
-    re.compile(r"\bos\.system\s*\(", re.IGNORECASE),             # os.system(
-    re.compile(r"\bsubprocess\s*\.", re.IGNORECASE),              # subprocess.* calls
+    re.compile(r"\$\("),  # Subshell: $(...)
+    re.compile(r"`[^`]+`"),  # Backtick subshell: `cmd`
+    re.compile(r"\b(?:eval|exec)\s*\(", re.IGNORECASE),  # Python eval(/exec( calls
+    re.compile(r"\bos\.system\s*\(", re.IGNORECASE),  # os.system(
+    re.compile(r"\bsubprocess\s*\.", re.IGNORECASE),  # subprocess.* calls
     re.compile(r"\bimportlib\s*\.\s*import_module\s*\(", re.IGNORECASE),  # Dynamic imports
 ]
 
@@ -58,9 +56,7 @@ class IntentNode(BaseModel):
         if isinstance(value, str):
             for pattern in SHELL_EXEC_PRIMITIVES:
                 if pattern.search(value):
-                    raise IntentValidationError(
-                        f"Shell execution primitive detected in intent parameter: '{value}'"
-                    )
+                    raise IntentValidationError(f"Shell execution primitive detected in intent parameter: '{value}'")
         elif isinstance(value, dict):
             for v in value.values():
                 self._check_param_injection(v)

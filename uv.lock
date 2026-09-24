@@ -2402,15 +2402,36 @@ name = "textile"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "pydantic" },
+    { name = "pyee" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+all = [
     { name = "dbus-fast" },
     { name = "livekit-agents", extra = ["google", "mcp"] },
     { name = "mcp" },
     { name = "mss" },
     { name = "pillow" },
-    { name = "pydantic" },
-    { name = "pyee" },
     { name = "pyxclip" },
-    { name = "rich" },
+]
+clipboard = [
+    { name = "pyxclip" },
+]
+dbus = [
+    { name = "dbus-fast" },
+]
+screen-vision = [
+    { name = "mss" },
+    { name = "pillow" },
+]
+twill = [
+    { name = "mcp" },
+]
+weave = [
+    { name = "livekit-agents", extra = ["google", "mcp"] },
 ]
 
 [package.dev-dependencies]
@@ -2423,16 +2444,24 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dbus-fast", specifier = ">=5.0.22" },
-    { name = "livekit-agents", extras = ["google", "mcp"], specifier = ">=1.8.2" },
-    { name = "mcp", specifier = ">=1.3.0" },
-    { name = "mss", specifier = ">=10.2.0" },
-    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "dbus-fast", marker = "extra == 'all'", specifier = ">=5.0.22" },
+    { name = "dbus-fast", marker = "extra == 'dbus'", specifier = ">=5.0.22" },
+    { name = "livekit-agents", extras = ["google", "mcp"], marker = "extra == 'all'", specifier = ">=1.8.2" },
+    { name = "livekit-agents", extras = ["google", "mcp"], marker = "extra == 'weave'", specifier = ">=1.8.2" },
+    { name = "mcp", marker = "extra == 'all'", specifier = ">=1.3.0" },
+    { name = "mcp", marker = "extra == 'twill'", specifier = ">=1.3.0" },
+    { name = "mss", marker = "extra == 'all'", specifier = ">=10.2.0" },
+    { name = "mss", marker = "extra == 'screen-vision'", specifier = ">=10.2.0" },
+    { name = "pillow", marker = "extra == 'all'", specifier = ">=12.3.0" },
+    { name = "pillow", marker = "extra == 'screen-vision'", specifier = ">=12.3.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pyee", specifier = ">=13.0.0" },
-    { name = "pyxclip", specifier = ">=0.2.3" },
+    { name = "pyxclip", marker = "extra == 'all'", specifier = ">=0.2.3" },
+    { name = "pyxclip", marker = "extra == 'clipboard'", specifier = ">=0.2.3" },
     { name = "rich", specifier = ">=15.0.0" },
+    { name = "typer", specifier = ">=0.15.0" },
 ]
+provides-extras = ["dbus", "weave", "twill", "screen-vision", "clipboard", "all"]
 
 [package.metadata.requires-dev]
 dev = [

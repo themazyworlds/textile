@@ -7,5 +7,5 @@ layer = 10
 description = "Desktop screenshot capture and screen vision analysis"
 
 [dependencies]
-python = ["Pillow"]
+python = ["Pillow", "mss"]
 system = ["grim", "maim", "scrot"]
