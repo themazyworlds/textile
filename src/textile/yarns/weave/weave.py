@@ -3,6 +3,8 @@ Weave - Voice & Perception Agent Subsystem powered by LiveKit Agents & Gemini 3 
 Provides seamless real-time full-duplex voice companion bound to the Textile intelligence fabric.
 """
 
+import asyncio
+import contextlib
 import os
 import re
 import shutil
@@ -17,6 +19,10 @@ from livekit.plugins import google
 
 from textile.core.loom import loom
 from textile.core.warp import WarpEvent, warp
+
+_basic_hyphenator: Any = None
+with contextlib.suppress(Exception):
+    from livekit.agents.tokenize import _basic_hyphenator
 
 server = AgentServer()
 
@@ -59,8 +65,12 @@ async def entrypoint(ctx: JobContext):
     # Enrich log context with room identity
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    # Prewarm Loom and active yarns before connecting audio session
+    # Prewarm Loom and tokenizers off the event loop before connecting audio session
     loom.initialize()
+    if _basic_hyphenator is not None:
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(_basic_hyphenator._get_hyphenator)
+
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     model_name = os.getenv("TEXTILE_LIVE_MODEL", os.getenv("WEAVE_LIVE_MODEL", "gemini-3.8-live"))
