@@ -21,6 +21,7 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, ValidationError, create_model
 
+from textile.core.errors import TextileError
 from textile.core.sandbox import BubblewrapSandbox
 from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import warp
@@ -35,6 +36,7 @@ LAYER_SESSION_MANAGER = 150   # Session Managers & Cgroup Wrappers (UWSM, system
 LAYER_USER_OVERRIDE = 1000    # User custom overrides (~/.config/textile/yarns/)
 
 STRAND_EXEC_ERRORS = (
+    TextileError,
     AttributeError,
     TypeError,
     ValueError,
