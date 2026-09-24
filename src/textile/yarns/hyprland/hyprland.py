@@ -661,7 +661,10 @@ class Hyprland(Yarn):
             return ws, win_query
         return target or "1", None
 
-    @strand(description="Focus a Hyprland window by title, class, address, or search query.")
+    @strand(
+        description="Focus a Hyprland window by title, class, address, or search query.",
+        tier=CapabilityTier.INTERACT,
+    )
     def hyprland_focus_window(self, target: str) -> str:
         """Focus a Hyprland window by title, class, address, or search query.
 
@@ -669,7 +672,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.focus_window(target)
 
-    @strand(description="Switch active Hyprland workspace.")
+    @strand(description="Switch active Hyprland workspace.", tier=CapabilityTier.INTERACT)
     def hyprland_focus_workspace(self, workspace: str = "1") -> str:
         """Switch active Hyprland workspace.
 
@@ -677,7 +680,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.focus_workspace(workspace)
 
-    @strand(description="Move target or active window to specified workspace.")
+    @strand(description="Move target or active window to specified workspace.", tier=CapabilityTier.INTERACT)
     def hyprland_move_window_to_workspace(
         self,
         workspace: str,
@@ -693,7 +696,7 @@ class Hyprland(Yarn):
         ws, win_q = self._parse_workspace_target(f"{target} {workspace}".strip() if target else str(workspace))
         return hyprland_ipc.move_to_workspace(ws, win_q, silent=silent)
 
-    @strand(description="Close a window by query, address, or active window.")
+    @strand(description="Close a window by query, address, or active window.", tier=CapabilityTier.INTERACT)
     def hyprland_close_window(self, target: str | None = None) -> str:
         """Close a window by query, address, or active window.
 
@@ -701,7 +704,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.close_window(target=target)
 
-    @strand(description="Toggle floating state for active or specified window.")
+    @strand(description="Toggle floating state for active or specified window.", tier=CapabilityTier.INTERACT)
     def hyprland_toggle_float(self, target: str | None = None) -> str:
         """Toggle floating state for active or specified window.
 
@@ -709,7 +712,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.window_action("float", target=target)
 
-    @strand(description="Toggle fullscreen mode for active or specified window.")
+    @strand(description="Toggle fullscreen mode for active or specified window.", tier=CapabilityTier.INTERACT)
     def hyprland_toggle_fullscreen(self, target: str | None = None) -> str:
         """Toggle fullscreen mode for active or specified window.
 
@@ -717,7 +720,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.window_action("fullscreen", target=target)
 
-    @strand(description="Pin window to show across all workspaces.")
+    @strand(description="Pin window to show across all workspaces.", tier=CapabilityTier.INTERACT)
     def hyprland_pin_window(self, target: str | None = None) -> str:
         """Pin window to show across all workspaces.
 
@@ -725,7 +728,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.window_action("pin", target=target)
 
-    @strand(description="Center floating window on screen.")
+    @strand(description="Center floating window on screen.", tier=CapabilityTier.INTERACT)
     def hyprland_center_window(self, target: str | None = None) -> str:
         """Center floating window on screen.
 
@@ -733,7 +736,10 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.window_action("center", target=target)
 
-    @strand(description="Move active or specified window by pixel offset or in direction (left, right, up, down).")
+    @strand(
+        description="Move active or specified window by pixel offset or in direction (left, right, up, down).",
+        tier=CapabilityTier.INTERACT,
+    )
     def hyprland_move_window(
         self,
         delta_x: int = 0,
@@ -755,7 +761,7 @@ class Hyprland(Yarn):
             target=target,
         )
 
-    @strand(description="Resize active or specified window by delta X and delta Y.")
+    @strand(description="Resize active or specified window by delta X and delta Y.", tier=CapabilityTier.INTERACT)
     def hyprland_resize_window(
         self,
         delta_x: int,
@@ -775,7 +781,7 @@ class Hyprland(Yarn):
             target=target,
         )
 
-    @strand(description="Move focus in specified direction (left, right, up, down).")
+    @strand(description="Move focus in specified direction (left, right, up, down).", tier=CapabilityTier.INTERACT)
     def hyprland_focus_direction(
         self,
         direction: Literal["left", "right", "up", "down"] = "left",
@@ -786,7 +792,7 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.focus_direction(direction)
 
-    @strand(description="Set color temperature for night light / Hyprsunset.")
+    @strand(description="Set color temperature for night light / Hyprsunset.", tier=CapabilityTier.INTERACT)
     def hyprland_set_night_light(self, temperature: int = 4000) -> dict[str, Any]:
         """Set color temperature for night light / Hyprsunset.
 
@@ -794,12 +800,12 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.set_night_light(temperature=int(temperature))
 
-    @strand(description="Get current night light color temperature and process status.")
+    @strand(description="Get current night light color temperature and process status.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_night_light(self) -> dict[str, Any]:
         """Get current night light color temperature and process status."""
         return hyprland_ipc.get_night_light_status()
 
-    @strand(description="Configure Hyprland monitor resolution, position, and scale.")
+    @strand(description="Configure Hyprland monitor resolution, position, and scale.", tier=CapabilityTier.MUTATE)
     def hyprland_set_monitor(
         self,
         output: str,
@@ -821,27 +827,27 @@ class Hyprland(Yarn):
             scale=float(scale),
         )
 
-    @strand(description="Get details of currently active workspace.")
+    @strand(description="Get details of currently active workspace.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_active_workspace(self) -> dict[str, Any]:
         """Get details of currently active workspace."""
         return hyprland_ipc.get_active_workspace()
 
-    @strand(description="Get details of currently focused window.")
+    @strand(description="Get details of currently focused window.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_active_window(self) -> dict[str, Any]:
         """Get details of currently focused window."""
         return hyprland_ipc.get_active_window()
 
-    @strand(description="Get window details for the calling Textile / CLI process.")
+    @strand(description="Get window details for the calling Textile / CLI process.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_self_window(self) -> dict[str, Any] | None:
         """Get window details for the calling Textile / CLI process."""
         return hyprland_ipc.get_self_window()
 
-    @strand(description="List all active Hyprland workspaces.")
+    @strand(description="List all active Hyprland workspaces.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_workspaces(self) -> list[dict[str, Any]]:
         """List all active Hyprland workspaces."""
         return hyprland_ipc.get_workspaces()
 
-    @strand(description="Get window details by title, class, address, or query.")
+    @strand(description="Get window details by title, class, address, or query.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_window(self, target: str) -> dict[str, Any]:
         """Get window details by title, class, address, or query.
 
@@ -849,17 +855,17 @@ class Hyprland(Yarn):
         """
         return hyprland_ipc.resolve_window(target) or {"error": f"Window '{target}' not found"}
 
-    @strand(description="List all open windows / clients in Hyprland.")
+    @strand(description="List all open windows / clients in Hyprland.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_windows(self) -> list[dict[str, Any]]:
         """List all open windows / clients in Hyprland."""
         return hyprland_ipc.get_clients()
 
-    @strand(description="List connected monitors and layout geometry.")
+    @strand(description="List connected monitors and layout geometry.", tier=CapabilityTier.OBSERVE)
     def hyprland_get_monitors(self) -> list[dict[str, Any]]:
         """List connected monitors and layout geometry."""
         return hyprland_ipc.get_monitors()
 
-    @strand(description="Exit Hyprland compositor session (logout).")
+    @strand(description="Exit Hyprland compositor session (logout).", tier=CapabilityTier.PRIVILEGED)
     def hyprland_exit_session(self) -> str:
         """Exit Hyprland compositor session (logout)."""
         return hyprland_ipc.exit_session()

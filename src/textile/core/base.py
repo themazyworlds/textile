@@ -259,11 +259,17 @@ def strand(
     name: str | None = None,
     description: str | None = None,
     capability: str | None = None,
-    tier: CapabilityTier | str = CapabilityTier.INTERACT,
+    tier: CapabilityTier | str | None = None,
     isolated: bool | None = None,
     timeout: float = 30.0,
 ):
     """Decorator marking a Yarn method as an executable Desktop Strand."""
+    if tier is None:
+        raise ValueError(
+            "Strand decorator must explicitly declare a capability tier "
+            "(e.g., @strand(..., tier=CapabilityTier.OBSERVE))."
+        )
+
     def decorator(fn: Any) -> Any:
         setattr(fn, "_is_strand", True)
         setattr(fn, "_strand_name", name or getattr(fn, "__name__", ""))
@@ -301,7 +307,7 @@ def weft(
     return decorator(func) if func is not None else decorator
 
 
-def _parse_tier(raw_tier: Any) -> CapabilityTier:
+def _parse_tier(raw_tier: Any, strand_name: str = "") -> CapabilityTier:
     if isinstance(raw_tier, CapabilityTier):
         return raw_tier
     if isinstance(raw_tier, str):
@@ -309,7 +315,11 @@ def _parse_tier(raw_tier: Any) -> CapabilityTier:
             return CapabilityTier(raw_tier.lower())
         except ValueError:
             pass
-    return CapabilityTier.INTERACT
+    raise ValueError(
+        f"Strand '{strand_name or 'unknown'}' must explicitly specify a valid CapabilityTier "
+        "(e.g., tier=CapabilityTier.OBSERVE, CapabilityTier.INTERACT, "
+        "CapabilityTier.MUTATE, CapabilityTier.PRIVILEGED, or CapabilityTier.SYSTEM_EXEC)."
+    )
 
 
 async def _exec_async_strand(

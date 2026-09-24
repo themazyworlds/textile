@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from typing import Any, Literal
 
-from textile.core.base import Yarn, strand
+from textile.core.base import CapabilityTier, Yarn, strand
 
 PRIORITY_NAMES = {
     0: "emerg",
@@ -207,7 +207,10 @@ class Journal(Yarn):
     def is_available(self) -> bool:
         return journal_api.is_available()
 
-    @strand(description="Query systemd journal logs with structured filtering by unit, priority, time range, or grep.")
+    @strand(
+        description="Query systemd journal logs with structured filtering by unit, priority, time range, or grep.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def journal_query(
         self,
         unit: str | None = None,
@@ -247,7 +250,10 @@ class Journal(Yarn):
             user=user,
         )
 
-    @strand(description="Fast diagnostic tool to retrieve recent system and user error logs.")
+    @strand(
+        description="Fast diagnostic tool to retrieve recent system and user error logs.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def journal_get_errors(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Fast diagnostic tool to retrieve recent system and user error logs.
 
@@ -256,7 +262,10 @@ class Journal(Yarn):
         """
         return journal_api.get_errors(since=since, lines=lines)
 
-    @strand(description="Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.")
+    @strand(
+        description="Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.",
+        tier=CapabilityTier.OBSERVE,
+    )
     def journal_get_kernel(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.
 

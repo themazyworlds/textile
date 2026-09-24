@@ -35,6 +35,7 @@ class UWSM(Yarn):
     @strand(
         description="Launch a desktop application in a systemd scope via UWSM.",
         capability="desktop.app_launcher",
+        tier=CapabilityTier.INTERACT,
     )
     def launch_app(self, command: str, is_tui: bool = False, args: list[str] | None = None) -> str:
         """Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.
