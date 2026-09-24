@@ -5,6 +5,7 @@ Provides rich discovery, parameter schema help, execution routing, and diagnosti
 
 import argparse
 import difflib
+import importlib
 import json
 import time
 from typing import Any
@@ -20,8 +21,6 @@ from textile.core.seams import seams
 from textile.core.skein import skein
 from textile.core.tapestry import core_tapestry, sensory_tapestry
 from textile.core.twill import run_twill
-from textile.yarns.canvas.canvas import Canvas
-from textile.yarns.weave.weave import run_voice_agent
 
 console = Console()
 
@@ -235,6 +234,9 @@ def cmd_twill(args):
 
 def cmd_weave(args):
     """Launch Weave real-time voice & desktop companion."""
+    mod = importlib.import_module("textile.yarns.weave.weave")
+    run_voice_agent = getattr(mod, "run_voice_agent")
+
     mode = "dev" if getattr(args, "dev", False) else ("start" if getattr(args, "start_worker", False) else "console")
     run_voice_agent(
         mode=mode,
@@ -246,9 +248,12 @@ def cmd_weave(args):
 
 def cmd_canvas(args):
     """Control the Quickshell Canvas Face UI and dynamic mood engine."""
+    mod = importlib.import_module("textile.yarns.canvas.canvas")
+    canvas_cls = getattr(mod, "Canvas")
+
     action = getattr(args, "action", "status") or "status"
     target = getattr(args, "target", None)
-    canvas_yarn = Canvas()
+    canvas_yarn = canvas_cls()
 
     if action == "launch":
         res = canvas_yarn.canvas_launch()
