@@ -154,7 +154,7 @@ class Loom:
         )
         warp.publish(
             WarpEvent.TOOL_EXECUTION_START,
-            {"task_id": task_id, "strand": strand_name, "caller": effective_caller},
+            {"task_id": task_id, "strand": strand_name, "caller": effective_caller, "tier": tier_val},
         )
         t0 = time.perf_counter()
         success = True

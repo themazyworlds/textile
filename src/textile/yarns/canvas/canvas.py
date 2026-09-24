@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from textile.core.base import Yarn, strand, weft
+from textile.core.base import CapabilityTier, Yarn, strand, weft
 from textile.core.tapestry import sensory_tapestry
 from textile.core.warp import WarpEvent
 
@@ -151,14 +151,12 @@ class Canvas(Yarn):
     def on_load(self) -> None:
         def _on_tool_start(data: Any) -> None:
             event = data if isinstance(data, dict) else {}
-            caller = str(event.get("caller", "") or "").lower()
+            tier = str(event.get("tier", "") or "").lower()
             strand = str(event.get("strand", "") or "")
-            # Ignore internal Canvas UI strands and passive state inspections
-            if strand.startswith(("canvas_", "textile_get_")):
+            # Passive read-only OBSERVE strands and internal Canvas UI strands do not trigger ripples
+            if tier == CapabilityTier.OBSERVE.value or strand.startswith("canvas_"):
                 return
-            # The forehead gemstone ripples whenever an agent tool task is executed
-            if not caller or caller in ("weave", "twill_mcp", "twill", "cli") or "weave" in caller:
-                canvas_ctl.call_ipc("triggerRipple")
+            canvas_ctl.call_ipc("triggerRipple")
 
         def _on_mood_change(data: Any) -> None:
             event = data if isinstance(data, dict) else {}
