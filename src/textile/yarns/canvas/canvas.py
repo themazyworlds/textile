@@ -106,6 +106,12 @@ class CanvasController:
         sensory_tapestry.set_slot("canvas.pid", None)
         return "Canvas UI closed."
 
+    def restart(self) -> str:
+        """Restart the Quickshell Canvas window."""
+        close_msg = self.close()
+        launch_msg = self.launch()
+        return f"{close_msg} {launch_msg}"
+
     def call_ipc(self, method: str, *args: Any, wait: bool = False) -> str:
         """Execute a Quickshell IPC call to the canvas target."""
         qml_file = self.get_qml_path()
@@ -242,6 +248,14 @@ class Canvas(Yarn):
     def canvas_close(self) -> str:
         """Close the Quickshell Canvas UI window."""
         return canvas_ctl.close()
+
+    @strand(
+        description="Restart the Quickshell Canvas UI window (close then re-launch).",
+        tier="interact",
+    )
+    def canvas_restart(self) -> str:
+        """Restart the Quickshell Canvas UI window."""
+        return canvas_ctl.restart()
 
     @strand(
         description="Set canvas mood (e.g. neutral, happy, excited, celebrating, thinking, focused, listening).",
