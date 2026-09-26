@@ -192,9 +192,14 @@ class BubblewrapBuilder:
             "--symlink", "usr/bin", "/sbin",
             "--ro-bind-try", "/etc", "/etc",
             "--ro-bind-try", "/sys", "/sys",
+            "--ro-bind-try", "/opt", "/opt",
+            "--ro-bind-try", "/nix", "/nix",
             "--dev", "/dev",
             "--proc", "/proc",
         ])
+        local_share = Path.home() / ".local"
+        if local_share.exists():
+            self.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
         return self
 
     def bind_tmpfs(self, paths: list[str]) -> "BubblewrapBuilder":
@@ -291,5 +296,18 @@ class BubblewrapSandbox:
             .set_env("UV_CACHE_DIR", uv_cache)
             .set_env("PYTHONPATH", os.environ.get("PYTHONPATH"))
         )
+
+        if cmd and cmd[0]:
+            exe_target = shutil.which(cmd[0]) or cmd[0]
+            if os.path.exists(exe_target):
+                raw_path = str(Path(exe_target).absolute())
+                resolved_path = str(Path(exe_target).resolve())
+                for p_str in (raw_path, resolved_path):
+                    if ".venv" in p_str:
+                        venv_root = p_str.split("/bin/")[0]
+                        builder.args.extend(["--ro-bind-try", venv_root, venv_root])
+                    elif not any(p_str.startswith(prefix) for prefix in ("/usr", "/bin", "/lib", "/opt", "/nix")):
+                        parent_dir = str(Path(p_str).parent)
+                        builder.args.extend(["--ro-bind-try", parent_dir, parent_dir])
 
         return builder.build(cmd)

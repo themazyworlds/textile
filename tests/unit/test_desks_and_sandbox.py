@@ -127,7 +127,7 @@ class TestBubblewrapSandbox:
             f.write_text("observe this", encoding="utf-8")
 
             # In OBSERVE mode, reading succeeds
-            read_cmd = ["python3", "-c", f'print(open("{f}").read())']
+            read_cmd = [sys.executable, "-c", f'print(open("{f}").read())']
             wrapped_read = BubblewrapSandbox.wrap_command(read_cmd, tier="OBSERVE", workspace_root=tmpdir)
             import subprocess
             res_read = subprocess.run(wrapped_read, capture_output=True, text=True, check=False)
@@ -135,7 +135,7 @@ class TestBubblewrapSandbox:
             assert "observe this" in res_read.stdout
 
             # In OBSERVE mode, writing fails with Read-only file system
-            write_cmd = ["python3", "-c", f'open("{f}", "w").write("fail")']
+            write_cmd = [sys.executable, "-c", f'open("{f}", "w").write("fail")']
             wrapped_write = BubblewrapSandbox.wrap_command(write_cmd, tier="OBSERVE", workspace_root=tmpdir)
             res_write = subprocess.run(wrapped_write, capture_output=True, text=True, check=False)
             assert res_write.returncode != 0
