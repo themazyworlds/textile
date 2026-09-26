@@ -50,6 +50,10 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
 
   # NixOS
   nix-env -iA nixpkgs.quickshell
+
+  # Debian / Ubuntu / Mint (Build from source)
+  git clone https://git.outfoxxed.me/outfoxxed/quickshell.git
+  cd quickshell && cmake -B build && cmake --build build --target install
   ```
 
 ---
