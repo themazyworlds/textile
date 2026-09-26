@@ -85,38 +85,23 @@ uv run textile call clipboard_get
 
 Subclass `Yarn` alongside a declarative static `.toml` manifest to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
 
-### 1. Manifest Template (`yarn.toml` or `<yarn_name>.toml`)
+### 1. `media_control.toml` (Manifest)
 ```toml
 [yarn]
-name = "my_yarn"                 # Unique identifier for the capability yarn
+name = "media_control"           # Unique identifier for the capability yarn
 publisher = "community"          # Author or organization
 version = "1.0.0"                # Semantic version
 manifest_version = 1
 layer = 50                       # Priority layer: 10 (POSIX), 50 (Protocol), 100 (Compositor), 150 (Session Manager)
-description = "Brief summary"
+description = "Media player control integration"
 resources = ["dbus-session"]     # Optional sandbox permissions: "display", "dbus-session", "dbus-system", "sound"
 
 [dependencies]
-python = ["requests>=2.31.0"]    # PyPI packages (installed dynamically in isolated worker runs)
-system = ["curl"]                # System packages/binaries required on the host
+python = ["mpris2>=1.0.2"]       # PyPI packages (installed in isolated execution)
+system = ["playerctl"]           # System packages/binaries required on the host
 ```
 
-### 2. `media_control.toml` (Example Manifest)
-```toml
-[yarn]
-name = "media_control"
-publisher = "community"
-version = "1.0.0"
-manifest_version = 1
-layer = 50
-description = "Media player control integration"
-
-[dependencies]
-python = ["mpris2>=1.0.2"]
-system = ["playerctl"]
-```
-
-### 3. `media_control.py` (Implementation)
+### 2. `media_control.py` (Implementation)
 ```python
 from textile import Yarn, strand
 
