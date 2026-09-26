@@ -28,9 +28,11 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
 ## Prerequisites
 
 - **Python 3.12+** and [**`uv`**](https://github.com/astral-sh/uv)
+
 - **Google Gemini API Key** (required for Weave voice agent):
   ```bash
   export GOOGLE_API_KEY="your-gemini-api-key"
+
   ```
 - **LiveKit CLI (`lk`)** (required for Weave interactive console and dev modes):
   ```bash
@@ -40,6 +42,7 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
   # Debian / Ubuntu / Fedora / Generic Linux
   curl -sSL https://get.livekit.io/cli | bash
   ```
+
 - **Quickshell** (Highly Recommended, for the desktop Canvas UI):
   ```bash
   # Arch Linux
@@ -51,7 +54,7 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
   # NixOS
   nix-env -iA nixpkgs.quickshell
 
-  # Debian / Ubuntu / Mint (Build from source)
+  # Debian / Ubuntu / Fedora / Generic Linux (Build from source)
   git clone https://github.com/quickshell-mirror/quickshell.git
   cd quickshell && cmake -B build && cmake --build build --target install
   ```
