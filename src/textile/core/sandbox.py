@@ -186,10 +186,10 @@ class BubblewrapBuilder:
     def bind_system_base(self) -> "BubblewrapBuilder":
         self.args.extend([
             "--ro-bind", "/usr", "/usr",
-            "--symlink", "usr/lib", "/lib",
-            "--symlink", "usr/lib", "/lib64",
-            "--symlink", "usr/bin", "/bin",
-            "--symlink", "usr/bin", "/sbin",
+            "--ro-bind-try", "/lib", "/lib",
+            "--ro-bind-try", "/lib64", "/lib64",
+            "--ro-bind-try", "/bin", "/bin",
+            "--ro-bind-try", "/sbin", "/sbin",
             "--ro-bind-try", "/etc", "/etc",
             "--ro-bind-try", "/sys", "/sys",
             "--ro-bind-try", "/opt", "/opt",
@@ -296,6 +296,12 @@ class BubblewrapSandbox:
             .set_env("UV_CACHE_DIR", uv_cache)
             .set_env("PYTHONPATH", os.environ.get("PYTHONPATH"))
         )
+
+        for check_path in [sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)]:
+            if check_path and os.path.exists(check_path):
+                p_resolved = str(Path(check_path).resolve())
+                if not any(p_resolved.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
+                    builder.args.extend(["--ro-bind-try", p_resolved, p_resolved])
 
         if cmd and cmd[0]:
             exe_target = shutil.which(cmd[0]) or cmd[0]
