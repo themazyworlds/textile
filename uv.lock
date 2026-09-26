@@ -2402,6 +2402,7 @@ name = "textile"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "mcp" },
     { name = "pydantic" },
     { name = "pyee" },
     { name = "rich" },
@@ -2448,6 +2449,7 @@ requires-dist = [
     { name = "dbus-fast", marker = "extra == 'dbus'", specifier = ">=5.0.22" },
     { name = "livekit-agents", extras = ["google", "mcp"], marker = "extra == 'all'", specifier = ">=1.8.2" },
     { name = "livekit-agents", extras = ["google", "mcp"], marker = "extra == 'weave'", specifier = ">=1.8.2" },
+    { name = "mcp", specifier = ">=1.3.0" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.3.0" },
     { name = "mcp", marker = "extra == 'twill'", specifier = ">=1.3.0" },
     { name = "mss", marker = "extra == 'all'", specifier = ">=10.2.0" },

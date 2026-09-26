@@ -100,7 +100,7 @@ class TestBubblewrapSandbox:
         cmd = ["python", "-c", "print(1)"]
         wrapped = BubblewrapSandbox.wrap_command(cmd, tier="OBSERVE", workspace_root="/tmp/test_ws")
         assert "bwrap" in wrapped[0]
-        assert "--unshare-all" in wrapped
+        assert "--unshare-user" in wrapped
         assert "--ro-bind" in wrapped
         assert "/tmp/test_ws" in wrapped
         assert "--tmpfs" in wrapped
