@@ -39,6 +39,9 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
   # Arch Linux
   yay -S livekit-cli
 
+  # NixOS
+  nix-env -iA nixpkgs.livekit-cli
+
   # Debian / Ubuntu / Fedora / Generic Linux
   curl -sSL https://get.livekit.io/cli | bash
   ```
