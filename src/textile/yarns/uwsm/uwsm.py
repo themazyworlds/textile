@@ -15,7 +15,6 @@ from textile.core.base import (
 
 
 class UWSM(Yarn):
-
     def is_available(self) -> bool:
         return shutil.which("uwsm") is not None
 
@@ -31,11 +30,7 @@ class UWSM(Yarn):
         except (OSError, subprocess.SubprocessError) as e:
             return f"Error running UWSM action: {e}"
 
-    @strand(
-        description="Launch a desktop application in a systemd scope via UWSM.",
-        capability="desktop.app_launcher",
-        tier="interact",
-    )
+    @strand(capability="desktop.app_launcher", tier="interact")
     def launch_app(self, command: str, is_tui: bool = False, args: list[str] | None = None) -> str:
         """Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.
 
@@ -59,20 +54,14 @@ class UWSM(Yarn):
 
         try:
             proc = subprocess.Popen(
-                full_cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
+                full_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
             )
             mode_str = " (TUI terminal scope)" if is_tui else ""
             return f"Successfully launched '{cmd}' via UWSM cgroup scope{mode_str} (PID {proc.pid})."
         except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching app via UWSM: {e}"
 
-    @strand(
-        description="Check UWSM session status and systemd user unit hierarchy.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def uwsm_status(self, unit: str | None = None) -> str:
         """Check UWSM session status and systemd user unit hierarchy.
 
@@ -80,10 +69,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("status", unit or "")
 
-    @strand(
-        description="Check UWSM environment compatibility and systemd support.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def uwsm_check(self, target: str | None = None) -> str:
         """Check UWSM environment compatibility and systemd support.
 
@@ -91,10 +77,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("check", target or "")
 
-    @strand(
-        description="Stop a UWSM systemd user unit or active session.",
-        tier="privileged",
-    )
+    @strand(tier="privileged")
     def uwsm_stop(self, unit: str | None = None) -> str:
         """Stop a UWSM systemd user unit or active session.
 
@@ -102,10 +85,7 @@ class UWSM(Yarn):
         """
         return self._run_uwsm("stop", unit or "")
 
-    @strand(
-        description="Finalize UWSM environment variables and session cleanup.",
-        tier="privileged",
-    )
+    @strand(tier="privileged")
     def uwsm_finalize(self, target: str | None = None) -> str:
         """Finalize UWSM environment variables and session cleanup.
 

@@ -34,8 +34,7 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
   ```
 - **LiveKit CLI (`lk`)** (required for Weave interactive console and dev modes):
   ```bash
-  curl -sSL https://get.livekit.io/cli | bash
-  lk cloud auth
+  yay -S livekit-cli
   ```
 - **Quickshell** (Highly Recommended, for the desktop Canvas UI):
   ```bash
@@ -86,7 +85,23 @@ uv run textile call clipboard_get
 
 Subclass `Yarn` alongside a declarative static `.toml` manifest to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
 
-### 1. `media_control.toml` (Manifest)
+### 1. Manifest Template (`yarn.toml` or `<yarn_name>.toml`)
+```toml
+[yarn]
+name = "my_yarn"                 # Unique identifier for the capability yarn
+publisher = "community"          # Author or organization
+version = "1.0.0"                # Semantic version
+manifest_version = 1
+layer = 50                       # Priority layer: 10 (POSIX), 50 (Protocol), 100 (Compositor), 150 (Session Manager)
+description = "Brief summary"
+resources = ["dbus-session"]     # Optional sandbox permissions: "display", "dbus-session", "dbus-system", "sound"
+
+[dependencies]
+python = ["requests>=2.31.0"]    # PyPI packages (installed dynamically in isolated worker runs)
+system = ["curl"]                # System packages/binaries required on the host
+```
+
+### 2. `media_control.toml` (Example Manifest)
 ```toml
 [yarn]
 name = "media_control"
@@ -101,21 +116,20 @@ python = ["mpris2>=1.0.2"]
 system = ["playerctl"]
 ```
 
-### 2. `media_control.py` (Implementation)
+### 3. `media_control.py` (Implementation)
 ```python
-from typing import Optional
-from textile import Yarn, CapabilityTier, strand
+from textile import Yarn, strand
 
 class CustomMediaYarn(Yarn):
-    @strand(description="Toggle playback state.", tier=CapabilityTier.INTERACT)
-    def toggle_playback(self, player: Optional[str] = None) -> str:
+    @strand(tier="interact")
+    def toggle_playback(self, player: str | None = None) -> str:
         """Toggle media playback.
 
         :param player: Optional player identifier.
         """
         return f"Toggled playback on {player or 'default'}"
 
-    @strand(description="Set volume percentage.", tier=CapabilityTier.INTERACT)
+    @strand(tier="interact")
     def set_volume(self, level: int) -> str:
         """Set volume percentage.
 
@@ -141,20 +155,6 @@ class CustomMediaYarn(Yarn):
 | **Seams** | Health Diagnostics | Dependency resolution, conflict detection, and diagnostic audit engine. |
 | **Weave** | Voice Client | Embedded voice companion implemented as an MCP client powered by LiveKit and Gemini. |
 
----
-
-## Development & Testing
-
-```bash
-# Run test suite
-uv run pytest
-
-# Run integration diagnostics
-uv run python tests/run_all_tests.py
-
-# Build distribution packages
-uv build
-```
 
 ---
 

@@ -332,7 +332,7 @@ def cmd_weave(
     start_worker: bool = typer.Option(False, "--start-worker", help="Start background worker process"),
     model: str = typer.Option("gemini-3.8-live", "--model", help="Gemini Live model name"),
     voice: str = typer.Option("Puck", "--voice", help="Gemini voice name (e.g. Puck, Aoede, Charon, Fenrir, Kore)"),
-    text_mode: bool = typer.Option(False, "--text-mode", help="Run in text-only console mode"),
+    text_mode: bool = typer.Option(False, "--text", help="Run in text-only console mode"),
 ):
     """Launch Weave real-time voice & desktop companion."""
     mod = importlib.import_module("textile.yarns.weave.weave")

@@ -176,11 +176,13 @@ class SensorsAPI:
                 p_freqs = psutil.cpu_freq(percpu=True)
                 if p_freqs:
                     for i, pf in enumerate(p_freqs):
-                        freqs.append({
-                            "core": f"cpu{i}",
-                            "freq": f"{round(pf.current, 1)} MHz",
-                            "governor": "unknown",
-                        })
+                        freqs.append(
+                            {
+                                "core": f"cpu{i}",
+                                "freq": f"{round(pf.current, 1)} MHz",
+                                "governor": "unknown",
+                            }
+                        )
 
         return freqs
 
@@ -192,18 +194,12 @@ class Sensors(Yarn):
     def is_available(self) -> bool:
         return sensors_api.is_available()
 
-    @strand(
-        description="Retrieve hardware telemetry (temperatures, fans, voltages, power) via lm_sensors / sysfs.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def sensors_get_telemetry(self) -> dict[str, Any]:
         """Retrieve hardware telemetry (temperatures, fans, voltages, power) via lm_sensors / sysfs."""
         return sensors_api.get_sensor_data()
 
-    @strand(
-        description="Retrieve live CPU core frequencies (MHz) and scaling governors across CPU cores.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def sensors_get_cpu_freqs(self) -> list[dict[str, Any]]:
         """Retrieve live CPU core frequencies (MHz) and scaling governors across CPU cores."""
         return sensors_api.get_cpu_frequencies()

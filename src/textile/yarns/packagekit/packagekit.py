@@ -249,13 +249,12 @@ class PackageKitDBusClient:
         if self._updates_cache is not None:
             return self._updates_cache
 
-        return [{
-            "status": "scan_in_progress",
-            "notice": (
-                "Package updates check started in background. "
-                "Query again in a few seconds."
-            ),
-        }]
+        return [
+            {
+                "status": "scan_in_progress",
+                "notice": ("Package updates check started in background. Query again in a few seconds."),
+            }
+        ]
 
     async def what_provides(self, file_path: str) -> str:
         """Find packages providing a capability or file."""
@@ -450,10 +449,7 @@ class PackageKit(Yarn):
     def is_available(self) -> bool:
         return packagekit_ctl.is_available()
 
-    @strand(
-        description="Search for available or installed packages via PackageKit D-Bus.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def packagekit_search(self, query: str = "", limit: int = 25) -> list[dict[str, Any]]:
         """Search packages by name or keyword across distribution repositories.
 
@@ -462,10 +458,7 @@ class PackageKit(Yarn):
         """
         return packagekit_ctl.search(query=query, limit=limit)
 
-    @strand(
-        description="Install one or more packages non-interactively via PackageKit D-Bus with Polkit authorization.",
-        tier="privileged",
-    )
+    @strand(tier="privileged")
     def packagekit_install(self, packages: str) -> str:
         """Install one or more packages.
 
@@ -474,10 +467,7 @@ class PackageKit(Yarn):
         pkgs_raw = [p.strip() for p in packages.replace(",", " ").split() if p.strip()]
         return packagekit_ctl.install(packages=pkgs_raw)
 
-    @strand(
-        description="Remove one or more installed packages via PackageKit D-Bus.",
-        tier="privileged",
-    )
+    @strand(tier="privileged")
     def packagekit_remove(self, packages: str, autoremove: bool = False) -> str:
         """Remove one or more packages.
 
@@ -487,10 +477,7 @@ class PackageKit(Yarn):
         pkgs_raw = [p.strip() for p in packages.replace(",", " ").split() if p.strip()]
         return packagekit_ctl.remove(packages=pkgs_raw, autoremove=autoremove)
 
-    @strand(
-        description="Get package metadata, description, license, and repo info via PackageKit D-Bus.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def packagekit_get_details(self, package: str) -> dict[str, Any]:
         """Get detailed metadata for a package.
 
@@ -498,18 +485,12 @@ class PackageKit(Yarn):
         """
         return packagekit_ctl.get_details(package=package)
 
-    @strand(
-        description="Check for pending package and system software updates via PackageKit D-Bus.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def packagekit_check_updates(self) -> list[dict[str, Any]]:
         """Check for pending system updates."""
         return packagekit_ctl.check_updates()
 
-    @strand(
-        description="Find which package provides a specific file path or binary via PackageKit D-Bus.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def packagekit_what_provides(self, file_path: str) -> str:
         """Find package providing a specific file.
 
@@ -517,14 +498,10 @@ class PackageKit(Yarn):
         """
         return packagekit_ctl.what_provides(file_path=file_path)
 
-    @strand(
-        description="Refresh package manager repository metadata cache via PackageKit D-Bus.",
-        tier="privileged",
-    )
+    @strand(tier="privileged")
     def packagekit_refresh_cache(self, force: bool = False) -> str:
         """Refresh package repository cache.
 
         :param force: Force download of all repository databases.
         """
         return packagekit_ctl.refresh_cache(force=force)
-

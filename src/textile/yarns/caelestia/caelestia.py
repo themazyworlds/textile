@@ -76,10 +76,7 @@ class Caelestia(Yarn):
     def is_available(self) -> bool:
         return bool(shutil.which("caelestia") or shutil.which("qs"))
 
-    @strand(
-        description="Toggle Caelestia UI drawer (launcher, sidebar, session, dashboard, etc.).",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_toggle_drawer(self, drawer: str = "launcher") -> str:
         """Toggle Caelestia UI drawer (launcher, sidebar, session, dashboard, etc.).
 
@@ -87,10 +84,7 @@ class Caelestia(Yarn):
         """
         return caelestia_ipc.toggle_drawer(drawer or "launcher")
 
-    @strand(
-        description="Toggle Caelestia special overlay workspace (sysmon, music, todo, etc.).",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_toggle_special_workspace(self, workspace: str = "sysmon") -> str:
         """Toggle Caelestia special overlay workspace (sysmon, music, todo, etc.).
 
@@ -98,42 +92,27 @@ class Caelestia(Yarn):
         """
         return caelestia_ipc.toggle_special(workspace or "sysmon")
 
-    @strand(
-        description="Clear all active Caelestia shell notifications.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_clear_notifications(self) -> str:
         """Clear all active Caelestia shell notifications."""
         return caelestia_ipc.clear_notifications()
 
-    @strand(
-        description="Toggle Do Not Disturb mode for Caelestia notifications.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_toggle_dnd(self) -> str:
         """Toggle Do Not Disturb mode for Caelestia notifications."""
         return caelestia_ipc.toggle_dnd()
 
-    @strand(
-        description="Lock desktop screen via Caelestia lock controller.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_lock_screen(self) -> str:
         """Lock desktop screen via Caelestia lock controller."""
         return caelestia_ipc.lock_screen()
 
-    @strand(
-        description="Launch Caelestia interactive screenshot tool.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_take_screenshot(self) -> str:
         """Launch Caelestia interactive screenshot tool."""
         return caelestia_ipc.screenshot()
 
-    @strand(
-        description="Trigger Caelestia screen recording.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def caelestia_record_screen(self, audio: bool = False, region: bool = False) -> str:
         """Trigger Caelestia screen recording.
 
@@ -142,10 +121,7 @@ class Caelestia(Yarn):
         """
         return caelestia_ipc.record(audio=audio, region=region)
 
-    @strand(
-        description="Call raw Caelestia Quickshell IPC target and method.",
-        tier="mutate",
-    )
+    @strand(tier="mutate")
     def caelestia_call_ipc(self, target: str, method: str, args: list[str] | None = None) -> str:
         """Call raw Caelestia Quickshell IPC target and method.
 

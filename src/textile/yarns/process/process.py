@@ -33,11 +33,7 @@ class ProcessControl(Yarn):
             "status": "running",
         }
 
-    @strand(
-        description="Launch a desktop application or background command (routed through UWSM scope if active).",
-        capability="desktop.app_launcher",
-        tier="interact",
-    )
+    @strand(capability="desktop.app_launcher", tier="interact")
     def launch_app(self, app: str, is_tui: bool = False) -> str:
         """Launch a desktop application or background command.
 
@@ -55,10 +51,7 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, subprocess.SubprocessError) as e:
             return f"Error launching application: {e}"
 
-    @strand(
-        description="List running system processes with PID, CPU/memory usage, user, and command line.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def process_list(self, filter: str | None = None) -> list[dict[str, Any]]:
         """List running system processes with PID, CPU/memory usage, user, and command line.
 
@@ -84,10 +77,7 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return [{"error": f"Error scanning /proc: {e}"}]
 
-    @strand(
-        description="Send a POSIX signal to terminate or signal a process by PID.",
-        tier="mutate",
-    )
+    @strand(tier="mutate")
     def process_kill(self, pid: int, signal: str = "SIGTERM") -> str:
         """Send a POSIX signal to terminate or signal a process by PID.
 
@@ -111,10 +101,7 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return f"Error sending signal: {e}"
 
-    @strand(
-        description="List background jobs spawned and tracked by Textile.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def process_list_bg_jobs(self) -> dict[str, Any]:
         """List background jobs spawned and tracked by Textile."""
         now = time.time()
@@ -132,10 +119,7 @@ class ProcessControl(Yarn):
             BACKGROUND_JOBS.pop(p, None)
         return {"active_bg_jobs_count": len(active_jobs), "jobs": active_jobs}
 
-    @strand(
-        description="Get CPU 1, 5, and 15-minute load averages and CPU core counts.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def process_get_loadavg(self) -> dict[str, Any]:
         """Get CPU 1, 5, and 15-minute load averages and CPU core counts."""
         try:
@@ -151,10 +135,7 @@ class ProcessControl(Yarn):
         except (OSError, AttributeError) as e:
             return {"error": f"Error reading load average: {e}"}
 
-    @strand(
-        description="Get nice priority level of a running process by PID.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def process_get_priority(self, pid: int) -> str:
         """Get nice priority level of a running process by PID.
 
@@ -167,7 +148,7 @@ class ProcessControl(Yarn):
         except (OSError, ValueError, TypeError) as e:
             return f"Error getting priority: {e}"
 
-    @strand(description="Set nice priority level (-20 to 19) of a process by PID.", tier="mutate")
+    @strand(tier="mutate")
     def process_set_priority(self, pid: int, priority: int = 0) -> str:
         """Set nice priority level (-20 to 19) of a process by PID.
 

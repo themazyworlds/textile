@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -566,8 +566,8 @@ class Yarn(ABC):
     def get_dependencies(self) -> list[dict[str, Any]]:
         return getattr(self, "dependencies", [])
 
-    @abstractmethod
     def is_available(self) -> bool:
+        """Check if runtime dependencies and environment are met. Defaults to True."""
         return True
 
     def get_strands(self) -> list[Strand]:

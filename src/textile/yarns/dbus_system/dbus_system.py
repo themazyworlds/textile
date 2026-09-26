@@ -234,10 +234,7 @@ class DBus(Yarn):
     def is_available(self) -> bool:
         return bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.path.exists("/run/dbus/system_bus_socket"))
 
-    @strand(
-        description="Call any D-Bus method on the session or system bus.",
-        tier="privileged",
-    )
+    @strand(tier="privileged")
     def dbus_call(
         self,
         destination: str,
@@ -278,16 +275,15 @@ class DBus(Yarn):
             return "Error: destination, path, interface, and method are all required."
 
         try:
-            return dbus_api.run_sync(dbus_api.call(
-                bus=b, destination=dest, path=p, interface=iface, member=m, signature=signature, body=call_args
-            ))
+            return dbus_api.run_sync(
+                dbus_api.call(
+                    bus=b, destination=dest, path=p, interface=iface, member=m, signature=signature, body=call_args
+                )
+            )
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error executing D-Bus call: {e}"
 
-    @strand(
-        description="Get a single property or all properties (GetAll) from a D-Bus object interface.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def dbus_get_property(
         self,
         destination: str,
@@ -313,16 +309,13 @@ class DBus(Yarn):
             return "Error: destination, path, and interface are required."
 
         try:
-            return dbus_api.run_sync(dbus_api.get_property(
-                bus=b, destination=dest, path=p, interface=iface, property_name=property_name
-            ))
+            return dbus_api.run_sync(
+                dbus_api.get_property(bus=b, destination=dest, path=p, interface=iface, property_name=property_name)
+            )
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error reading D-Bus property: {e}"
 
-    @strand(
-        description="Set a writable D-Bus property on an object interface.",
-        tier="mutate",
-    )
+    @strand(tier="mutate")
     def dbus_set_property(
         self,
         destination: str,
@@ -363,16 +356,15 @@ class DBus(Yarn):
                 val = int(value)
 
         try:
-            return dbus_api.run_sync(dbus_api.set_property(
-                bus=b, destination=dest, path=p, interface=iface, property_name=prop, value=val, signature=signature
-            ))
+            return dbus_api.run_sync(
+                dbus_api.set_property(
+                    bus=b, destination=dest, path=p, interface=iface, property_name=prop, value=val, signature=signature
+                )
+            )
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
             return f"Error setting D-Bus property: {e}"
 
-    @strand(
-        description="Introspect a D-Bus node to discover available interfaces, methods, signals, and properties.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def dbus_introspect(
         self,
         destination: str,

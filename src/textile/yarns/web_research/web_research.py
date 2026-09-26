@@ -35,15 +35,15 @@ def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, s
         content = resp.read().decode("utf-8", errors="replace")
 
     pattern = re.compile(
-        r'<a[^>]+href=[\'\"](?P<url>[^\'\"]+)[\'\"][^>]*class=[\'\"]result-link[\'\"][^>]*>(?P<title>.*?)</a>'
+        r"<a[^>]+href=[\'\"](?P<url>[^\'\"]+)[\'\"][^>]*class=[\'\"]result-link[\'\"][^>]*>(?P<title>.*?)</a>"
         r".*?"
-        r'<td[^>]+class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>',
+        r"<td[^>]+class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>",
         re.DOTALL,
     )
     pattern_alt = re.compile(
-        r'<a[^>]+class=[\'\"]result-link[\'\"][^>]*href=[\'\"](?P<url>[^\'\"]+)[\'\"][^>]*>(?P<title>.*?)</a>'
+        r"<a[^>]+class=[\'\"]result-link[\'\"][^>]*href=[\'\"](?P<url>[^\'\"]+)[\'\"][^>]*>(?P<title>.*?)</a>"
         r".*?"
-        r'<td[^>]+class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>',
+        r"<td[^>]+class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>",
         re.DOTALL,
     )
 
@@ -159,10 +159,7 @@ class WebResearch(Yarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(
-        description="Search the internet for documentation, API references, or error solutions.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def search_web(self, query: str) -> str:
         """Search the internet for documentation, code examples, API references, or solutions.
 
@@ -170,10 +167,7 @@ class WebResearch(Yarn):
         """
         return search_web(query)
 
-    @strand(
-        description="Fetch and read the text content of a web page URL.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def fetch_webpage(self, url: str) -> str:
         """Fetch and read the text content of a web page URL.
 

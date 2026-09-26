@@ -100,9 +100,7 @@ class JournalAPI:
     def _exec_journal(self, cmd: list[str]) -> list[dict[str, Any]]:
         """Run journalctl command and return parsed log records."""
         try:
-            res = subprocess.run(
-                cmd, capture_output=True, text=True, errors="replace", timeout=10, check=False
-            )
+            res = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=10, check=False)
             if res.returncode != 0 and not res.stdout:
                 err = res.stderr.strip()
                 return [{"error": f"journalctl error ({res.returncode}): {err}"}]
@@ -207,10 +205,7 @@ class Journal(Yarn):
     def is_available(self) -> bool:
         return journal_api.is_available()
 
-    @strand(
-        description="Query systemd journal logs with structured filtering by unit, priority, time range, or grep.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def journal_query(
         self,
         unit: str | None = None,
@@ -250,10 +245,7 @@ class Journal(Yarn):
             user=user,
         )
 
-    @strand(
-        description="Fast diagnostic tool to retrieve recent system and user error logs.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def journal_get_errors(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Fast diagnostic tool to retrieve recent system and user error logs.
 
@@ -262,10 +254,7 @@ class Journal(Yarn):
         """
         return journal_api.get_errors(since=since, lines=lines)
 
-    @strand(
-        description="Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.",
-        tier="observe",
-    )
+    @strand(tier="observe")
     def journal_get_kernel(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:
         """Retrieve recent kernel hardware, driver, ACPI, GPU, and dmesg log entries.
 
@@ -273,4 +262,3 @@ class Journal(Yarn):
         :param lines: Max entries (default 25).
         """
         return journal_api.get_kernel_logs(since=since, lines=lines)
-

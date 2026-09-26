@@ -20,7 +20,6 @@ from textile.yarns.hyprland.hyprland import hyprland_ipc
 
 
 class Ydotool(Yarn):
-
     KEY_MAP = {
         "enter": 28,
         "return": 28,
@@ -87,10 +86,7 @@ class Ydotool(Yarn):
                 return False
         return True
 
-    @strand(
-        description="Type text, commands, or passwords directly into active focused window or terminal.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def type_text(self, text: str, press_enter: bool = True, delay_ms: int = 12) -> str:
         """Type text, commands, or passwords directly into the active focused window.
 
@@ -147,10 +143,7 @@ class Ydotool(Yarn):
 
         return "Error: Virtual keyboard daemon (ydotool) could not connect."
 
-    @strand(
-        description="Press a specific keyboard key or hotkey combination.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def press_key(self, key: str, modifiers: str | None = None) -> str:
         """Press a specific keyboard key or hotkey combination.
 
@@ -198,10 +191,7 @@ class Ydotool(Yarn):
 
         return "Error: ydotool is not available."
 
-    @strand(
-        description="Paste text or clipboard content into the active focused window.",
-        tier="interact",
-    )
+    @strand(tier="interact")
     def paste_text(
         self,
         text: str | None = None,
@@ -235,9 +225,7 @@ class Ydotool(Yarn):
         if ydotool_bin:
             try:
                 events = (
-                    ["29:1", "42:1", "47:1", "47:0", "42:0", "29:0"]
-                    if term_mode
-                    else ["29:1", "47:1", "47:0", "29:0"]
+                    ["29:1", "42:1", "47:1", "47:0", "42:0", "29:0"] if term_mode else ["29:1", "47:1", "47:0", "29:0"]
                 )
                 if press_enter:
                     events.extend(["28:1", "28:0"])
