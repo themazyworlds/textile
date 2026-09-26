@@ -184,12 +184,15 @@ class BubblewrapBuilder:
         self.args: list[str] = [bwrap_path]
 
     def bind_system_base(self) -> "BubblewrapBuilder":
+        self.args.extend(["--ro-bind", "/usr", "/usr"])
+        for root_entry in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"]:
+            if os.path.islink(root_entry):
+                link_target = os.readlink(root_entry)
+                self.args.extend(["--symlink", link_target, root_entry])
+            elif os.path.isdir(root_entry):
+                self.args.extend(["--ro-bind-try", root_entry, root_entry])
+
         self.args.extend([
-            "--ro-bind", "/usr", "/usr",
-            "--ro-bind-try", "/lib", "/lib",
-            "--ro-bind-try", "/lib64", "/lib64",
-            "--ro-bind-try", "/bin", "/bin",
-            "--ro-bind-try", "/sbin", "/sbin",
             "--ro-bind-try", "/etc", "/etc",
             "--ro-bind-try", "/sys", "/sys",
             "--ro-bind-try", "/opt", "/opt",
