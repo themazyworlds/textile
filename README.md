@@ -34,12 +34,22 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
   ```
 - **LiveKit CLI (`lk`)** (required for Weave interactive console and dev modes):
   ```bash
+  # Arch Linux
   yay -S livekit-cli
+
+  # Debian / Ubuntu / Fedora / Generic Linux
+  curl -sSL https://get.livekit.io/cli | bash
   ```
 - **Quickshell** (Highly Recommended, for the desktop Canvas UI):
   ```bash
-  # Arch Linux / AUR
-  paru -S quickshell-git
+  # Arch Linux
+  yay -S quickshell
+
+  # Fedora
+  sudo dnf copr enable outfoxxed/quickshell && sudo dnf install quickshell
+
+  # NixOS
+  nix-env -iA nixpkgs.quickshell
   ```
 
 ---
