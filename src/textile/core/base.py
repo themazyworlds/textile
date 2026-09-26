@@ -790,7 +790,7 @@ class Yarn(ABC):
             return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
 
         tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
-        cmd = [uv_bin, "run", "--no-sync", "--quiet"]
+        cmd = [uv_bin, "run", "--no-project", "--no-sync", "--quiet"]
         for dep in self.get_python_dependencies():
             cmd.extend(["--with", str(dep)])
         cmd.extend([

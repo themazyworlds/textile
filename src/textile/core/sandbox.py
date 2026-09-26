@@ -185,14 +185,17 @@ class BubblewrapBuilder:
 
     def bind_system_base(self) -> "BubblewrapBuilder":
         self.args.extend(["--ro-bind", "/usr", "/usr"])
-        for root_entry in ["/bin", "/sbin", "/lib", "/lib64", "/lib32"]:
-            if os.path.islink(root_entry):
-                link_target = os.readlink(root_entry)
-                self.args.extend(["--symlink", link_target, root_entry])
-            elif os.path.isdir(root_entry):
-                self.args.extend(["--ro-bind-try", root_entry, root_entry])
+        if os.path.exists("/usr/lib64"):
+            self.args.extend(["--symlink", "usr/lib64", "/lib64"])
+        elif os.path.exists("/lib64"):
+            self.args.extend(["--ro-bind-try", "/lib64", "/lib64"])
+        else:
+            self.args.extend(["--symlink", "usr/lib", "/lib64"])
 
         self.args.extend([
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/bin", "/sbin",
             "--ro-bind-try", "/etc", "/etc",
             "--ro-bind-try", "/sys", "/sys",
             "--ro-bind-try", "/opt", "/opt",
@@ -200,9 +203,6 @@ class BubblewrapBuilder:
             "--dev", "/dev",
             "--proc", "/proc",
         ])
-        local_share = Path.home() / ".local"
-        if local_share.exists():
-            self.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
         return self
 
     def bind_tmpfs(self, paths: list[str]) -> "BubblewrapBuilder":
@@ -299,6 +299,10 @@ class BubblewrapSandbox:
             .set_env("UV_CACHE_DIR", uv_cache)
             .set_env("PYTHONPATH", os.environ.get("PYTHONPATH"))
         )
+
+        local_share = Path.home() / ".local"
+        if local_share.exists():
+            builder.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
 
         for check_path in [sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)]:
             if check_path and os.path.exists(check_path):
