@@ -15,7 +15,7 @@ import subprocess
 import time
 from typing import Any, Literal
 
-from textile.core.base import Yarn, strand
+from textile.core.base import Yarn, detect_terminal, strand
 
 
 class HyprlandIPC:
@@ -90,10 +90,7 @@ class HyprlandIPC:
 
     @staticmethod
     def _detect_terminal() -> str:
-        for term in ("foot", "kitty", "alacritty", "ghostty", "wezterm", "st", "urxvt", "xterm"):
-            if shutil.which(term):
-                return term
-        return "xterm"
+        return detect_terminal()
 
     @staticmethod
     def _detect_shell() -> str:
@@ -461,17 +458,10 @@ class HyprlandIPC:
         app_clean = app.strip()
         if is_tui:
             term = self._detect_terminal()
-            shell = self._detect_shell()
-            app_base = app_clean.split()[0]
-            title_str = title or app_base
-            shell_args = f'{shell} -i -c "{app_clean}"'
-
-            if term == "foot":
-                cmd = f"{term} -a {app_base} -T {title_str} {shell_args}"
-            elif term in ("kitty", "alacritty", "ghostty"):
-                cmd = f"{term} -T {title_str} -- {shell_args}"
+            if title:
+                cmd = f"{term} -T {title} -e {app_clean}"
             else:
-                cmd = f"{term} -e {shell_args}"
+                cmd = f"{term} -e {app_clean}"
         else:
             cmd = app_clean
 
@@ -891,9 +881,10 @@ class Hyprland(Yarn):
         return hyprland_ipc.exit_session()
 
     @strand(capability="desktop.app_launcher", tier="privileged")
-    def hyprland_launch_app(self, command: str) -> str:
+    def hyprland_launch_app(self, command: str, is_tui: bool = False) -> str:
         """Launch application or shell command via Hyprland exec dispatcher.
 
         :param command: Command line or application name to launch.
+        :param is_tui: Terminal/TUI application flag. Set to true to launch inside a terminal window (e.g. -e nvim).
         """
-        return hyprland_ipc.exec_app(app=command)
+        return hyprland_ipc.exec_app(app=command, is_tui=is_tui)

@@ -12,7 +12,7 @@ import subprocess
 import time
 from typing import Any
 
-from textile.core.base import Yarn, strand
+from textile.core.base import Yarn, detect_terminal, strand
 from textile.core.guardrails import AccessBoundaryError, SessionProcessGuard
 
 BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}
@@ -38,16 +38,20 @@ class ProcessControl(Yarn):
         """Launch a desktop application or background command.
 
         :param app: Application command or binary to launch.
-        :param is_tui: Whether to launch in a terminal.
+        :param is_tui: Whether to launch in a terminal (e.g. -e nvim).
         """
         app_clean = app.strip()
         if not app_clean:
             return "Error: No application command provided."
         try:
             argv = shlex.split(app_clean)
+            if is_tui:
+                term = detect_terminal()
+                argv = [term, "-e"] + argv
             proc = subprocess.Popen(argv, shell=False, start_new_session=True, cwd=os.getcwd())
             self.register_bg_job(proc.pid, app_clean, "app")
-            return f"Universal Launcher: Started '{app_clean}' in background (PID {proc.pid})."
+            mode_str = " in terminal" if is_tui else ""
+            return f"Universal Launcher: Started '{app_clean}'{mode_str} in background (PID {proc.pid})."
         except (OSError, ValueError, subprocess.SubprocessError) as e:
             return f"Error launching application: {e}"
 

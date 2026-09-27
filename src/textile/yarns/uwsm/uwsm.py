@@ -9,7 +9,7 @@ import subprocess
 
 from textile.core.base import (
     Yarn,
-    resolve_terminal_and_shell,
+    detect_terminal,
     strand,
 )
 
@@ -35,7 +35,7 @@ class UWSM(Yarn):
         """Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.
 
         :param command: The command or binary name to launch (e.g. 'firefox', 'foot', 'nvim').
-        :param is_tui: Terminal/TUI application flag. Set to true to launch inside a terminal emulator window.
+        :param is_tui: Terminal/TUI application flag. Set to true to launch inside a terminal emulator window (e.g. -e nvim).
         :param args: Optional list of arguments for the application.
         """
         cmd = str(command or "").strip()
@@ -47,8 +47,8 @@ class UWSM(Yarn):
             return "Error: No command specified to launch."
 
         if is_tui:
-            term, shell = resolve_terminal_and_shell()
-            full_cmd = ["uwsm", "app", "--", term, "-e", shell, "-i", "-c", cmd] + [str(a) for a in cmd_args]
+            term = detect_terminal()
+            full_cmd = ["uwsm", "app", "--", term, "-e", cmd] + [str(a) for a in cmd_args]
         else:
             full_cmd = ["uwsm", "app", "--", cmd] + [str(a) for a in cmd_args]
 

@@ -403,6 +403,50 @@ class TestYarnArchitecture(unittest.TestCase):
         finally:
             temp_path2.unlink()
 
+    def test_app_launching_terminal_e_flag(self):
+        from unittest.mock import MagicMock, patch
+        from textile.yarns.process.process import ProcessControl
+        from textile.yarns.uwsm.uwsm import UWSM
+        from textile.yarns.hyprland.hyprland import HyprlandIPC
+
+        # 1. ProcessControl launch_app with is_tui=True using dynamic $TERMINAL env var
+        proc_yarn = ProcessControl()
+        with patch.dict("os.environ", {"TERMINAL": "ghostty"}), patch("shutil.which", return_value="/usr/bin/ghostty"), patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.pid = 12345
+            mock_popen.return_value = mock_proc
+            res = proc_yarn.launch_app("nvim /tmp/test.txt", is_tui=True)
+            self.assertIn("PID 12345", res)
+            args, kwargs = mock_popen.call_args
+            called_cmd = args[0]
+            self.assertEqual(called_cmd, ["ghostty", "-e", "nvim", "/tmp/test.txt"])
+            self.assertNotIn("-i", called_cmd)
+            self.assertNotIn("-c", called_cmd)
+
+        # 2. UWSM launch_app with is_tui=True using dynamic terminal detection
+        uwsm_yarn = UWSM()
+        with patch.dict("os.environ", {"TERMINAL": "kitty"}), patch("shutil.which", return_value="/usr/bin/kitty"), patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.pid = 23456
+            mock_popen.return_value = mock_proc
+            res = uwsm_yarn.launch_app("nvim", is_tui=True, args=["/tmp/test.txt"])
+            self.assertIn("PID 23456", res)
+            args, kwargs = mock_popen.call_args
+            called_cmd = args[0]
+            self.assertEqual(called_cmd, ["uwsm", "app", "--", "kitty", "-e", "nvim", "/tmp/test.txt"])
+            self.assertNotIn("-i", called_cmd)
+            self.assertNotIn("-c", called_cmd)
+
+        # 3. HyprlandIPC exec_app with is_tui=True
+        hl_ipc = HyprlandIPC()
+        with patch.dict("os.environ", {"TERMINAL": "alacritty"}), patch("shutil.which", return_value="/usr/bin/alacritty"), patch.object(hl_ipc, "dispatch", return_value="ok") as mock_disp:
+            hl_ipc.exec_app("nvim", is_tui=True)
+            mock_disp.assert_called_once()
+            disp_arg = mock_disp.call_args[0][0]
+            self.assertIn("alacritty -e nvim", disp_arg)
+            self.assertNotIn("-i", disp_arg)
+            self.assertNotIn("-c", disp_arg)
+
 
 if __name__ == "__main__":
     unittest.main()

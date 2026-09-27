@@ -72,11 +72,31 @@ def detects_native_ffi(target: Any) -> bool:
     return False
 
 
+def detect_terminal() -> str:
+    """Detect available terminal emulator executable on the system.
+
+    Respects the standard $TERMINAL environment variable and xdg-terminal-exec
+    before probing installed terminal emulators.
+    """
+    env_term = os.environ.get("TERMINAL", "").strip()
+    if env_term and shutil.which(env_term):
+        return env_term
+    if shutil.which("xdg-terminal-exec"):
+        return "xdg-terminal-exec"
+    for term in ("foot", "kitty", "alacritty", "ghostty", "wezterm", "st", "urxvt", "xterm"):
+        if shutil.which(term):
+            return term
+    return "xterm"
+
+
 def resolve_terminal_and_shell() -> tuple[str, str]:
-    term = os.environ.get("TERM", "xterm-256color")
-    shell_path = pwd.getpwuid(os.getuid()).pw_shell
-    if not (os.path.isfile(shell_path) and os.access(shell_path, os.X_OK)):
-        raise RuntimeError("Shell binary not accessible on disk.")
+    term = detect_terminal()
+    try:
+        shell_path = pwd.getpwuid(os.getuid()).pw_shell
+        if not (os.path.isfile(shell_path) and os.access(shell_path, os.X_OK)):
+            shell_path = os.environ.get("SHELL", "/bin/sh")
+    except (KeyError, AttributeError, OSError):
+        shell_path = os.environ.get("SHELL", "/bin/sh")
     return term, shell_path
 
 
