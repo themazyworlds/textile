@@ -172,11 +172,9 @@ async def entrypoint(ctx: JobContext):
         )
 
         def _trigger_reply():
-            asyncio.create_task(
-                session.generate_reply(
-                    user_input=prompt_text,
-                    instructions=instruction_text,
-                )
+            session.generate_reply(
+                user_input=prompt_text,
+                instructions=instruction_text,
             )
 
         # Safely schedule on the LiveKit main asyncio loop from any thread
