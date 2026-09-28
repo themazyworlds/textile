@@ -120,6 +120,40 @@ class TestElasticEngine(unittest.TestCase):
 
         asyncio.run(_test_stream())
 
+    def test_cross_process_ipc_sync(self):
+        import time
+
+        # Create two simulated processes (engine_a and engine_b)
+        engine_a = ElasticEngine(enable_ipc_poller=True)
+        engine_a._pid = 11111  # Simulate Process A (e.g. Twill / Timer)
+
+        engine_b = ElasticEngine(enable_ipc_poller=True)
+        engine_b._pid = 22222  # Simulate Process B (e.g. Weave Voice Agent)
+
+        received_by_b = []
+
+        token = engine_b.subscribe("timer.expired", lambda f: received_by_b.append(f))
+        try:
+            # Engine A broadcasts a timer expiration
+            engine_a.broadcast(
+                topic="timer.expired",
+                summary="Timer 'Tea' has finished (180s)",
+                source="basics",
+                urgency=EventUrgency.ALERT,
+                data={"label": "Tea", "id": "tea_01"},
+            )
+
+            # Wait briefly for Engine B's background IPC thread to poll the event
+            time.sleep(0.15)
+
+            self.assertEqual(len(received_by_b), 1)
+            self.assertEqual(received_by_b[0].topic, "timer.expired")
+            self.assertEqual(received_by_b[0].data["label"], "Tea")
+            self.assertEqual(received_by_b[0].data["id"], "tea_01")
+        finally:
+            engine_a.close()
+            engine_b.close()
+
 
 if __name__ == "__main__":
     unittest.main()

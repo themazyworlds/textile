@@ -8,6 +8,7 @@ import asyncio
 import fnmatch
 import inspect
 import logging
+import os
 import threading
 import time
 import uuid
@@ -63,6 +64,7 @@ class EventFrame(BaseModel):
     summary: str
     data: dict[str, Any] = Field(default_factory=dict)
     timestamp: float = Field(default_factory=time.time)
+    process_id: int = Field(default_factory=os.getpid)
     retained_slot: str | None = None
     retained_value: Any = None
 
@@ -93,14 +95,59 @@ class _Subscription:
 
 class ElasticEngine:
     """
-    Unified Event Hub & Routing Fabric.
-    Single front door for both broadcasting and subscribing.
+    Unified Cross-Process Event Hub & Sensory Routing Fabric.
+    Single front door for both broadcasting and subscribing across processes.
     """
 
-    def __init__(self):
+    def __init__(self, enable_ipc_poller: bool = True):
         self._lock = threading.RLock()
+        self._pid = os.getpid()
         self._subscriptions: dict[str, _Subscription] = {}
         self._async_queues: list[asyncio.Queue[EventFrame]] = []
+        self._running = True
+        self._ipc_thread: threading.Thread | None = None
+        self._last_event_id: int = 0
+
+        if enable_ipc_poller:
+            try:
+                self._last_event_id = sensory_tapestry.get_max_elastic_event_id()
+                self._ipc_thread = threading.Thread(
+                    target=self._ipc_worker,
+                    daemon=True,
+                    name=f"elastic-ipc-{self._pid}",
+                )
+                self._ipc_thread.start()
+            except Exception as e:
+                logger.debug("Could not start Elastic IPC worker: %s", e)
+
+    def _ipc_worker(self) -> None:
+        """Background thread polling SQLite event log for events from other processes."""
+        while self._running:
+            try:
+                events = sensory_tapestry.get_elastic_events_since(self._last_event_id)
+                for ev in events:
+                    self._last_event_id = max(self._last_event_id, ev["seq_id"])
+                    # Ignore events produced by this exact process (already delivered locally)
+                    if ev["process_id"] == self._pid:
+                        continue
+
+                    frame = EventFrame(
+                        id=ev["id"],
+                        topic=ev["topic"],
+                        source=ev["source"],
+                        urgency=EventUrgency.from_value(ev["urgency"]),
+                        summary=ev["summary"],
+                        data=ev["data"],
+                        timestamp=ev["timestamp"],
+                        process_id=ev["process_id"],
+                        retained_slot=ev["retained_slot"],
+                        retained_value=ev["retained_value"],
+                    )
+                    self._deliver_local(frame)
+            except Exception as e:
+                logger.debug("Elastic IPC poller notice: %s", e)
+
+            time.sleep(0.05)
 
     def broadcast(
         self,
@@ -135,6 +182,7 @@ class ElasticEngine:
             summary=str(summary).strip(),
             data=payload_data,
             timestamp=time.time(),
+            process_id=self._pid,
             retained_slot=retained_slot,
             retained_value=retained_value,
         )
@@ -159,25 +207,30 @@ class ElasticEngine:
             data={"topic": clean_topic, "urgency": parsed_urgency.value, **payload_data},
         )
 
-        # 3. Deliver to In-Memory Subscribers
-        with self._lock:
-            subs = list(self._subscriptions.values())
-            queues = list(self._async_queues)
+        # 3. Record to shared SQLite cross-process event stream
+        try:
+            sensory_tapestry.record_elastic_event(
+                event_id=frame.id,
+                topic=frame.topic,
+                source=frame.source,
+                urgency=frame.urgency.value,
+                summary=frame.summary,
+                data=frame.data,
+                timestamp=frame.timestamp,
+                process_id=self._pid,
+                retained_slot=retained_slot,
+                retained_value=retained_value,
+            )
+        except Exception as e:
+            logger.debug("Failed to record cross-process Elastic event: %s", e)
 
-        for sub in subs:
-            if sub.matches(frame):
-                self._invoke_callback(sub.callback, frame)
+        # 4. Deliver in-process immediately
+        self._deliver_local(frame)
 
-        for q in queues:
-            try:
-                q.put_nowait(frame)
-            except (asyncio.QueueFull, RuntimeError):
-                pass
-
-        # 4. Forward to Warp for legacy pubsub listeners
+        # 5. Forward to Warp for legacy pubsub listeners
         warp.publish(clean_topic, frame.model_dump())
 
-        # 5. Feed Shuttle Proactivity Engine (if source is not shuttle itself)
+        # 6. Feed Shuttle Proactivity Engine (if source is not shuttle itself)
         if clean_source != "shuttle" and not clean_source.startswith("shuttle."):
             try:
                 from textile.core.shuttle import shuttle
@@ -192,6 +245,26 @@ class ElasticEngine:
                 logger.debug("Elastic -> Shuttle feed notice ignored: %s", e)
 
         return frame
+
+    def _deliver_local(self, frame: EventFrame) -> None:
+        """Deliver EventFrame to local in-process subscribers and async queues."""
+        with self._lock:
+            subs = list(self._subscriptions.values())
+            queues = list(self._async_queues)
+
+        for sub in subs:
+            if sub.matches(frame):
+                self._invoke_callback(sub.callback, frame)
+
+        for q in queues:
+            try:
+                q.put_nowait(frame)
+            except (asyncio.QueueFull, RuntimeError):
+                pass
+
+    def close(self) -> None:
+        """Stop background IPC polling worker."""
+        self._running = False
 
     def _invoke_callback(self, cb: Callable[[EventFrame], Any], frame: EventFrame) -> None:
         try:

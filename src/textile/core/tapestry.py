@@ -123,6 +123,19 @@ class TapestryDB:
                     message TEXT NOT NULL,
                     data_json TEXT
                 );
+                CREATE TABLE IF NOT EXISTS elastic_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    urgency TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    data_json TEXT,
+                    timestamp REAL NOT NULL,
+                    process_id INTEGER NOT NULL,
+                    retained_slot TEXT,
+                    retained_value_json TEXT
+                );
             """)
 
 
@@ -421,11 +434,107 @@ class SensoryTapestry:
                 for r in reversed(cur.fetchall())
             ]
 
+    def record_elastic_event(
+        self,
+        event_id: str,
+        topic: str,
+        source: str,
+        urgency: str,
+        summary: str,
+        data: dict[str, Any],
+        timestamp: float,
+        process_id: int,
+        retained_slot: str | None = None,
+        retained_value: Any = None,
+    ) -> int:
+        """Record an Elastic event into the shared SQLite event stream for cross-process IPC."""
+        with self._db._lock, self._db.get_conn() as conn:
+            query = """
+                INSERT INTO elastic_events (
+                    event_id, topic, source, urgency, summary, data_json,
+                    timestamp, process_id, retained_slot, retained_value_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cur = conn.execute(
+                query,
+                (
+                    str(event_id),
+                    str(topic),
+                    str(source),
+                    str(urgency),
+                    str(summary),
+                    json.dumps(data) if data else "{}",
+                    float(timestamp),
+                    int(process_id),
+                    retained_slot,
+                    json.dumps(retained_value) if retained_value is not None else None,
+                ),
+            )
+            inserted_id = cur.lastrowid or 0
+
+            # Prune old events if table grows over 1000 items
+            if inserted_id % 50 == 0:
+                conn.execute(
+                    "DELETE FROM elastic_events WHERE id < (SELECT max(id) - 500 FROM elastic_events)"
+                )
+
+            return inserted_id
+
+    def get_max_elastic_event_id(self) -> int:
+        """Get the latest event ID currently in the database."""
+        with self._db._lock, self._db.get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COALESCE(MAX(id), 0) FROM elastic_events")
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+
+    def get_elastic_events_since(self, last_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        """Query all Elastic events inserted after last_id for cross-process event polling."""
+        with self._db._lock, self._db.get_conn() as conn:
+            cur = conn.cursor()
+            query = """
+                SELECT id, event_id, topic, source, urgency, summary, data_json,
+                       timestamp, process_id, retained_slot, retained_value_json
+                FROM elastic_events
+                WHERE id > ?
+                ORDER BY id ASC
+                LIMIT ?
+            """
+            cur.execute(query, (int(last_id), int(limit)))
+            events = []
+            for r in cur.fetchall():
+                try:
+                    payload_data = json.loads(r[6]) if r[6] else {}
+                except (json.JSONDecodeError, TypeError):
+                    payload_data = {}
+
+                try:
+                    retained_val = json.loads(r[10]) if r[10] else None
+                except (json.JSONDecodeError, TypeError):
+                    retained_val = None
+
+                events.append({
+                    "seq_id": r[0],
+                    "id": r[1],
+                    "topic": r[2],
+                    "source": r[3],
+                    "urgency": r[4],
+                    "summary": r[5],
+                    "data": payload_data,
+                    "timestamp": r[7],
+                    "process_id": r[8],
+                    "retained_slot": r[9],
+                    "retained_value": retained_val,
+                })
+            return events
+
     def clear(self) -> None:
         """Clear all sensory state slots and notices."""
         with self._db._lock, self._db.get_conn() as conn:
             conn.execute("DELETE FROM slots")
             conn.execute("DELETE FROM notices")
+            conn.execute("DELETE FROM elastic_events")
 
     def get_state(self) -> dict[str, Any]:
         """Return snapshot of sensory state slots and recent stitched notices."""
