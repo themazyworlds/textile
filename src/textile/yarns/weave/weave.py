@@ -17,6 +17,7 @@ from livekit.agents import AgentServer, AutoSubscribe, JobContext, cli, mcp
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import google
 
+from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.loom import loom
 from textile.core.shuttle import shuttle
 from textile.core.warp import WarpEvent, warp
@@ -136,40 +137,35 @@ async def entrypoint(ctx: JobContext):
                     text_val = getattr(part, "text", None) or (part if isinstance(part, str) else "")
                     extract_and_apply_mood_tags(text_val)
 
-    def on_timer_expired(payload: Any) -> None:
-        if not isinstance(payload, dict):
+    def on_elastic_event(frame: EventFrame) -> None:
+        # Ignore ambient telemetry or internal voice feedback loops
+        if frame.urgency == EventUrgency.AMBIENT or frame.source in ("weave", "voice"):
             return
-        label = payload.get("label", "Timer")
-        dur = float(payload.get("duration_seconds", 0))
-        mins = int(dur // 60)
-        secs = int(dur % 60)
-        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-        asyncio.create_task(
-            session.generate_reply(
-                instructions=(
-                    f"Spontaneously notify the user in a friendly, conversational spoken voice "
-                    f"that their timer '{label}' ({dur_str}) has finished!"
-                )
-            )
-        )
 
-    def on_shuttle_spark(payload: Any) -> None:
-        if not isinstance(payload, dict):
+        # Only speak proactively on sparks, alerts, or critical flash notices
+        is_flash = frame.urgency == EventUrgency.FLASH
+        is_spark = frame.topic == "shuttle.spark"
+
+        if shuttle.is_quiet() and not is_flash:
             return
-        reason = payload.get("reason", "Proactive desktop event")
-        raw_data = payload.get("raw_data", {})
-        is_flash = payload.get("is_flash", False)
+
+        if is_spark:
+            summary = frame.summary or frame.data.get("reason", "Desktop event")
+            raw_ctx = frame.data.get("raw_data", {})
+        else:
+            summary = frame.summary
+            raw_ctx = frame.data
 
         prompt_instruction = (
             f"You are speaking proactively to the user based on real-time desktop intelligence. "
-            f"Event summary: '{reason}'. "
-            f"Context data: {json.dumps(raw_data) if isinstance(raw_data, (dict, list)) else raw_data}. "
+            f"Event topic: '{frame.topic}' from '{frame.source}'. "
+            f"Summary: '{summary}'. "
+            f"Context: {json.dumps(raw_ctx) if isinstance(raw_ctx, (dict, list)) else raw_ctx}. "
             f"{'This is a high-priority flash alert—be immediate, clear, and direct.' if is_flash else 'Speak naturally, succinctly, and helpfully in 1-2 spoken sentences.'}"
         )
         asyncio.create_task(session.generate_reply(instructions=prompt_instruction))
 
-    warp.subscribe(WarpEvent.TIMER_EXPIRED, on_timer_expired)
-    warp.subscribe(WarpEvent.SHUTTLE_SPARK, on_shuttle_spark)
+    elastic_token = elastic.subscribe("*", on_elastic_event)
 
     base_persona = (
         "You are Weave, a sovereign Linux desktop companion powered by the Textile intelligence fabric.\n"

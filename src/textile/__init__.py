@@ -14,6 +14,8 @@ from textile.core.base import (
     weft,
 )
 
+from textile.core.elastic import EventFrame, EventUrgency, elastic
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -21,6 +23,9 @@ __all__ = [
     "CapabilityTier",
     "strand",
     "weft",
+    "elastic",
+    "EventFrame",
+    "EventUrgency",
     "LAYER_BASE",
     "LAYER_DESKTOP_PROTOCOL",
     "LAYER_COMPOSITOR_DE",

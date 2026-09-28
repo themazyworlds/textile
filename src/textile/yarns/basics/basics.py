@@ -8,18 +8,19 @@ import uuid
 from typing import Any
 
 from textile.core.base import Yarn, strand
+from textile.core.elastic import EventUrgency, elastic
+from textile.core.loom import loom
 from textile.core.seams import seams
 from textile.core.shuttle import shuttle
-from textile.core.tapestry import core_tapestry, sensory_tapestry
-from textile.core.warp import WarpEvent, warp
+from textile.core.tapestry import core_tapestry
 
 logger = logging.getLogger(__name__)
 
 ACTIVE_TIMERS: dict[str, dict[str, Any]] = {}
 
 
-def _sync_timers_to_tapestry() -> list[dict[str, Any]]:
-    """Synchronize active timer state directly to the Tapestry sensory blackboard."""
+def _get_active_timers_snapshot() -> list[dict[str, Any]]:
+    """Return live snapshot of active timers with remaining time calculated."""
     now = time.time()
     timers = []
     for tid, info in list(ACTIVE_TIMERS.items()):
@@ -32,7 +33,6 @@ def _sync_timers_to_tapestry() -> list[dict[str, Any]]:
             "start_time": info["start_time"],
             "end_time": info["end_time"],
         })
-    sensory_tapestry.set_slot("timers.active", timers)
     return timers
 
 
@@ -41,19 +41,21 @@ async def _timer_worker(timer_id: str, label: str, duration_seconds: float, end_
         sleep_dur = max(0.0, end_time - time.time())
         await asyncio.sleep(sleep_dur)
         ACTIVE_TIMERS.pop(timer_id, None)
-        _sync_timers_to_tapestry()
+        active_left = _get_active_timers_snapshot()
         payload = {
             "id": timer_id,
             "label": label,
             "duration_seconds": duration_seconds,
             "expired_at": time.time(),
         }
-        warp.publish(WarpEvent.TIMER_EXPIRED, payload)
-        sensory_tapestry.stitch(
-            level="info",
+        elastic.broadcast(
+            topic="timer.expired",
             source="basics",
-            message=f"Timer '{label}' (ID: {timer_id}) finished ({duration_seconds}s).",
+            summary=f"Timer '{label}' (ID: {timer_id}) finished ({duration_seconds}s).",
+            urgency=EventUrgency.ALERT,
             data=payload,
+            retained_slot="timers.active",
+            retained_value=active_left,
         )
     except asyncio.CancelledError:
         pass
@@ -102,19 +104,22 @@ class Basics(Yarn):
         secs = int(dur % 60)
         dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
 
-        _sync_timers_to_tapestry()
-        sensory_tapestry.stitch(
-            level="info",
+        active_snap = _get_active_timers_snapshot()
+        elastic.broadcast(
+            topic="timer.started",
             source="basics",
-            message=f"Timer '{clean_label}' started for {dur_str} (ID: {tid}).",
+            summary=f"Timer '{clean_label}' started for {dur_str} (ID: {tid}).",
+            urgency=EventUrgency.NOTICE,
             data={"id": tid, "label": clean_label, "duration_seconds": dur, "end_time": end_time},
+            retained_slot="timers.active",
+            retained_value=active_snap,
         )
         return f"Timer '{clean_label}' started for {dur_str} (ID: {tid})."
 
     @strand(tier="observe")
     def list_timers(self) -> list[dict[str, Any]]:
         """List all currently active countdown timers with remaining time."""
-        return _sync_timers_to_tapestry()
+        return _get_active_timers_snapshot()
 
     @strand(tier="mutate")
     def cancel_timer(self, timer_id: str) -> str:
@@ -140,12 +145,15 @@ class Basics(Yarn):
         if task and not task.done():
             task.cancel()
 
-        _sync_timers_to_tapestry()
-        sensory_tapestry.stitch(
-            level="info",
+        active_left = _get_active_timers_snapshot()
+        elastic.broadcast(
+            topic="timer.cancelled",
             source="basics",
-            message=f"Timer '{info['label']}' (ID: {found_id}) cancelled.",
+            summary=f"Timer '{info['label']}' (ID: {found_id}) cancelled.",
+            urgency=EventUrgency.NOTICE,
             data={"id": found_id, "label": info["label"]},
+            retained_slot="timers.active",
+            retained_value=active_left,
         )
         return f"Timer '{info['label']}' (ID: {found_id}) successfully cancelled."
 
@@ -172,12 +180,12 @@ class Basics(Yarn):
     @strand(tier="observe")
     def textile_get_sensory_state(self) -> dict[str, Any]:
         """Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts)."""
-        return sensory_tapestry.get_state()
+        return elastic.get_state()
 
     @strand(tier="observe")
     def textile_get_state(self) -> dict[str, Any]:
         """Get full snapshot of the sensory blackboard state slots and notices."""
-        return sensory_tapestry.get_state()
+        return elastic.get_state()
 
     @strand(tier="observe")
     def textile_get_engine_state(self) -> dict[str, Any]:

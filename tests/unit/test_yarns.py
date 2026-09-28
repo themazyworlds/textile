@@ -450,17 +450,16 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_basics_timer_strands(self):
         import asyncio
         import time
-        from textile.core.tapestry import sensory_tapestry
-        from textile.core.warp import WarpEvent, warp
+        from textile.core.elastic import EventFrame, elastic
         from textile.yarns.basics.basics import Basics
 
         basics = Basics()
-        events_fired = []
+        events_fired: list[EventFrame] = []
 
-        def _on_expired(data):
-            events_fired.append(data)
+        def _on_expired(frame: EventFrame):
+            events_fired.append(frame)
 
-        cb = warp.subscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
+        token = elastic.subscribe("timer.expired", _on_expired)
 
         async def _run_timer_test():
             # 1. Invalid duration
@@ -477,10 +476,10 @@ class TestYarnArchitecture(unittest.TestCase):
             res3 = await basics.set_timer(duration_seconds=20, label="workout")
             self.assertIn("started", res3)
 
-            # 3. Check list_timers and sensory_tapestry slot "timers.active"
+            # 3. Check list_timers and elastic slot "timers.active"
             active = basics.list_timers()
             self.assertGreaterEqual(len(active), 3)
-            slot_timers = sensory_tapestry.get_slot("timers.active")
+            slot_timers = elastic.get_slot("timers.active")
             self.assertIsNotNone(slot_timers)
             self.assertGreaterEqual(len(slot_timers), 3)
             self.assertTrue(any(t["id"] == "tea_01" for t in slot_timers))
@@ -489,15 +488,15 @@ class TestYarnArchitecture(unittest.TestCase):
             # 4. Wait for tea_01 expiration
             await asyncio.sleep(0.1)
             self.assertEqual(len(events_fired), 1)
-            self.assertEqual(events_fired[0]["id"], "tea_01")
-            self.assertEqual(events_fired[0]["label"], "tea ready")
+            self.assertEqual(events_fired[0].data["id"], "tea_01")
+            self.assertEqual(events_fired[0].data["label"], "tea ready")
 
             # 5. Cancel oven timer
             c_out = basics.cancel_timer("oven_01")
             self.assertIn("successfully cancelled", c_out)
 
             # Ensure cancelled and expired timers are removed from Tapestry slot
-            slot_after = sensory_tapestry.get_slot("timers.active")
+            slot_after = elastic.get_slot("timers.active")
             self.assertFalse(any(t["id"] == "tea_01" for t in slot_after))
             self.assertFalse(any(t["id"] == "oven_01" for t in slot_after))
 
@@ -509,7 +508,7 @@ class TestYarnArchitecture(unittest.TestCase):
         try:
             loop.run_until_complete(_run_timer_test())
         finally:
-            warp.unsubscribe(WarpEvent.TIMER_EXPIRED, cb)
+            elastic.unsubscribe(token)
             loop.close()
 
     def test_basics_shuttle_strands(self):
