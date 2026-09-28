@@ -210,8 +210,10 @@ class Canvas(Yarn):
     @weft(
         pattern=r"<mood:([a-zA-Z_-]+)>",
         description=(
-            "Stream attunement for dynamic mood changes. Emit frequent inline tags (e.g. <mood:curious>, "
-            "<mood:thinking>, <mood:happy>, <mood:excited>, <mood:focused>) to animate avatar face in real time."
+            "Emit inline semantic mood tags across your speech to animate avatar face in real time. "
+            "Supported moods: neutral, happy, excited, celebrating, thinking, focused, listening, curious, calm, "
+            "shy, mischievous, confused, surprised, alert, sleepy, error, glitch. "
+            "Example: '<mood:curious> Let me inspect that... <mood:happy> All set!'"
         ),
     )
     def on_stream_mood(self, mood: str) -> None:
@@ -231,7 +233,7 @@ class Canvas(Yarn):
 
     @weft(
         pattern=r"<gaze:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)>",
-        description="Stream attunement for dynamic eye gaze offsets (e.g. <gaze:8.0,-5.0> to look up-right).",
+        description="Emit inline eye gaze offsets (where X is -16.0 to 16.0, Y is -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right).",
     )
     def on_stream_gaze(self, x: float, y: float) -> None:
         """Handle real-time streaming eye gaze attunement."""

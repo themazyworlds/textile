@@ -301,21 +301,14 @@ class Loom:
         return result
 
     def get_fabric_instructions(self) -> str:
-        """Deliver all active yarn contracts and weft attunements to the MCP client (postman pattern)."""
+        """Deliver all active weft stream attunements and security governance to the MCP/Voice client."""
         self.initialize()
-        letters = []
+        weft_docs = []
         for name, yarn in self.active_yarns.items():
-            letter = yarn.get_contract()
-            if letter:
-                pub_tag = f"[{yarn.publisher}/{name}]" if yarn.publisher else f"[{name}]"
-                letters.append(f"### Yarn Contract {pub_tag}\n{letter.strip()}")
-
             for weft in yarn.get_wefts():
-                if weft.description and (not letter or weft.description not in letter):
-                    letters.append(f"- Weft Stream Attunement `{weft.name}`: {weft.description}")
-
-        if not letters:
-            return ""
+                if weft.description:
+                    pub_tag = f"[{yarn.publisher}/{name}]" if yarn.publisher else f"[{name}]"
+                    weft_docs.append(f"- `{weft.name}` {pub_tag}: {weft.description}")
 
         active_yarn_names = list(self.active_yarns.keys())
         security_governance = (
@@ -337,13 +330,15 @@ class Loom:
             "Textile Linux Desktop Automation & Intelligence Fabric Active.\n"
             f"Active Capability Yarns: {', '.join(active_yarn_names)}.\n\n"
             f"{security_governance}"
-            "## Active Yarn Contracts & Real-Time Stream Attunements\n"
-            "The following active yarns have delivered their behavioral contracts "
-            "and stream attunements for this session.\n"
-            "Fulfilling these contracts is advisory and strongly recommended to deliver a seamless, delightful "
-            "user experience:\n"
         )
-        return header + "\n" + "\n\n".join(letters)
+        if weft_docs:
+            header += (
+                "## Real-Time Streaming Semantic Attunements\n"
+                "You are strongly encouraged to emit inline semantic tags during speech for real-time desktop attunement:\n"
+                + "\n".join(weft_docs)
+                + "\n"
+            )
+        return header
 
 
 loom = Loom()

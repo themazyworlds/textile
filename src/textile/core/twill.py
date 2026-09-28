@@ -25,18 +25,18 @@ def create_twill_server() -> Server:
     async def handle_list_prompts() -> list[types.Prompt]:
         return [
             types.Prompt(
-                name="textile_system_contract",
+                name="textile_system_instructions",
                 description=(
-                    "Textile Desktop Fabric active yarn contracts, persona guidelines, and semantic streaming tags."
+                    "Textile Desktop Fabric security governance, capability tiers, and real-time streaming attunements."
                 ),
             )
         ]
 
     @app.get_prompt()
     async def handle_get_prompt(name: str, arguments: dict | None = None) -> types.GetPromptResult:
-        if name == "textile_system_contract":
+        if name in ("textile_system_instructions", "textile_system_contract"):
             return types.GetPromptResult(
-                description="Textile Desktop Fabric Active System Contract",
+                description="Textile Desktop Fabric Active System Instructions",
                 messages=[
                     types.PromptMessage(
                         role="user",

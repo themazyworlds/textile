@@ -436,7 +436,6 @@ class YarnManifest(BaseModel):
     manifest_version: int = 1
     layer: int = LAYER_DESKTOP_PROTOCOL
     description: str = ""
-    contract: str = ""
     dependencies: DependenciesManifest = Field(default_factory=DependenciesManifest)
     resources: list[str] = Field(default_factory=list)
 
@@ -546,12 +545,6 @@ class Yarn(ABC):
     @python_dependencies.setter
     def python_dependencies(self, value: list[str]) -> None:
         self.manifest.python_dependencies = value
-
-    def get_contract(self) -> str | None:
-        """Return the yarn's sealed contract / advisory letter declared in its TOML manifest."""
-        if self.manifest and self.manifest.contract:
-            return self.manifest.contract.strip()
-        return None
 
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""
