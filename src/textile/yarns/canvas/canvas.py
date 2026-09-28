@@ -168,7 +168,7 @@ class Canvas(Yarn):
             event = frame.data if isinstance(frame.data, dict) else {}
             source = frame.source
             mood = str(event.get("mood", "neutral") if isinstance(frame.data, dict) else frame.data).lower().strip()
-            self.set_slot("canvas.mood", mood)
+            sensory_tapestry.set_slot("canvas.mood", mood)
             if source != "canvas_weft":
                 canvas_ctl.call_ipc("setMood", mood)
 
@@ -176,11 +176,11 @@ class Canvas(Yarn):
             event = frame.data if isinstance(frame.data, dict) else {}
             if "talking" in event:
                 talking = bool(event["talking"])
-                self.set_slot("canvas.is_talking", talking)
+                sensory_tapestry.set_slot("canvas.is_talking", talking)
                 canvas_ctl.call_ipc("setTalking", "true" if talking else "false")
             if "listening" in event:
                 listening = bool(event["listening"])
-                self.set_slot("canvas.is_listening", listening)
+                sensory_tapestry.set_slot("canvas.is_listening", listening)
                 canvas_ctl.call_ipc("setListening", "true" if listening else "false")
 
         self._sub_tokens = [
@@ -219,12 +219,12 @@ class Canvas(Yarn):
     def on_stream_mood(self, mood: str) -> None:
         """Handle real-time streaming mood attunement from speech/transcription."""
         clean_mood = mood.lower().strip()
-        self.set_slot("canvas.mood", clean_mood)
+        sensory_tapestry.set_slot("canvas.mood", clean_mood)
         elastic.broadcast(
             topic="canvas.mood",
             source="canvas_weft",
             summary=f"Mood changed to {clean_mood}",
-            urgency=EventUrgency.NOTICE,
+            urgency=EventUrgency.AMBIENT,
             data={"mood": clean_mood},
             retained_slot="canvas.mood",
             retained_value=clean_mood,

@@ -144,7 +144,14 @@ async def entrypoint(ctx: JobContext):
 
     # Spontaneous speech listener for system timers, alerts, and proactive sparks
     def on_elastic_event(frame: EventFrame) -> None:
-        if frame.urgency == EventUrgency.AMBIENT or frame.source == "weave":
+        if (
+            frame.urgency == EventUrgency.AMBIENT
+            or frame.source in ("weave", "canvas_weft")
+            or frame.source.endswith("_weft")
+            or frame.topic.startswith("canvas.")
+            or frame.topic.startswith("voice.")
+            or frame.topic.startswith("tapestry.seat.")
+        ):
             return
 
         is_timer = frame.topic == "timer.expired"
