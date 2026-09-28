@@ -67,6 +67,7 @@ class WeaveAgent(Agent):
 async def entrypoint(ctx: JobContext):
     # Enrich log context with room identity
     ctx.log_context_fields = {"room": ctx.room.name}
+    main_loop = asyncio.get_running_loop()
 
     # Prewarm Loom, Shuttle proactivity, and tokenizers off the event loop before connecting audio session
     loom.initialize()
@@ -170,12 +171,16 @@ async def entrypoint(ctx: JobContext):
             f"{'This is a critical flash emergency—be immediate, clear, and direct.' if is_flash else 'Announce this naturally, succinctly, and helpfully in 1-2 spoken sentences.'}"
         )
 
-        asyncio.create_task(
-            session.generate_reply(
-                user_input=prompt_text,
-                instructions=instruction_text,
+        def _trigger_reply():
+            asyncio.create_task(
+                session.generate_reply(
+                    user_input=prompt_text,
+                    instructions=instruction_text,
+                )
             )
-        )
+
+        # Safely schedule on the LiveKit main asyncio loop from any thread
+        main_loop.call_soon_threadsafe(_trigger_reply)
 
     elastic_token = elastic.subscribe("*", on_elastic_event)
 
