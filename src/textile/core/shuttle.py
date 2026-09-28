@@ -114,12 +114,8 @@ class ShuttleEngine:
                     )
                 return
 
-            # Only ALERT and FLASH events or explicit errors build proactivity tension
-            is_critical = (
-                frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
-                or "crash" in frame.summary.lower()
-                or "error" in frame.summary.lower()
-            )
+            # Only ALERT and FLASH events build proactivity tension
+            is_critical = frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
             if is_critical:
                 self.feed_event(
                     source=f"event.{frame.source}",

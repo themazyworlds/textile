@@ -168,9 +168,11 @@ async def entrypoint(ctx: JobContext):
         )
 
         def _trigger_reply():
-            if getattr(session, "user_state", None) == "speaking" or getattr(session, "agent_state", None) == "speaking":
+            user_state = getattr(session, "user_state", None)
+            agent_state = getattr(session, "agent_state", None)
+            if user_state == "speaking" or agent_state in ("speaking", "thinking"):
                 if not is_flash:
-                    logger.debug("Suppressing spontaneous reply during active voice turn")
+                    logger.debug("Suppressing spontaneous reply during active voice turn (agent: %s, user: %s)", agent_state, user_state)
                     return
             try:
                 session.generate_reply(
