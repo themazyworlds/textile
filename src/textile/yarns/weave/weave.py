@@ -142,30 +142,30 @@ async def entrypoint(ctx: JobContext):
                     if txt:
                         loom.process_stream(txt)
 
-    # Spontaneous speech listener: strictly for system errors (ALERT), criticals (FLASH), and timers
+    # Spontaneous speech listener: strictly for user timers and system emergencies
     def on_elastic_event(frame: EventFrame) -> None:
-        # Protocol gate: AMBIENT and NOTICE tiers are purely passive telemetry/blackboard records
-        if frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE):
+        # Ignore internal proactivity sparks, ambient telemetry, and blackboard notices
+        if frame.source == "shuttle" or frame.topic.startswith("shuttle."):
             return
+
+        if frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE, EventUrgency.ALERT):
+            if frame.topic != "timer.expired":
+                return
 
         is_timer = frame.topic == "timer.expired"
-        is_critical = frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
-
-        # Spontaneous speech triggers only on genuine system errors/alerts or user timers
-        if not (is_timer or is_critical):
-            return
-
         is_flash = frame.urgency == EventUrgency.FLASH
 
-        if shuttle.is_quiet() and not (is_flash or is_timer):
+        if not (is_timer or is_flash):
+            return
+
+        if shuttle.is_quiet() and not is_flash:
             return
 
         summary = frame.summary or "System notification"
         ctx_data = frame.data
 
-        prompt_text = f"[System Alert: {summary}]"
         instruction_text = (
-            f"Announce this desktop event succinctly in 1-2 spoken sentences: '{summary}'. "
+            f"Announce this event succinctly to the user in 1 short spoken sentence: '{summary}'. "
             f"Context: {json.dumps(ctx_data) if isinstance(ctx_data, (dict, list)) else ctx_data}."
         )
 
@@ -174,15 +174,13 @@ async def entrypoint(ctx: JobContext):
             agent_state = getattr(session, "agent_state", None)
             if user_state == "speaking" or agent_state in ("speaking", "thinking"):
                 if not is_flash:
-                    logger.debug("Suppressing spontaneous reply during active voice turn (agent: %s, user: %s)", agent_state, user_state)
                     return
             try:
                 session.generate_reply(
-                    user_input=prompt_text,
                     instructions=instruction_text,
                 )
             except Exception as e:
-                logger.warning("Spontaneous reply postponed: %s", e)
+                logger.warning("Spontaneous reply skipped: %s", e)
 
         main_loop.call_soon_threadsafe(_trigger_reply)
 
