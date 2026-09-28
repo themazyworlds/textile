@@ -226,20 +226,6 @@ class ElasticEngine:
         # 4. Deliver in-process immediately
         self._deliver_local(frame)
 
-        # 5. Feed Shuttle Proactivity Engine (if source is not shuttle itself)
-        if clean_source != "shuttle" and not clean_source.startswith("shuttle."):
-            try:
-                from textile.core.shuttle import shuttle
-                shuttle.feed_event(
-                    source=f"{clean_source}.{clean_topic}",
-                    event_type=clean_topic,
-                    data=payload_data,
-                    urgency=parsed_urgency.numeric,
-                    summary=frame.summary,
-                )
-            except Exception as e:
-                logger.debug("Elastic -> Shuttle feed notice ignored: %s", e)
-
         return frame
 
     def _deliver_local(self, frame: EventFrame) -> None:

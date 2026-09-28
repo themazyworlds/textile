@@ -6,6 +6,7 @@ Provides seamless real-time full-duplex voice companion bound to the Textile int
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -21,6 +22,8 @@ from livekit.plugins import google
 from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.loom import loom
 from textile.core.shuttle import shuttle
+
+logger = logging.getLogger(__name__)
 
 _basic_hyphenator: Any = None
 with contextlib.suppress(Exception):
