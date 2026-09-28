@@ -447,6 +447,56 @@ class TestYarnArchitecture(unittest.TestCase):
             self.assertNotIn("-i", disp_arg)
             self.assertNotIn("-c", disp_arg)
 
+    def test_basics_timer_strands(self):
+        import asyncio
+        import time
+        from textile.yarns.basics.basics import Basics
+        from textile.core.warp import WarpEvent, warp
+
+        basics = Basics()
+        events_fired = []
+
+        def _on_expired(data):
+            events_fired.append(data)
+
+        warp.subscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
+
+        async def _run_timer_test():
+            # 1. Invalid duration
+            err = await basics.set_timer(duration_seconds=0, label="bad")
+            self.assertIn("Error", err)
+
+            # 2. Set valid short timer
+            res = await basics.set_timer(duration_seconds=0.05, label="tea ready")
+            self.assertIn("Timer 'tea ready' started", res)
+
+            # 3. Check list_timers
+            active = basics.list_timers()
+            self.assertGreaterEqual(len(active), 1)
+            self.assertEqual(active[0]["label"], "tea ready")
+
+            # 4. Wait for expiration
+            await asyncio.sleep(0.1)
+            self.assertEqual(len(events_fired), 1)
+            self.assertEqual(events_fired[0]["label"], "tea ready")
+
+            # 5. Test cancel_timer
+            cancel_res = await basics.set_timer(duration_seconds=10, label="long timer")
+            timer_id = cancel_res.split("ID: ")[1].rstrip(").")
+            c_out = basics.cancel_timer(timer_id)
+            self.assertIn("successfully cancelled", c_out)
+
+            # Ensure cancelled timer is gone
+            active_after = basics.list_timers()
+            self.assertFalse(any(t["id"] == timer_id for t in active_after))
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_run_timer_test())
+        finally:
+            warp.unsubscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
+            loop.close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,7 @@ class WarpEvent(StrEnum):
     MOOD_CHANGE = "mood.change"
     VOICE_STATE = "voice.state"
     DESKTOP_EVENT = "desktop.event"
+    TIMER_EXPIRED = "timer.expired"
 
 
 Topic = WarpEvent | str

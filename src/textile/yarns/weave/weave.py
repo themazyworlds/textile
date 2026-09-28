@@ -134,6 +134,16 @@ async def entrypoint(ctx: JobContext):
                     text_val = getattr(part, "text", None) or (part if isinstance(part, str) else "")
                     extract_and_apply_mood_tags(text_val)
 
+    def on_timer_expired(payload: Any) -> None:
+        label = payload.get("label", "Timer") if isinstance(payload, dict) else "Timer"
+        asyncio.create_task(
+            session.generate_reply(
+                instructions=f"Spontaneously notify the user in a natural spoken voice that their timer for '{label}' has finished!"
+            )
+        )
+
+    warp.subscribe(WarpEvent.TIMER_EXPIRED, on_timer_expired)
+
     base_persona = (
         "You are Weave, a sovereign Linux desktop companion powered by the Textile intelligence fabric.\n"
         "You have direct protocol-level control over the user's Linux desktop via Twill strands.\n"
