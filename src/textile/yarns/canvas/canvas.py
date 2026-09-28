@@ -256,7 +256,10 @@ class Canvas(Yarn):
 
     @strand(tier="interact")
     def canvas_set_mood(self, mood: str = "neutral") -> str:
-        """Set canvas mood (e.g. neutral, happy, excited, celebrating, thinking, focused, listening).
+        """Set canvas mood for CLI/desktop automation scripts.
+
+        NOTE FOR VOICE AGENTS: Do NOT call this tool during live voice sessions. Emit inline '<mood:...>'
+        tags directly in spoken text instead.
 
         :param mood: Desired mood (e.g. 'neutral', 'happy', 'excited', 'thinking', 'focused', 'listening').
         """
@@ -267,7 +270,10 @@ class Canvas(Yarn):
 
     @strand(tier="interact")
     def canvas_set_expression(self, expression: str = "neutral") -> str:
-        """Set canvas fine-grained expression state.
+        """Set canvas fine-grained expression state for CLI/desktop automation scripts.
+
+        NOTE FOR VOICE AGENTS: Do NOT call this tool during live voice sessions. Emit inline '<mood:...>'
+        tags directly in spoken text instead.
 
         :param expression: Expression name (e.g. 'neutral', 'smile', 'frown', 'blink', 'wide_eyes').
         """
@@ -298,7 +304,10 @@ class Canvas(Yarn):
 
     @strand(tier="interact")
     def canvas_set_gaze(self, x: float = 0.0, y: float = 0.0) -> str:
-        """Set manual canvas eye gaze offsets.
+        """Set manual canvas eye gaze offsets for CLI/desktop automation scripts.
+
+        NOTE FOR VOICE AGENTS: Do NOT call this tool during live voice sessions. Emit inline '<gaze:X,Y>'
+        tags directly in spoken text instead.
 
         :param x: Horizontal gaze offset (-14.0 to 14.0).
         :param y: Vertical gaze offset (-10.0 to 10.0).
