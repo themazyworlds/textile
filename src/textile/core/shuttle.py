@@ -358,7 +358,7 @@ class ShuttleEngine:
             topic="shuttle.spark",
             source="shuttle",
             summary=f"Proactive Spark ({'FLASH' if is_flash else 'RESONANCE'}): {reason}",
-            urgency=EventUrgency.FLASH if is_flash else EventUrgency.ALERT,
+            urgency=EventUrgency.FLASH if is_flash else EventUrgency.NOTICE,
             data=spark_payload,
             retained_slot="shuttle.last_spark",
             retained_value=spark_payload,
