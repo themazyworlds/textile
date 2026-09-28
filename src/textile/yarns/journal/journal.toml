@@ -7,5 +7,4 @@ layer = 50
 description = "Systemd journald logs inspection and query tool"
 
 [dependencies]
-python = ["systemd-python"]
 system = ["journalctl"]
