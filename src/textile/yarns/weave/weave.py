@@ -144,20 +144,14 @@ async def entrypoint(ctx: JobContext):
 
     # Spontaneous speech listener: strictly for system errors (ALERT), criticals (FLASH), and timers
     def on_elastic_event(frame: EventFrame) -> None:
-        if (
-            frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE)
-            or frame.source in ("weave", "canvas_weft")
-            or frame.source.endswith("_weft")
-            or frame.topic.startswith("canvas.")
-            or frame.topic.startswith("voice.")
-            or frame.topic.startswith("tapestry.seat.")
-        ):
+        # Protocol gate: AMBIENT and NOTICE tiers are purely passive telemetry/blackboard records
+        if frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE):
             return
 
         is_timer = frame.topic == "timer.expired"
         is_critical = frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
 
-        # Spontaneous speech triggers only on genuine errors/alerts or user timers
+        # Spontaneous speech triggers only on genuine system errors/alerts or user timers
         if not (is_timer or is_critical):
             return
 

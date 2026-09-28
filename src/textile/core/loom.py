@@ -156,7 +156,7 @@ class Loom:
             topic="loom.tool_start",
             source="loom",
             summary=f"Starting strand '{strand_name}' [{tier_val.upper()}]",
-            urgency=EventUrgency.NOTICE,
+            urgency=EventUrgency.AMBIENT,
             data={"task_id": task_id, "strand": strand_name, "caller": effective_caller, "tier": tier_val},
         )
         t0 = time.perf_counter()

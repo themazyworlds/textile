@@ -94,10 +94,6 @@ class ShuttleEngine:
             if frame.source == "shuttle" or frame.source.startswith("shuttle."):
                 return
 
-            # Ambient events are pure background state/telemetry updates — do not accumulate tension
-            if frame.urgency == EventUrgency.AMBIENT:
-                return
-
             # Tool completion events
             if frame.topic == "loom.tool_done":
                 data = frame.data
@@ -112,6 +108,10 @@ class ShuttleEngine:
                         urgency=0.4,
                         summary=f"Tool '{s_name}' execution failed: {err}",
                     )
+                return
+
+            # Ambient and Notice events are background state/telemetry — do not accumulate tension
+            if frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE):
                 return
 
             # Only ALERT and FLASH events build proactivity tension
