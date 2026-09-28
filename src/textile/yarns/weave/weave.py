@@ -142,10 +142,10 @@ async def entrypoint(ctx: JobContext):
                     if txt:
                         loom.process_stream(txt)
 
-    # Spontaneous speech listener for system timers, alerts, and proactive sparks
+    # Spontaneous speech listener: strictly for system errors (ALERT), criticals (FLASH), and timers
     def on_elastic_event(frame: EventFrame) -> None:
         if (
-            frame.urgency == EventUrgency.AMBIENT
+            frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE)
             or frame.source in ("weave", "canvas_weft")
             or frame.source.endswith("_weft")
             or frame.topic.startswith("canvas.")
@@ -155,12 +155,13 @@ async def entrypoint(ctx: JobContext):
             return
 
         is_timer = frame.topic == "timer.expired"
-        is_spark = frame.topic == "shuttle.spark"
-        is_flash = frame.urgency == EventUrgency.FLASH
-        is_alert = frame.urgency == EventUrgency.ALERT
+        is_critical = frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
 
-        if not (is_timer or is_spark or is_alert or is_flash):
+        # Spontaneous speech triggers only on genuine errors/alerts or user timers
+        if not (is_timer or is_critical):
             return
+
+        is_flash = frame.urgency == EventUrgency.FLASH
 
         if shuttle.is_quiet() and not (is_flash or is_timer):
             return
