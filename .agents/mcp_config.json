@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "twill": {
+      "command": "uv",
+      "args": [
+        "run",
+        "textile",
+        "twill"
+      ]
+    }
+  }
+}

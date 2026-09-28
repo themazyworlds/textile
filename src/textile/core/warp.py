@@ -23,6 +23,8 @@ class WarpEvent(StrEnum):
     VOICE_STATE = "voice.state"
     DESKTOP_EVENT = "desktop.event"
     TIMER_EXPIRED = "timer.expired"
+    SHUTTLE_SPARK = "shuttle.spark"
+    SHUTTLE_QUIET_CHANGED = "shuttle.quiet.changed"
 
 
 Topic = WarpEvent | str

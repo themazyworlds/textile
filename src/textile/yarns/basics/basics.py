@@ -9,6 +9,7 @@ from typing import Any
 
 from textile.core.base import Yarn, strand
 from textile.core.seams import seams
+from textile.core.shuttle import shuttle
 from textile.core.tapestry import core_tapestry, sensory_tapestry
 from textile.core.warp import WarpEvent, warp
 
@@ -117,6 +118,26 @@ class Basics(Yarn):
         if task and not task.done():
             task.cancel()
         return f"Timer '{info['label']}' (ID: {found_id}) successfully cancelled."
+
+    @strand(tier="observe")
+    def shuttle_get_state(self) -> dict[str, Any]:
+        """Get full snapshot of the Shuttle proactivity engine (curiosity level, tension map, inner monologue, quiet status)."""
+        return shuttle.get_state()
+
+    @strand(tier="mutate")
+    def shuttle_set_quiet(self, duration_minutes: float = 15.0, permanent: bool = False) -> str:
+        """Engage quiet mode to hold proactive voice speech for a duration (e.g. 15 minutes) or permanently.
+
+        :param duration_minutes: Duration in minutes to suppress proactive voice speech (default 15.0).
+        :param permanent: Set to true to mute proactive voice indefinitely until explicitly unmuted.
+        """
+        dur_secs = float(duration_minutes) * 60.0 if duration_minutes and not permanent else None
+        return shuttle.set_quiet(duration_seconds=dur_secs, permanent=permanent)
+
+    @strand(tier="mutate")
+    def shuttle_unmute(self) -> str:
+        """Unmute and resume proactive voice and ambient intervention alerts."""
+        return shuttle.unmute()
 
     @strand(tier="observe")
     def textile_get_sensory_state(self) -> dict[str, Any]:

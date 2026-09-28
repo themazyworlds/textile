@@ -497,6 +497,30 @@ class TestYarnArchitecture(unittest.TestCase):
             warp.unsubscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
             loop.close()
 
+    def test_basics_shuttle_strands(self):
+        from textile.yarns.basics.basics import Basics
+
+        basics = Basics()
+
+        # 1. get_state
+        state = basics.shuttle_get_state()
+        self.assertIn("enabled", state)
+        self.assertIn("quiet", state)
+        self.assertIn("curiosity_level", state)
+        self.assertIn("inner_monologue", state)
+
+        # 2. set_quiet
+        res_q = basics.shuttle_set_quiet(duration_minutes=2.0)
+        self.assertIn("quiet mode enabled", res_q.lower())
+        state_q = basics.shuttle_get_state()
+        self.assertTrue(state_q["quiet"])
+
+        # 3. unmute
+        res_u = basics.shuttle_unmute()
+        self.assertIn("unmuted", res_u.lower())
+        state_u = basics.shuttle_get_state()
+        self.assertFalse(state_u["quiet"])
+
 
 if __name__ == "__main__":
     unittest.main()

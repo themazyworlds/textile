@@ -18,6 +18,7 @@ from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import google
 
 from textile.core.loom import loom
+from textile.core.shuttle import shuttle
 from textile.core.warp import WarpEvent, warp
 
 _basic_hyphenator: Any = None
@@ -65,8 +66,9 @@ async def entrypoint(ctx: JobContext):
     # Enrich log context with room identity
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    # Prewarm Loom and tokenizers off the event loop before connecting audio session
+    # Prewarm Loom, Shuttle proactivity, and tokenizers off the event loop before connecting audio session
     loom.initialize()
+    shuttle.initialize()
     if _basic_hyphenator is not None:
         with contextlib.suppress(Exception):
             await asyncio.to_thread(_basic_hyphenator._get_hyphenator)
@@ -142,7 +144,23 @@ async def entrypoint(ctx: JobContext):
             )
         )
 
+    def on_shuttle_spark(payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        reason = payload.get("reason", "Proactive desktop event")
+        raw_data = payload.get("raw_data", {})
+        is_flash = payload.get("is_flash", False)
+
+        prompt_instruction = (
+            f"You are speaking proactively to the user based on real-time desktop intelligence. "
+            f"Event summary: '{reason}'. "
+            f"Context data: {json.dumps(raw_data) if isinstance(raw_data, (dict, list)) else raw_data}. "
+            f"{'This is a high-priority flash alert—be immediate, clear, and direct.' if is_flash else 'Speak naturally, succinctly, and helpfully in 1-2 spoken sentences.'}"
+        )
+        asyncio.create_task(session.generate_reply(instructions=prompt_instruction))
+
     warp.subscribe(WarpEvent.TIMER_EXPIRED, on_timer_expired)
+    warp.subscribe(WarpEvent.SHUTTLE_SPARK, on_shuttle_spark)
 
     base_persona = (
         "You are Weave, a sovereign Linux desktop companion powered by the Textile intelligence fabric.\n"
