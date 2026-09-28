@@ -91,7 +91,11 @@ class ShuttleEngine:
 
         def _on_elastic_event(frame: EventFrame) -> None:
             src = frame.source
-            if src == "shuttle" or src.startswith("shuttle."):
+            if (
+                src in ("shuttle", "weave", "voice", "canvas", "canvas_weft")
+                or src.startswith("shuttle.")
+                or frame.topic in ("voice.state", "canvas.mood", "loom.tool_start")
+            ):
                 return
 
             if frame.topic == "loom.tool_done":

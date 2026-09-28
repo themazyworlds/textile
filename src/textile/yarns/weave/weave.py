@@ -179,8 +179,12 @@ async def entrypoint(ctx: JobContext):
                     extract_and_apply_mood_tags(text_val)
 
     def on_elastic_event(frame: EventFrame) -> None:
-        # Ignore ambient telemetry or internal voice feedback loops
-        if frame.urgency == EventUrgency.AMBIENT or frame.source in ("weave", "voice"):
+        # Ignore ambient telemetry or internal voice / UI feedback loops
+        if (
+            frame.urgency == EventUrgency.AMBIENT
+            or frame.source in ("weave", "voice", "canvas", "canvas_weft")
+            or frame.topic in ("voice.state", "canvas.mood", "loom.tool_start")
+        ):
             return
 
         is_timer_expired = frame.topic == "timer.expired"
@@ -211,10 +215,13 @@ async def entrypoint(ctx: JobContext):
         )
 
         def _trigger_reply():
-            session.generate_reply(
-                user_input=prompt_text,
-                instructions=instruction_text,
-            )
+            try:
+                session.generate_reply(
+                    user_input=prompt_text,
+                    instructions=instruction_text,
+                )
+            except Exception as e:
+                logger.debug("Spontaneous reply skipped or postponed: %s", e)
 
         # Safely schedule on the LiveKit main asyncio loop from any thread
         main_loop.call_soon_threadsafe(_trigger_reply)
