@@ -10,10 +10,36 @@ import threading
 import time
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.tapestry import sensory_tapestry
 
 logger = logging.getLogger(__name__)
+
+
+class SparkPayload(BaseModel):
+    """Represents a proactive resonance spark event triggered by tension or curiosity."""
+    source: str
+    reason: str
+    is_flash: bool = False
+    urgency: float = 0.8
+    timestamp: str = Field(default_factory=lambda: datetime.datetime.now().isoformat())
+    raw_data: Any = Field(default_factory=dict)
+    inner_monologue: list[str] = Field(default_factory=list)
+    suppressed_by_quiet: bool = False
+
+
+class ShuttleState(BaseModel):
+    """Full snapshot of Shuttle engine parameters and state."""
+    enabled: bool = True
+    quiet: bool = False
+    quiet_remaining_seconds: float = 0.0
+    curiosity_level: float = 0.0
+    tension_map: dict[str, float] = Field(default_factory=dict)
+    inner_monologue: list[str] = Field(default_factory=list)
+    last_spark: SparkPayload | dict[str, Any] | None = None
+    idle_seconds: float = 0.0
 
 
 class ShuttleEngine:
@@ -317,16 +343,17 @@ class ShuttleEngine:
         self._tension_map.pop(source, None)
         self._curiosity_level = max(0.0, self._curiosity_level - 0.5)
 
-        spark_payload = {
-            "source": source,
-            "reason": reason,
-            "is_flash": is_flash,
-            "urgency": urgency,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "raw_data": data if isinstance(data, (dict, list, str, int, float, bool)) else str(data),
-            "inner_monologue": list(self._monologue_history[-5:]),
-            "suppressed_by_quiet": self.is_quiet(),
-        }
+        spark_model = SparkPayload(
+            source=source,
+            reason=reason,
+            is_flash=is_flash,
+            urgency=urgency,
+            timestamp=datetime.datetime.now().isoformat(),
+            raw_data=data if isinstance(data, (dict, list, str, int, float, bool)) else str(data),
+            inner_monologue=list(self._monologue_history[-5:]),
+            suppressed_by_quiet=self.is_quiet(),
+        )
+        spark_payload = spark_model.model_dump()
 
         sensory_tapestry.set_slot("shuttle.last_spark", spark_payload)
         sensory_tapestry.set_slot("shuttle.curiosity_level", round(self._curiosity_level, 3))
@@ -372,16 +399,17 @@ class ShuttleEngine:
                 except (ValueError, TypeError):
                     pass
 
-            return {
-                "enabled": self.is_enabled(),
-                "quiet": self.is_quiet(),
-                "quiet_remaining_seconds": remaining_quiet,
-                "curiosity_level": self.curiosity_level,
-                "tension_map": dict(self._tension_map),
-                "inner_monologue": list(self._monologue_history),
-                "last_spark": sensory_tapestry.get_slot("shuttle.last_spark"),
-                "idle_seconds": round(now - self._last_event_time, 1),
-            }
+            state = ShuttleState(
+                enabled=self.is_enabled(),
+                quiet=self.is_quiet(),
+                quiet_remaining_seconds=remaining_quiet,
+                curiosity_level=self.curiosity_level,
+                tension_map=dict(self._tension_map),
+                inner_monologue=list(self._monologue_history),
+                last_spark=sensory_tapestry.get_slot("shuttle.last_spark"),
+                idle_seconds=round(now - self._last_event_time, 1),
+            )
+            return state.model_dump()
 
 
 shuttle = ShuttleEngine()

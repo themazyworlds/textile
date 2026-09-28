@@ -7,23 +7,25 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from textile.core.base import STRAND_EXEC_ERRORS
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class Transaction:
+class Transaction(BaseModel):
     """Represents a completed strand execution transaction with an optional rollback handler."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     strand_name: str
-    parameters: dict[str, Any]
-    transaction_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    transaction_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     rollback_handler: Callable[[], Any] | None = None
-    pre_state: dict[str, Any] = field(default_factory=dict)
+    pre_state: dict[str, Any] = Field(default_factory=dict)
     result_data: Any = None
 
 

@@ -7,10 +7,11 @@ import logging
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from textile.core.base import validate_strand_schema
 from textile.core.loom import loom
@@ -19,7 +20,7 @@ from textile.core.skein import skein
 logger = logging.getLogger(__name__)
 
 
-class DependencyType(Enum):
+class DependencyType(StrEnum):
     SYSTEM_BINARY = "system_binary"
     DEVICE_NODE = "device_node"
     SOCKET_PATH = "socket_path"
@@ -27,15 +28,14 @@ class DependencyType(Enum):
     ENV_VARIABLE = "env_variable"
 
 
-class HealthStatus(Enum):
+class HealthStatus(StrEnum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     CRITICAL = "critical"
     DISABLED = "disabled"
 
 
-@dataclass
-class DependencyCheck:
+class DependencyCheck(BaseModel):
     """Represents a single system requirement checked for a yarn."""
     dep_type: DependencyType
     target: str
@@ -44,8 +44,7 @@ class DependencyCheck:
     is_optional: bool = False
 
 
-@dataclass
-class StrandIntegrityReport:
+class StrandIntegrityReport(BaseModel):
     """Integrity report for a single Strand."""
     strand_name: str
     yarn_name: str
@@ -55,22 +54,35 @@ class StrandIntegrityReport:
     mcp_compatible: bool
     is_active_provider: bool
     overridden_by: str | None = None
-    validation_errors: list[str] = field(default_factory=list)
+    validation_errors: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class YarnIntegrityReport:
+class YarnIntegrityReport(BaseModel):
     """Comprehensive integrity report for a yarn."""
     yarn_name: str
-    version: str
-    layer: int
-    is_enabled: bool
-    is_available: bool
-    health_status: HealthStatus
-    dependencies: list[DependencyCheck] = field(default_factory=list)
-    strands_report: list[StrandIntegrityReport] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    version: str = "1.0.0"
+    layer: int = 10
+    is_enabled: bool = True
+    is_available: bool = True
+    health_status: HealthStatus = HealthStatus.HEALTHY
+    dependencies: list[DependencyCheck] = Field(default_factory=list)
+    strands_report: list[StrandIntegrityReport] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AuditSummary(BaseModel):
+    total_yarns: int = 0
+    healthy_yarns: int = 0
+    degraded_yarns: int = 0
+    critical_yarns: int = 0
+    disabled_yarns: int = 0
+    total_active_strands: int = 0
+
+
+class SystemAuditReport(BaseModel):
+    summary: AuditSummary
+    yarns: list[YarnIntegrityReport] = Field(default_factory=list)
 
 
 class SeamOrchestrator:
@@ -324,39 +336,18 @@ class SeamOrchestrator:
         disabled = sum(1 for r in reports if r.health_status == HealthStatus.DISABLED)
         total_strands = len(l_inst._strand_to_yarn)
 
-        return {
-            "summary": {
-                "total_yarns": total_yarns,
-                "healthy_yarns": healthy,
-                "degraded_yarns": degraded,
-                "critical_yarns": critical,
-                "disabled_yarns": disabled,
-                "total_active_strands": total_strands,
-            },
-            "yarns": [
-                {
-                    "name": r.yarn_name,
-                    "version": r.version,
-                    "layer": r.layer,
-                    "health": r.health_status.value,
-                    "is_available": r.is_available,
-                    "is_enabled": r.is_enabled,
-                    "strands_count": len(r.strands_report),
-                    "dependencies": [
-                        {
-                            "type": d.dep_type.value,
-                            "target": d.target,
-                            "satisfied": d.is_satisfied,
-                            "details": d.details,
-                        }
-                        for d in r.dependencies
-                    ],
-                    "errors": r.errors,
-                    "warnings": r.warnings,
-                }
-                for r in reports
-            ],
-        }
+        audit_report = SystemAuditReport(
+            summary=AuditSummary(
+                total_yarns=total_yarns,
+                healthy_yarns=healthy,
+                degraded_yarns=degraded,
+                critical_yarns=critical,
+                disabled_yarns=disabled,
+                total_active_strands=total_strands,
+            ),
+            yarns=reports,
+        )
+        return audit_report.model_dump()
 
     def record_strand_execution(self, strand_name: str, success: bool, error: str | None = None) -> None:
         if success:

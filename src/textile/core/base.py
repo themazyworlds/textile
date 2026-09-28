@@ -19,7 +19,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, get_type_hints
 
-from pydantic import BaseModel, Field, ValidationError, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from textile.core.elastic import EventUrgency, elastic
 from textile.core.errors import TextileError
@@ -116,21 +116,22 @@ def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list
     return create_model(f"{strand_name}_Args", **fields)
 
 
-@dataclass
-class Strand:
+class Strand(BaseModel):
     """Represents a single callable tool/strand exposed by a yarn."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
     description: str
-    parameters: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
     handler: Callable[[dict[str, Any]], str] | None = None
-    required: list[str] = field(default_factory=list)
+    required: list[str] = Field(default_factory=list)
     raw_handler: Callable[[dict[str, Any]], Any] | None = None
     capability: str | None = None
     args_schema: type[BaseModel] | None = None
     tier: CapabilityTier = CapabilityTier.INTERACT
     isolated: bool = False
-    resources: list[str] = field(default_factory=list)
+    resources: list[str] = Field(default_factory=list)
 
     def to_mcp_definition(self) -> dict[str, Any]:
         """Convert strand schema into Model Context Protocol format."""
@@ -154,9 +155,10 @@ class Strand:
         }
 
 
-@dataclass
-class Weft:
+class Weft(BaseModel):
     """Represents a streaming semantic token interceptor / attunement declared by a yarn."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
     pattern: re.Pattern
@@ -166,7 +168,7 @@ class Weft:
     handler: Callable[..., Any] | None = None
     raw_handler: Callable[..., Any] | None = None
     args_schema: type[BaseModel] | None = None
-    param_names: list[str] = field(default_factory=list)
+    param_names: list[str] = Field(default_factory=list)
 
     def execute_match(self, match: re.Match) -> Any:
         """Execute weft attunement handler with regex match extracted arguments coerced with Pydantic."""
