@@ -55,18 +55,20 @@ class ShuttleEngine:
         decay_rate: float = 0.05,
         curiosity_drift_rate: float = 0.02,
         idle_timeout_seconds: float = 20.0,
+        spark_cooldown: float = 60.0,
     ):
         self.spark_threshold = spark_threshold
         self.decay_rate = decay_rate
         self.curiosity_drift_rate = curiosity_drift_rate
         self.idle_timeout_seconds = idle_timeout_seconds
+        self.spark_cooldown = spark_cooldown
 
         self._lock = threading.RLock()
         self._curiosity_level: float = 0.0
         self._tension_map: dict[str, float] = {}
         self._monologue_history: list[str] = []
         self._last_event_time: float = time.time()
-        self._last_spark_time: float = time.time()
+        self._last_spark_time: float = 0.0
         self._initialized: bool = False
         self._sub_token: str | None = None
 
@@ -270,7 +272,10 @@ class ShuttleEngine:
             self._curiosity_level = min(1.0, self._curiosity_level + urgency * 0.4)
             sensory_tapestry.set_slot("shuttle.curiosity_level", round(self._curiosity_level, 3))
 
-            if new_tension >= self.spark_threshold or self._curiosity_level >= self.spark_threshold:
+            spark_cooldown = self.spark_cooldown
+            can_spark = (now - self._last_spark_time) >= spark_cooldown
+
+            if (new_tension >= self.spark_threshold or self._curiosity_level >= self.spark_threshold) and can_spark:
                 return self._fire_spark(
                     source=src_clean,
                     reason=f"Compounding tension on '{src_clean}' reached resonance ({round(new_tension, 2)})",

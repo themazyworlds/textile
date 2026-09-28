@@ -98,9 +98,12 @@ async def entrypoint(ctx: JobContext):
         turn_detection="realtime_llm",
     )
 
-    # Broadcast voice speaking/listening states to Canvas UI via Elastic
+    pending_proactive_instruction: str | None = None
+
+    # Broadcast voice speaking/listening states to Canvas UI via Elastic and drain pending proactive notices
     @session.on("agent_state_changed")
     def on_agent_state_changed(ev):
+        nonlocal pending_proactive_instruction
         state = getattr(ev, "new_state", None)
         talking = state == "speaking"
         listening = state == "listening"
@@ -114,10 +117,24 @@ async def entrypoint(ctx: JobContext):
             retained_value=talking,
         )
 
+        # When agent finishes speaking and enters listening, deliver any queued proactive notice smoothly
+        if state == "listening" and pending_proactive_instruction:
+            user_state = getattr(session, "user_state", None)
+            if user_state != "speaking":
+                queued = pending_proactive_instruction
+                pending_proactive_instruction = None
+                try:
+                    session.generate_reply(instructions=queued)
+                except Exception as e:
+                    logger.debug("Queued proactive reply notice: %s", e)
+
     @session.on("user_state_changed")
     def on_user_state_changed(ev):
+        nonlocal pending_proactive_instruction
         state = getattr(ev, "new_state", None)
         if state == "speaking":
+            # Clear pending proactive notice if user starts speaking to prioritize user turn
+            pending_proactive_instruction = None
             elastic.broadcast(
                 topic="voice.state",
                 source="weave",
@@ -142,20 +159,18 @@ async def entrypoint(ctx: JobContext):
                     if txt:
                         loom.process_stream(txt)
 
-    # Spontaneous speech listener: strictly for user timers and system emergencies
+    # Spontaneous speech listener: strictly for user timers, system emergencies, and valid proactive sparks
     def on_elastic_event(frame: EventFrame) -> None:
-        # Ignore internal proactivity sparks, ambient telemetry, and blackboard notices
-        if frame.source == "shuttle" or frame.topic.startswith("shuttle."):
-            return
-
-        if frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE, EventUrgency.ALERT):
+        nonlocal pending_proactive_instruction
+        if frame.urgency in (EventUrgency.AMBIENT, EventUrgency.NOTICE):
             if frame.topic != "timer.expired":
                 return
 
         is_timer = frame.topic == "timer.expired"
         is_flash = frame.urgency == EventUrgency.FLASH
+        is_alert = frame.urgency == EventUrgency.ALERT
 
-        if not (is_timer or is_flash):
+        if not (is_timer or is_flash or is_alert):
             return
 
         if shuttle.is_quiet() and not is_flash:
@@ -165,20 +180,28 @@ async def entrypoint(ctx: JobContext):
         ctx_data = frame.data
 
         instruction_text = (
-            f"Announce this event succinctly to the user in 1 short spoken sentence: '{summary}'. "
+            f"Deliver this announcement succinctly to the user in 1 short spoken sentence: '{summary}'. "
             f"Context: {json.dumps(ctx_data) if isinstance(ctx_data, (dict, list)) else ctx_data}."
         )
 
         def _trigger_reply():
+            nonlocal pending_proactive_instruction
             user_state = getattr(session, "user_state", None)
             agent_state = getattr(session, "agent_state", None)
+
+            # If agent or user is active, queue the notice to speak smoothly right after current turn finishes
             if user_state == "speaking" or agent_state in ("speaking", "thinking"):
-                if not is_flash:
-                    return
+                if is_flash:
+                    try:
+                        session.generate_reply(instructions=instruction_text)
+                    except Exception as e:
+                        logger.warning("Flash emergency reply failed: %s", e)
+                else:
+                    pending_proactive_instruction = instruction_text
+                return
+
             try:
-                session.generate_reply(
-                    instructions=instruction_text,
-                )
+                session.generate_reply(instructions=instruction_text)
             except Exception as e:
                 logger.warning("Spontaneous reply skipped: %s", e)
 
