@@ -18,11 +18,30 @@ logger = logging.getLogger(__name__)
 ACTIVE_TIMERS: dict[str, dict[str, Any]] = {}
 
 
+def _sync_timers_to_tapestry() -> list[dict[str, Any]]:
+    """Synchronize active timer state directly to the Tapestry sensory blackboard."""
+    now = time.time()
+    timers = []
+    for tid, info in list(ACTIVE_TIMERS.items()):
+        remaining = max(0.0, round(info["end_time"] - now, 1))
+        timers.append({
+            "id": tid,
+            "label": info["label"],
+            "duration_seconds": info["duration_seconds"],
+            "remaining_seconds": remaining,
+            "start_time": info["start_time"],
+            "end_time": info["end_time"],
+        })
+    sensory_tapestry.set_slot("timers.active", timers)
+    return timers
+
+
 async def _timer_worker(timer_id: str, label: str, duration_seconds: float, end_time: float) -> None:
     try:
         sleep_dur = max(0.0, end_time - time.time())
         await asyncio.sleep(sleep_dur)
         ACTIVE_TIMERS.pop(timer_id, None)
+        _sync_timers_to_tapestry()
         payload = {
             "id": timer_id,
             "label": label,
@@ -33,7 +52,7 @@ async def _timer_worker(timer_id: str, label: str, duration_seconds: float, end_
         sensory_tapestry.stitch(
             level="info",
             source="basics",
-            message=f"Timer '{label}' finished ({duration_seconds}s).",
+            message=f"Timer '{label}' (ID: {timer_id}) finished ({duration_seconds}s).",
             data=payload,
         )
     except asyncio.CancelledError:
@@ -49,24 +68,29 @@ class Basics(Yarn):
         return True
 
     @strand(tier="interact")
-    async def set_timer(self, duration_seconds: float, label: str = "Timer") -> str:
+    async def set_timer(self, duration_seconds: float, label: str = "Timer", timer_id: str | None = None) -> str:
         """Set a countdown timer that publishes an alert and notifies Weave when it expires.
 
         :param duration_seconds: Timer duration in seconds (e.g., 60 for 1 minute, 900 for 15 minutes).
         :param label: Descriptive label or reminder text (e.g., 'check oven', 'take a break').
+        :param timer_id: Optional custom identifier for the timer (auto-generated if omitted).
         """
         dur = float(duration_seconds)
         if dur <= 0:
             return "Error: Timer duration must be greater than 0 seconds."
 
         clean_label = str(label or "Timer").strip()
-        timer_id = str(uuid.uuid4())[:8]
+        tid = str(timer_id or "").strip() or str(uuid.uuid4())[:8]
+        if tid in ACTIVE_TIMERS:
+            # If specified ID already exists, append unique suffix
+            tid = f"{tid}-{str(uuid.uuid4())[:4]}"
+
         start_time = time.time()
         end_time = start_time + dur
 
-        task = asyncio.create_task(_timer_worker(timer_id, clean_label, dur, end_time))
-        ACTIVE_TIMERS[timer_id] = {
-            "id": timer_id,
+        task = asyncio.create_task(_timer_worker(tid, clean_label, dur, end_time))
+        ACTIVE_TIMERS[tid] = {
+            "id": tid,
             "label": clean_label,
             "duration_seconds": dur,
             "start_time": start_time,
@@ -77,22 +101,20 @@ class Basics(Yarn):
         mins = int(dur // 60)
         secs = int(dur % 60)
         dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-        return f"Timer '{clean_label}' started for {dur_str} (ID: {timer_id})."
+
+        _sync_timers_to_tapestry()
+        sensory_tapestry.stitch(
+            level="info",
+            source="basics",
+            message=f"Timer '{clean_label}' started for {dur_str} (ID: {tid}).",
+            data={"id": tid, "label": clean_label, "duration_seconds": dur, "end_time": end_time},
+        )
+        return f"Timer '{clean_label}' started for {dur_str} (ID: {tid})."
 
     @strand(tier="observe")
     def list_timers(self) -> list[dict[str, Any]]:
         """List all currently active countdown timers with remaining time."""
-        now = time.time()
-        timers = []
-        for tid, info in list(ACTIVE_TIMERS.items()):
-            remaining = max(0.0, round(info["end_time"] - now, 1))
-            timers.append({
-                "id": tid,
-                "label": info["label"],
-                "duration_seconds": info["duration_seconds"],
-                "remaining_seconds": remaining,
-            })
-        return timers
+        return _sync_timers_to_tapestry()
 
     @strand(tier="mutate")
     def cancel_timer(self, timer_id: str) -> str:
@@ -117,6 +139,14 @@ class Basics(Yarn):
         task = info.get("task")
         if task and not task.done():
             task.cancel()
+
+        _sync_timers_to_tapestry()
+        sensory_tapestry.stitch(
+            level="info",
+            source="basics",
+            message=f"Timer '{info['label']}' (ID: {found_id}) cancelled.",
+            data={"id": found_id, "label": info["label"]},
+        )
         return f"Timer '{info['label']}' (ID: {found_id}) successfully cancelled."
 
     @strand(tier="observe")

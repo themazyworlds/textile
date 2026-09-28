@@ -137,10 +137,19 @@ async def entrypoint(ctx: JobContext):
                     extract_and_apply_mood_tags(text_val)
 
     def on_timer_expired(payload: Any) -> None:
-        label = payload.get("label", "Timer") if isinstance(payload, dict) else "Timer"
+        if not isinstance(payload, dict):
+            return
+        label = payload.get("label", "Timer")
+        dur = float(payload.get("duration_seconds", 0))
+        mins = int(dur // 60)
+        secs = int(dur % 60)
+        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
         asyncio.create_task(
             session.generate_reply(
-                instructions=f"Spontaneously notify the user in a natural spoken voice that their timer for '{label}' has finished!"
+                instructions=(
+                    f"Spontaneously notify the user in a friendly, conversational spoken voice "
+                    f"that their timer '{label}' ({dur_str}) has finished!"
+                )
             )
         )
 

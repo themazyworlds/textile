@@ -450,8 +450,9 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_basics_timer_strands(self):
         import asyncio
         import time
-        from textile.yarns.basics.basics import Basics
+        from textile.core.tapestry import sensory_tapestry
         from textile.core.warp import WarpEvent, warp
+        from textile.yarns.basics.basics import Basics
 
         basics = Basics()
         events_fired = []
@@ -459,42 +460,56 @@ class TestYarnArchitecture(unittest.TestCase):
         def _on_expired(data):
             events_fired.append(data)
 
-        warp.subscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
+        cb = warp.subscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
 
         async def _run_timer_test():
             # 1. Invalid duration
             err = await basics.set_timer(duration_seconds=0, label="bad")
             self.assertIn("Error", err)
 
-            # 2. Set valid short timer
-            res = await basics.set_timer(duration_seconds=0.05, label="tea ready")
-            self.assertIn("Timer 'tea ready' started", res)
+            # 2. Set multiple timers (one with auto-id, one with custom id)
+            res1 = await basics.set_timer(duration_seconds=0.05, label="tea ready", timer_id="tea_01")
+            self.assertIn("tea_01", res1)
 
-            # 3. Check list_timers
+            res2 = await basics.set_timer(duration_seconds=10, label="oven check", timer_id="oven_01")
+            self.assertIn("oven_01", res2)
+
+            res3 = await basics.set_timer(duration_seconds=20, label="workout")
+            self.assertIn("started", res3)
+
+            # 3. Check list_timers and sensory_tapestry slot "timers.active"
             active = basics.list_timers()
-            self.assertGreaterEqual(len(active), 1)
-            self.assertEqual(active[0]["label"], "tea ready")
+            self.assertGreaterEqual(len(active), 3)
+            slot_timers = sensory_tapestry.get_slot("timers.active")
+            self.assertIsNotNone(slot_timers)
+            self.assertGreaterEqual(len(slot_timers), 3)
+            self.assertTrue(any(t["id"] == "tea_01" for t in slot_timers))
+            self.assertTrue(any(t["id"] == "oven_01" for t in slot_timers))
 
-            # 4. Wait for expiration
+            # 4. Wait for tea_01 expiration
             await asyncio.sleep(0.1)
             self.assertEqual(len(events_fired), 1)
+            self.assertEqual(events_fired[0]["id"], "tea_01")
             self.assertEqual(events_fired[0]["label"], "tea ready")
 
-            # 5. Test cancel_timer
-            cancel_res = await basics.set_timer(duration_seconds=10, label="long timer")
-            timer_id = cancel_res.split("ID: ")[1].rstrip(").")
-            c_out = basics.cancel_timer(timer_id)
+            # 5. Cancel oven timer
+            c_out = basics.cancel_timer("oven_01")
             self.assertIn("successfully cancelled", c_out)
 
-            # Ensure cancelled timer is gone
-            active_after = basics.list_timers()
-            self.assertFalse(any(t["id"] == timer_id for t in active_after))
+            # Ensure cancelled and expired timers are removed from Tapestry slot
+            slot_after = sensory_tapestry.get_slot("timers.active")
+            self.assertFalse(any(t["id"] == "tea_01" for t in slot_after))
+            self.assertFalse(any(t["id"] == "oven_01" for t in slot_after))
+
+            # Clean up remaining timer
+            for t in list(basics.list_timers()):
+                basics.cancel_timer(t["id"])
 
         loop = asyncio.new_event_loop()
         try:
             loop.run_until_complete(_run_timer_test())
         finally:
-            warp.unsubscribe(WarpEvent.TIMER_EXPIRED, _on_expired)
+            warp.unsubscribe(WarpEvent.TIMER_EXPIRED, cb)
             loop.close()
 
     def test_basics_shuttle_strands(self):
