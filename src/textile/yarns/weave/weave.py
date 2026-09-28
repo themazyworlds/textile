@@ -21,7 +21,6 @@ from livekit.plugins import google
 from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.loom import loom
 from textile.core.shuttle import shuttle
-from textile.core.warp import WarpEvent, warp
 
 _basic_hyphenator: Any = None
 with contextlib.suppress(Exception):
@@ -108,24 +107,64 @@ async def entrypoint(ctx: JobContext):
         turn_detection="realtime_llm",
     )
 
-    # Event handlers connecting LiveKit voice stream to Textile Canvas UI asynchronously via Warp pub/sub
+    # Event handlers connecting LiveKit voice stream to Textile Canvas UI asynchronously via Elastic
     @session.on("agent_state_changed")
     def on_agent_state_changed(ev):
         state = getattr(ev, "new_state", None)
         if state == "speaking":
-            warp.publish(WarpEvent.VOICE_STATE, {"talking": True, "listening": False})
+            elastic.broadcast(
+                topic="voice.state",
+                source="weave",
+                summary="Agent speaking",
+                urgency=EventUrgency.NOTICE,
+                data={"talking": True, "listening": False},
+                retained_slot="canvas.is_talking",
+                retained_value=True,
+            )
         elif state == "thinking":
-            warp.publish(WarpEvent.VOICE_STATE, {"talking": False})
+            elastic.broadcast(
+                topic="voice.state",
+                source="weave",
+                summary="Agent thinking",
+                urgency=EventUrgency.NOTICE,
+                data={"talking": False},
+                retained_slot="canvas.is_talking",
+                retained_value=False,
+            )
         elif state == "listening":
-            warp.publish(WarpEvent.VOICE_STATE, {"listening": True, "talking": False})
+            elastic.broadcast(
+                topic="voice.state",
+                source="weave",
+                summary="Agent listening",
+                urgency=EventUrgency.NOTICE,
+                data={"listening": True, "talking": False},
+                retained_slot="canvas.is_listening",
+                retained_value=True,
+            )
         elif state in ("idle", "initializing", None):
-            warp.publish(WarpEvent.VOICE_STATE, {"talking": False})
+            elastic.broadcast(
+                topic="voice.state",
+                source="weave",
+                summary="Agent idle",
+                urgency=EventUrgency.NOTICE,
+                data={"talking": False},
+                retained_slot="canvas.is_talking",
+                retained_value=False,
+            )
 
     @session.on("user_state_changed")
     def on_user_state_changed(ev):
         state = getattr(ev, "new_state", None)
         if state == "speaking":
-            warp.publish(WarpEvent.VOICE_STATE, {"listening": True, "talking": False})
+            elastic.broadcast(
+                topic="voice.state",
+                source="weave",
+                summary="User speaking",
+                urgency=EventUrgency.NOTICE,
+                data={"listening": True, "talking": False},
+                retained_slot="canvas.is_listening",
+                retained_value=True,
+            )
 
     @session.on("conversation_item_added")
     def on_conversation_item_added(ev):

@@ -19,7 +19,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from textile.core.tapestry import NoticeLevel, sensory_tapestry
-from textile.core.warp import warp
 
 logger = logging.getLogger(__name__)
 
@@ -227,10 +226,7 @@ class ElasticEngine:
         # 4. Deliver in-process immediately
         self._deliver_local(frame)
 
-        # 5. Forward to Warp for legacy pubsub listeners
-        warp.publish(clean_topic, frame.model_dump())
-
-        # 6. Feed Shuttle Proactivity Engine (if source is not shuttle itself)
+        # 5. Feed Shuttle Proactivity Engine (if source is not shuttle itself)
         if clean_source != "shuttle" and not clean_source.startswith("shuttle."):
             try:
                 from textile.core.shuttle import shuttle
@@ -374,13 +370,14 @@ class ElasticEngine:
             retained_value=value,
         )
 
-    # Aliases for developer convenience
-    request_seat = occupy_seat
-    set_slot = occupy_seat
-
     def get_slot(self, slot: str, default: Any = None) -> Any:
         """Read a retained seat / slot from the Tapestry blackboard."""
         return sensory_tapestry.get_slot(slot, default)
+
+    # Aliases for developer convenience
+    request_seat = occupy_seat
+    set_slot = occupy_seat
+    get_seat = get_slot
 
     def get_state(self) -> dict[str, Any]:
         """Get full snapshot of the Tapestry blackboard state (slots and recent notices)."""

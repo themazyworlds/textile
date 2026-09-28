@@ -1,6 +1,6 @@
 """
 Textile Shuttle - Autonomous Proactivity & Ambient Cognition Engine.
-Translates real-time Tapestry state deltas and Warp events into spontaneous cognition,
+Translates real-time Tapestry state deltas and Elastic events into spontaneous cognition,
 tension resonance, curiosity drift, and governed desktop interventions.
 """
 
@@ -10,8 +10,8 @@ import threading
 import time
 from typing import Any
 
+from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.tapestry import sensory_tapestry
-from textile.core.warp import WarpEvent, warp
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,10 @@ class ShuttleEngine:
         self._last_event_time: float = time.time()
         self._last_spark_time: float = time.time()
         self._initialized: bool = False
-        self._sub_tokens: list[tuple[str, Any]] = []
+        self._sub_token: str | None = None
 
     def initialize(self) -> None:
-        """Initialize engine, sync default Tapestry state slots, and subscribe to Warp events."""
+        """Initialize engine, sync default Tapestry state slots, and subscribe to Elastic events."""
         with self._lock:
             if self._initialized:
                 return
@@ -57,77 +57,72 @@ class ShuttleEngine:
             if sensory_tapestry.get_slot("shuttle.curiosity_level") is None:
                 sensory_tapestry.set_slot("shuttle.curiosity_level", 0.0)
 
-            self._subscribe_warp()
+            self._subscribe_elastic()
             self._initialized = True
 
-    def _subscribe_warp(self) -> None:
-        """Attach automatic event listeners to the Warp event bus."""
+    def _subscribe_elastic(self) -> None:
+        """Attach automatic event listeners to the Elastic event bus."""
 
-        def _on_notice(data: Any):
-            if not isinstance(data, dict):
+        def _on_elastic_event(frame: EventFrame) -> None:
+            src = frame.source
+            if src == "shuttle" or src.startswith("shuttle."):
                 return
-            src = str(data.get("source", "system"))
-            if src == "shuttle" or src.startswith("shuttle.") or src.startswith("notice.shuttle"):
-                return
-            lvl = str(data.get("level", "INFO")).upper()
-            msg = str(data.get("message", ""))
-            notice_data = data.get("data", {})
 
-            if lvl in ("CRIT", "EMERG", "ALERT", "ERROR") or "crash" in msg.lower() or "error" in msg.lower():
+            if frame.topic == "loom.tool_done":
+                data = frame.data
+                s_name = data.get("strand", "tool")
+                if s_name.startswith("shuttle_") or s_name == "shuttle":
+                    return
+                success = data.get("success", True)
+                err = data.get("error")
+                if not success:
+                    self.feed_event(
+                        source=f"tool.{s_name}",
+                        event_type="tool_failure",
+                        data=data,
+                        urgency=0.4,
+                        summary=f"Tool '{s_name}' execution failed: {err}",
+                    )
+                else:
+                    self.feed_event(
+                        source=f"tool.{s_name}",
+                        event_type="tool_success",
+                        data=data,
+                        urgency=0.1,
+                        summary=f"Executed tool '{s_name}' successfully",
+                    )
+                return
+
+            is_critical = (
+                frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
+                or "crash" in frame.summary.lower()
+                or "error" in frame.summary.lower()
+            )
+            if is_critical:
                 self.feed_event(
-                    source=f"notice.{src}",
-                    event_type="error",
-                    data={"level": lvl, "message": msg, **notice_data},
-                    urgency=1.0,
-                    summary=f"Critical error/notice from {src}: {msg}",
+                    source=f"event.{src}",
+                    event_type="alert",
+                    data=frame.data,
+                    urgency=1.0 if frame.urgency == EventUrgency.FLASH else 0.8,
+                    summary=frame.summary or f"Critical event from {src}",
                 )
             else:
                 self.feed_event(
-                    source=f"notice.{src}",
+                    source=f"event.{src}",
                     event_type="notice",
-                    data={"level": lvl, "message": msg, **notice_data},
+                    data=frame.data,
                     urgency=0.2,
-                    summary=f"Notice from {src}: {msg}",
+                    summary=frame.summary or f"Event '{frame.topic}' from {src}",
                 )
 
-        def _on_tool_done(data: Any):
-            if not isinstance(data, dict):
-                return
-            s_name = data.get("strand_name", "tool")
-            if s_name.startswith("shuttle_") or s_name == "shuttle":
-                return
-            success = data.get("success", True)
-            err = data.get("error")
-            if not success:
-                self.feed_event(
-                    source=f"tool.{s_name}",
-                    event_type="tool_failure",
-                    data=data,
-                    urgency=0.4,
-                    summary=f"Tool '{s_name}' execution failed: {err}",
-                )
-            else:
-                self.feed_event(
-                    source=f"tool.{s_name}",
-                    event_type="tool_success",
-                    data=data,
-                    urgency=0.1,
-                    summary=f"Executed tool '{s_name}' successfully",
-                )
-
-        for topic in ("tapestry.info", "tapestry.warning", "tapestry.error", "tapestry.crit", "tapestry.emerg"):
-            cb = warp.subscribe(topic, _on_notice)
-            self._sub_tokens.append((topic, cb))
-
-        cb_tool = warp.subscribe(WarpEvent.TOOL_EXECUTION_DONE, _on_tool_done)
-        self._sub_tokens.append((WarpEvent.TOOL_EXECUTION_DONE, cb_tool))
+        self._sub_token = elastic.subscribe("*", _on_elastic_event)
 
     def close(self) -> None:
-        """Unsubscribe from Warp event bus and clear subscriptions."""
+        """Unsubscribe from Elastic event bus and clear subscriptions."""
         with self._lock:
-            for topic, cb in self._sub_tokens:
-                warp.unsubscribe(topic, cb)
-            self._sub_tokens.clear()
+            if self._sub_token:
+                elastic.unsubscribe(self._sub_token)
+                self._sub_token = None
             self._initialized = False
 
     # --- Governor Controls ---
@@ -152,7 +147,15 @@ class ShuttleEngine:
                         return True
                     else:
                         sensory_tapestry.set_slot("shuttle.quiet_until", None)
-                        warp.publish(WarpEvent.SHUTTLE_QUIET_CHANGED, {"quiet": False, "reason": "expired"})
+                        elastic.broadcast(
+                            topic="shuttle.quiet_changed",
+                            source="shuttle",
+                            summary="Shuttle quiet mode expired",
+                            urgency=EventUrgency.NOTICE,
+                            data={"quiet": False, "reason": "expired"},
+                            retained_slot="shuttle.quiet",
+                            retained_value=False,
+                        )
                 except (ValueError, TypeError):
                     sensory_tapestry.set_slot("shuttle.quiet_until", None)
 
@@ -164,16 +167,29 @@ class ShuttleEngine:
             if permanent or duration_seconds is None or duration_seconds <= 0:
                 sensory_tapestry.set_slot("shuttle.quiet", True)
                 sensory_tapestry.set_slot("shuttle.quiet_until", None)
-                warp.publish(WarpEvent.SHUTTLE_QUIET_CHANGED, {"quiet": True, "permanent": True})
+                elastic.broadcast(
+                    topic="shuttle.quiet_changed",
+                    source="shuttle",
+                    summary="Shuttle quiet mode enabled indefinitely",
+                    urgency=EventUrgency.NOTICE,
+                    data={"quiet": True, "permanent": True},
+                    retained_slot="shuttle.quiet",
+                    retained_value=True,
+                )
                 return "Shuttle quiet mode enabled indefinitely (unmute anytime with shuttle_unmute)."
             else:
                 until_ts = time.time() + float(duration_seconds)
                 sensory_tapestry.set_slot("shuttle.quiet", False)
                 sensory_tapestry.set_slot("shuttle.quiet_until", until_ts)
                 mins = round(duration_seconds / 60, 1)
-                warp.publish(
-                    WarpEvent.SHUTTLE_QUIET_CHANGED,
-                    {"quiet": True, "until": until_ts, "duration_seconds": duration_seconds},
+                elastic.broadcast(
+                    topic="shuttle.quiet_changed",
+                    source="shuttle",
+                    summary=f"Shuttle quiet mode enabled for {mins} minutes",
+                    urgency=EventUrgency.NOTICE,
+                    data={"quiet": True, "until": until_ts, "duration_seconds": duration_seconds},
+                    retained_slot="shuttle.quiet",
+                    retained_value=True,
                 )
                 return f"Shuttle quiet mode enabled for {mins} minutes."
 
@@ -182,7 +198,15 @@ class ShuttleEngine:
         with self._lock:
             sensory_tapestry.set_slot("shuttle.quiet", False)
             sensory_tapestry.set_slot("shuttle.quiet_until", None)
-            warp.publish(WarpEvent.SHUTTLE_QUIET_CHANGED, {"quiet": False, "reason": "manual_unmute"})
+            elastic.broadcast(
+                topic="shuttle.quiet_changed",
+                source="shuttle",
+                summary="Shuttle quiet mode unmuted",
+                urgency=EventUrgency.NOTICE,
+                data={"quiet": False, "reason": "manual_unmute"},
+                retained_slot="shuttle.quiet",
+                retained_value=False,
+            )
             return "Shuttle proactivity unmuted and active."
 
     # --- Tension, Curiosity & Monologue ---
@@ -319,7 +343,15 @@ class ShuttleEngine:
             )
             return spark_payload
 
-        warp.publish(WarpEvent.SHUTTLE_SPARK, spark_payload)
+        elastic.broadcast(
+            topic="shuttle.spark",
+            source="shuttle",
+            summary=f"Proactive Spark ({'FLASH' if is_flash else 'RESONANCE'}): {reason}",
+            urgency=EventUrgency.FLASH if is_flash else EventUrgency.ALERT,
+            data=spark_payload,
+            retained_slot="shuttle.last_spark",
+            retained_value=spark_payload,
+        )
         sensory_tapestry.stitch(
             level="info" if is_flash else "notice",
             source="shuttle",

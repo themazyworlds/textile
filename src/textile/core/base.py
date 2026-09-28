@@ -21,10 +21,10 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, ValidationError, create_model
 
+from textile.core.elastic import EventUrgency, elastic
 from textile.core.errors import TextileError
 from textile.core.sandbox import BubblewrapSandbox
 from textile.core.tapestry import sensory_tapestry
-from textile.core.warp import warp
 
 logger = logging.getLogger(__name__)
 
@@ -558,30 +558,46 @@ class Yarn(ABC):
         return list(self.python_dependencies)
 
     @property
-    def warp(self):
-        """Universal Pub/Sub sensory and event bus."""
-        return warp
+    def elastic(self):
+        """Universal cross-process event and sensory bus."""
+        return elastic
 
     @property
     def tapestry(self):
         """Universal live state & sensory blackboard."""
         return sensory_tapestry
 
-    def publish_event(self, topic: Any, data: Any = None) -> None:
-        """Publish a real-time streaming event to Warp."""
-        self.warp.publish(topic, data)
+    def publish_event(
+        self,
+        topic: str,
+        data: Any = None,
+        summary: str = "",
+        urgency: EventUrgency = EventUrgency.NOTICE,
+        retained_slot: str | None = None,
+        retained_value: Any = None,
+    ) -> None:
+        """Publish a real-time event to Elastic."""
+        self.elastic.broadcast(
+            topic=str(topic),
+            source=self.name,
+            summary=summary or f"Event '{topic}' from yarn '{self.name}'",
+            urgency=urgency,
+            data=data if isinstance(data, dict) else {"payload": data},
+            retained_slot=retained_slot,
+            retained_value=retained_value,
+        )
 
     def stitch(self, level: str, message: str, data: dict[str, Any] | None = None) -> Any:
         """Stitch a structured notice/alert into the Tapestry sensory blackboard."""
         return self.tapestry.stitch(level=level, source=self.name, message=message, data=data)
 
     def set_slot(self, key: str, value: Any) -> None:
-        """Set a retained domain state slot in the Tapestry blackboard."""
-        self.tapestry.set_slot(key, value)
+        """Set a retained domain state slot in Elastic and Tapestry."""
+        self.elastic.occupy_seat(key, value, source=self.name)
 
     def get_slot(self, key: str, default: Any = None) -> Any:
-        """Get a retained domain state slot from the Tapestry blackboard."""
-        return self.tapestry.get_slot(key, default)
+        """Get a retained domain state slot from Elastic."""
+        return self.elastic.get_seat(key, default)
 
     def get_dependencies(self) -> list[dict[str, Any]]:
         return getattr(self, "dependencies", [])

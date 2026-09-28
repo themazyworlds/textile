@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from textile.core.base import Yarn, strand, weft
+from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.tapestry import sensory_tapestry
-from textile.core.warp import WarpEvent
 
 logger = logging.getLogger(__name__)
 
@@ -155,8 +155,8 @@ class Canvas(Yarn):
         return bool(shutil.which("quickshell") or shutil.which("qs"))
 
     def on_load(self) -> None:
-        def _on_tool_start(data: Any) -> None:
-            event = data if isinstance(data, dict) else {}
+        def _on_tool_start(frame: EventFrame) -> None:
+            event = frame.data if isinstance(frame.data, dict) else {}
             tier = str(event.get("tier", "") or "").lower()
             strand = str(event.get("strand", "") or "")
             # Passive read-only OBSERVE strands and internal Canvas UI strands do not trigger ripples
@@ -164,16 +164,16 @@ class Canvas(Yarn):
                 return
             canvas_ctl.call_ipc("triggerRipple")
 
-        def _on_mood_change(data: Any) -> None:
-            event = data if isinstance(data, dict) else {}
-            source = event.get("source", "")
-            mood = str(event.get("mood", "neutral") if isinstance(data, dict) else data).lower().strip()
+        def _on_mood_change(frame: EventFrame) -> None:
+            event = frame.data if isinstance(frame.data, dict) else {}
+            source = frame.source
+            mood = str(event.get("mood", "neutral") if isinstance(frame.data, dict) else frame.data).lower().strip()
             self.set_slot("canvas.mood", mood)
             if source != "canvas_weft":
                 canvas_ctl.call_ipc("setMood", mood)
 
-        def _on_voice_state(data: Any) -> None:
-            event = data if isinstance(data, dict) else {}
+        def _on_voice_state(frame: EventFrame) -> None:
+            event = frame.data if isinstance(frame.data, dict) else {}
             if "talking" in event:
                 talking = bool(event["talking"])
                 self.set_slot("canvas.is_talking", talking)
@@ -183,13 +183,11 @@ class Canvas(Yarn):
                 self.set_slot("canvas.is_listening", listening)
                 canvas_ctl.call_ipc("setListening", "true" if listening else "false")
 
-        self._on_tool_start = _on_tool_start
-        self._on_mood_change = _on_mood_change
-        self._on_voice_state = _on_voice_state
-
-        self.warp.subscribe(WarpEvent.TOOL_EXECUTION_START, self._on_tool_start)
-        self.warp.subscribe(WarpEvent.MOOD_CHANGE, self._on_mood_change)
-        self.warp.subscribe(WarpEvent.VOICE_STATE, self._on_voice_state)
+        self._sub_tokens = [
+            elastic.subscribe("loom.tool_start", _on_tool_start),
+            elastic.subscribe("canvas.mood", _on_mood_change),
+            elastic.subscribe("voice.state", _on_voice_state),
+        ]
 
         # Auto-launch Canvas UI window when yarn is active and available (unless in test suite)
         if (
@@ -201,12 +199,10 @@ class Canvas(Yarn):
             canvas_ctl.launch()
 
     def on_unload(self) -> None:
-        if hasattr(self, "_on_tool_start"):
-            self.warp.unsubscribe(WarpEvent.TOOL_EXECUTION_START, self._on_tool_start)
-        if hasattr(self, "_on_mood_change"):
-            self.warp.unsubscribe(WarpEvent.MOOD_CHANGE, self._on_mood_change)
-        if hasattr(self, "_on_voice_state"):
-            self.warp.unsubscribe(WarpEvent.VOICE_STATE, self._on_voice_state)
+        if hasattr(self, "_sub_tokens"):
+            for tok in self._sub_tokens:
+                elastic.unsubscribe(tok)
+            self._sub_tokens.clear()
         # Close canvas on yarn unload / disable
         if canvas_ctl.is_running():
             canvas_ctl.close()
@@ -222,7 +218,15 @@ class Canvas(Yarn):
         """Handle real-time streaming mood attunement from speech/transcription."""
         clean_mood = mood.lower().strip()
         self.set_slot("canvas.mood", clean_mood)
-        self.publish_event(WarpEvent.MOOD_CHANGE, {"mood": clean_mood, "source": "canvas_weft"})
+        elastic.broadcast(
+            topic="canvas.mood",
+            source="canvas_weft",
+            summary=f"Mood changed to {clean_mood}",
+            urgency=EventUrgency.NOTICE,
+            data={"mood": clean_mood},
+            retained_slot="canvas.mood",
+            retained_value=clean_mood,
+        )
         canvas_ctl.call_ipc("setMood", clean_mood)
 
     @weft(

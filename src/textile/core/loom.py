@@ -13,9 +13,9 @@ from typing import Any
 
 from textile.core.base import LAYER_BASE, Strand, Weft, Yarn
 from textile.core.context import OriginToken, verify_security_policy
+from textile.core.elastic import EventUrgency, elastic
 from textile.core.skein import Skein, skein
 from textile.core.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
-from textile.core.warp import WarpEvent, warp
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +152,12 @@ class Loom:
             trust_level=trust_val,
             tainted=token.tainted,
         )
-        warp.publish(
-            WarpEvent.TOOL_EXECUTION_START,
-            {"task_id": task_id, "strand": strand_name, "caller": effective_caller, "tier": tier_val},
+        elastic.broadcast(
+            topic="loom.tool_start",
+            source="loom",
+            summary=f"Starting strand '{strand_name}' [{tier_val.upper()}]",
+            urgency=EventUrgency.NOTICE,
+            data={"task_id": task_id, "strand": strand_name, "caller": effective_caller, "tier": tier_val},
         )
         t0 = time.perf_counter()
         success = True
@@ -187,14 +190,18 @@ class Loom:
                     "tainted": token.tainted,
                 },
             )
-            warp.publish(
-                WarpEvent.TOOL_EXECUTION_DONE,
-                {
+            elastic.broadcast(
+                topic="loom.tool_done",
+                source="loom",
+                summary=msg,
+                urgency=EventUrgency.NOTICE if success else EventUrgency.ALERT,
+                data={
                     "task_id": task_id,
                     "strand": strand_name,
                     "success": success,
                     "duration_ms": dur,
                     "caller": effective_caller,
+                    "error": err,
                 },
             )
 

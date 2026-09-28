@@ -1,9 +1,9 @@
 import time
 import unittest
 
+from textile.core.elastic import EventFrame, elastic
 from textile.core.shuttle import ShuttleEngine
 from textile.core.tapestry import sensory_tapestry
-from textile.core.warp import WarpEvent, warp
 
 
 class TestShuttleEngine(unittest.TestCase):
@@ -38,10 +38,10 @@ class TestShuttleEngine(unittest.TestCase):
 
         sparks = []
 
-        def _on_spark(data):
-            sparks.append(data)
+        def _on_spark(frame: EventFrame):
+            sparks.append(frame.data)
 
-        cb = warp.subscribe(WarpEvent.SHUTTLE_SPARK, _on_spark)
+        tok = elastic.subscribe("shuttle.spark", _on_spark)
         try:
             res = engine.feed_event(
                 source="journal.coredump",
@@ -57,17 +57,17 @@ class TestShuttleEngine(unittest.TestCase):
             self.assertEqual(len(sparks), 1)
             self.assertEqual(sparks[0]["source"], "journal.coredump")
         finally:
-            warp.unsubscribe(WarpEvent.SHUTTLE_SPARK, cb)
+            elastic.unsubscribe(tok)
 
     def test_tension_compounding_and_resonance_spark(self):
         engine = self._create_engine(spark_threshold=0.6)
 
         sparks = []
 
-        def _on_spark(data):
-            sparks.append(data)
+        def _on_spark(frame: EventFrame):
+            sparks.append(frame.data)
 
-        cb = warp.subscribe(WarpEvent.SHUTTLE_SPARK, _on_spark)
+        tok = elastic.subscribe("shuttle.spark", _on_spark)
         try:
             # Event 1 (urgency 0.25) -> tension 0.25
             r1 = engine.feed_event(
@@ -104,7 +104,7 @@ class TestShuttleEngine(unittest.TestCase):
             self.assertGreaterEqual(r3["urgency"], 0.6)
             self.assertEqual(len(sparks), 1)
         finally:
-            warp.unsubscribe(WarpEvent.SHUTTLE_SPARK, cb)
+            elastic.unsubscribe(tok)
 
     def test_tension_decay_on_tick(self):
         engine = self._create_engine(decay_rate=0.1)
@@ -155,10 +155,10 @@ class TestShuttleEngine(unittest.TestCase):
 
         quiet_events = []
 
-        def _on_quiet(data):
-            quiet_events.append(data)
+        def _on_quiet(frame: EventFrame):
+            quiet_events.append(frame.data)
 
-        cb = warp.subscribe(WarpEvent.SHUTTLE_QUIET_CHANGED, _on_quiet)
+        tok_quiet = elastic.subscribe("shuttle.quiet_changed", _on_quiet)
         try:
             # 1. Timed quiet mode
             msg = engine.set_quiet(duration_seconds=300)
@@ -170,14 +170,14 @@ class TestShuttleEngine(unittest.TestCase):
             # 2. Normal resonance spark suppressed
             sparks = []
 
-            def _on_spark(data):
-                sparks.append(data)
+            def _on_spark(frame: EventFrame):
+                sparks.append(frame.data)
 
-            cb_spark = warp.subscribe(WarpEvent.SHUTTLE_SPARK, _on_spark)
+            tok_spark = elastic.subscribe("shuttle.spark", _on_spark)
             try:
                 # Accumulate tension to threshold
                 engine.feed_event(source="app.notice", event_type="notice", data={}, urgency=0.9)
-                # Should not be published to Warp because quiet mode is active
+                # Should not be published to Elastic because quiet mode is active
                 self.assertEqual(len(sparks), 0)
 
                 # 3. Flash alert still fires even in quiet mode
@@ -191,7 +191,7 @@ class TestShuttleEngine(unittest.TestCase):
                 self.assertEqual(len(sparks), 1)
                 self.assertTrue(sparks[0]["is_flash"])
             finally:
-                warp.unsubscribe(WarpEvent.SHUTTLE_SPARK, cb_spark)
+                elastic.unsubscribe(tok_spark)
 
             # 4. Unmute
             unmute_msg = engine.unmute()
@@ -200,7 +200,7 @@ class TestShuttleEngine(unittest.TestCase):
             self.assertEqual(len(quiet_events), 2)
             self.assertFalse(quiet_events[1]["quiet"])
         finally:
-            warp.unsubscribe(WarpEvent.SHUTTLE_QUIET_CHANGED, cb)
+            elastic.unsubscribe(tok_quiet)
 
     def test_quiet_mode_auto_expiration(self):
         engine = self._create_engine()

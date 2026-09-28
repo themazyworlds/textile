@@ -16,7 +16,7 @@ class OriginType(StrEnum):
     """Classification of intent input origin."""
     LOCAL_VOICE = "local_voice"            # Local microphone audio voice stream (High Trust)
     LOCAL_SEAT = "local_seat"              # Local keyboard/UI shortcut or terminal (High Trust)
-    SYSTEM_INTERNAL = "system_internal"    # Native Textile system event or Warp bus (Medium Trust)
+    SYSTEM_INTERNAL = "system_internal"    # Native Textile system event or Elastic bus (Medium Trust)
     EXTERNAL_UNTRUSTED = "external_untrusted" # Web scraping, external files, email, network payloads (Zero Trust)
 
 

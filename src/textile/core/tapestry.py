@@ -17,8 +17,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from textile.core.warp import warp
-
 logger = logging.getLogger(__name__)
 
 
@@ -361,9 +359,6 @@ class SensoryTapestry:
                     json.dumps(notice.data),
                 ),
             )
-
-        with contextlib.suppress(AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
-            warp.publish(f"tapestry.{lvl.value.lower()}", notice.model_dump())
 
         return notice
 
