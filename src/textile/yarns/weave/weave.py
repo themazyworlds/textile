@@ -5,6 +5,7 @@ Provides seamless real-time full-duplex voice companion bound to the Textile int
 
 import asyncio
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -145,6 +146,11 @@ async def entrypoint(ctx: JobContext):
         is_timer_expired = frame.topic == "timer.expired"
         is_flash = frame.urgency == EventUrgency.FLASH
         is_spark = frame.topic == "shuttle.spark"
+        is_alert = frame.urgency == EventUrgency.ALERT
+
+        # Only speak spontaneously on timer expirations, proactive sparks, alerts, or flash emergencies
+        if not (is_timer_expired or is_spark or is_alert or is_flash):
+            return
 
         # Quiet mode suppresses idle curiosity sparks, but intentional timers and flash alerts always speak
         if shuttle.is_quiet() and not (is_flash or is_timer_expired):
@@ -157,7 +163,7 @@ async def entrypoint(ctx: JobContext):
             summary = frame.summary
             raw_ctx = frame.data
 
-        prompt_text = f"[System Notification: {summary}]"
+        prompt_text = f"[System Alert: {summary}]"
         instruction_text = (
             f"You are speaking spontaneously to the user based on real-time desktop intelligence. "
             f"Event: '{summary}'. Context: {json.dumps(raw_ctx) if isinstance(raw_ctx, (dict, list)) else raw_ctx}. "
