@@ -179,12 +179,8 @@ async def entrypoint(ctx: JobContext):
                     extract_and_apply_mood_tags(text_val)
 
     def on_elastic_event(frame: EventFrame) -> None:
-        # Ignore ambient telemetry or internal voice / UI feedback loops
-        if (
-            frame.urgency == EventUrgency.AMBIENT
-            or frame.source in ("weave", "voice", "canvas", "canvas_weft")
-            or frame.topic in ("voice.state", "canvas.mood", "loom.tool_start")
-        ):
+        # Ignore ambient events and self-emitted voice events to prevent loops
+        if frame.urgency == EventUrgency.AMBIENT or frame.source in ("weave", "voice"):
             return
 
         is_timer_expired = frame.topic == "timer.expired"
@@ -215,13 +211,18 @@ async def entrypoint(ctx: JobContext):
         )
 
         def _trigger_reply():
+            # If user or agent is actively speaking, avoid turn collision on non-critical events
+            if getattr(session, "user_state", None) == "speaking" or getattr(session, "agent_state", None) == "speaking":
+                if not is_flash:
+                    logger.debug("Suppressing spontaneous reply while voice turn is active")
+                    return
             try:
                 session.generate_reply(
                     user_input=prompt_text,
                     instructions=instruction_text,
                 )
             except Exception as e:
-                logger.debug("Spontaneous reply skipped or postponed: %s", e)
+                logger.warning("Spontaneous reply skipped or postponed: %s", e)
 
         # Safely schedule on the LiveKit main asyncio loop from any thread
         main_loop.call_soon_threadsafe(_trigger_reply)

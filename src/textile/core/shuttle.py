@@ -90,19 +90,18 @@ class ShuttleEngine:
         """Attach automatic event listeners to the Elastic event bus."""
 
         def _on_elastic_event(frame: EventFrame) -> None:
-            src = frame.source
-            if (
-                src in ("shuttle", "weave", "voice", "canvas", "canvas_weft")
-                or src.startswith("shuttle.")
-                or frame.topic in ("voice.state", "canvas.mood", "loom.tool_start")
-            ):
+            # Ignore self-emitted events to prevent recursive loops
+            if frame.source == "shuttle" or frame.source.startswith("shuttle."):
                 return
 
+            # Ambient events are pure background state/telemetry updates — do not accumulate tension
+            if frame.urgency == EventUrgency.AMBIENT:
+                return
+
+            # Tool completion events
             if frame.topic == "loom.tool_done":
                 data = frame.data
                 s_name = data.get("strand", "tool")
-                if s_name.startswith("shuttle_") or s_name == "shuttle":
-                    return
                 success = data.get("success", True)
                 err = data.get("error")
                 if not success:
@@ -113,16 +112,9 @@ class ShuttleEngine:
                         urgency=0.4,
                         summary=f"Tool '{s_name}' execution failed: {err}",
                     )
-                else:
-                    self.feed_event(
-                        source=f"tool.{s_name}",
-                        event_type="tool_success",
-                        data=data,
-                        urgency=0.1,
-                        summary=f"Executed tool '{s_name}' successfully",
-                    )
                 return
 
+            # Only ALERT and FLASH events or explicit errors build proactivity tension
             is_critical = (
                 frame.urgency in (EventUrgency.ALERT, EventUrgency.FLASH)
                 or "crash" in frame.summary.lower()
@@ -130,19 +122,11 @@ class ShuttleEngine:
             )
             if is_critical:
                 self.feed_event(
-                    source=f"event.{src}",
+                    source=f"event.{frame.source}",
                     event_type="alert",
                     data=frame.data,
                     urgency=1.0 if frame.urgency == EventUrgency.FLASH else 0.8,
-                    summary=frame.summary or f"Critical event from {src}",
-                )
-            else:
-                self.feed_event(
-                    source=f"event.{src}",
-                    event_type="notice",
-                    data=frame.data,
-                    urgency=0.2,
-                    summary=frame.summary or f"Event '{frame.topic}' from {src}",
+                    summary=frame.summary or f"Critical event from {frame.source}",
                 )
 
         self._sub_token = elastic.subscribe("*", _on_elastic_event)
