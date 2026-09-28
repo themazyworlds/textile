@@ -142,11 +142,12 @@ async def entrypoint(ctx: JobContext):
         if frame.urgency == EventUrgency.AMBIENT or frame.source in ("weave", "voice"):
             return
 
-        # Only speak proactively on sparks, alerts, or critical flash notices
+        is_timer_expired = frame.topic == "timer.expired"
         is_flash = frame.urgency == EventUrgency.FLASH
         is_spark = frame.topic == "shuttle.spark"
 
-        if shuttle.is_quiet() and not is_flash:
+        # Quiet mode suppresses idle curiosity sparks, but intentional timers and flash alerts always speak
+        if shuttle.is_quiet() and not (is_flash or is_timer_expired):
             return
 
         if is_spark:
@@ -156,14 +157,19 @@ async def entrypoint(ctx: JobContext):
             summary = frame.summary
             raw_ctx = frame.data
 
-        prompt_instruction = (
-            f"You are speaking proactively to the user based on real-time desktop intelligence. "
-            f"Event topic: '{frame.topic}' from '{frame.source}'. "
-            f"Summary: '{summary}'. "
-            f"Context: {json.dumps(raw_ctx) if isinstance(raw_ctx, (dict, list)) else raw_ctx}. "
-            f"{'This is a high-priority flash alert—be immediate, clear, and direct.' if is_flash else 'Speak naturally, succinctly, and helpfully in 1-2 spoken sentences.'}"
+        prompt_text = f"[System Notification: {summary}]"
+        instruction_text = (
+            f"You are speaking spontaneously to the user based on real-time desktop intelligence. "
+            f"Event: '{summary}'. Context: {json.dumps(raw_ctx) if isinstance(raw_ctx, (dict, list)) else raw_ctx}. "
+            f"{'This is a critical flash emergency—be immediate, clear, and direct.' if is_flash else 'Announce this naturally, succinctly, and helpfully in 1-2 spoken sentences.'}"
         )
-        asyncio.create_task(session.generate_reply(instructions=prompt_instruction))
+
+        asyncio.create_task(
+            session.generate_reply(
+                user_input=prompt_text,
+                instructions=instruction_text,
+            )
+        )
 
     elastic_token = elastic.subscribe("*", on_elastic_event)
 
