@@ -10,18 +10,20 @@
 
 https://github.com/user-attachments/assets/291ad11e-f4ad-48ff-933b-03c0285b8933
 
-A layered Linux engine for realtime voice companions, MCP tools, and desktop automation.
+A sovereign, layered Linux automation fabric for real-time voice companions, MCP tools, and desktop intelligence.
 
 ---
 
 ## Features
 
-- **MCP Server (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, and other MCP clients over stdio.
-- **Voice Companion (`Weave`)**: Hands-free voice interface using LiveKit and Gemini Realtime for low-latency audio interaction.
-- **Subprocess Isolation**: Dangerous system calls (`MUTATE`, `SYSTEM_EXEC`) run in isolated worker subprocesses to protect the main runtime.
-- **Plugin System (`Yarns` & `@strand`)**: Decorate Python functions with `@strand` to generate Pydantic schemas and register tools automatically.
-- **Layered Dispatch**: Override default tools across layers (10 to 150) to customize system behavior without editing core code.
-- **Canvas UI**: Optional GTK / Wayland overlay for visual feedback, facial expressions, and agent status.
+- **Model Context Protocol (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, and any MCP client over stdio.
+- **Autonomous Voice Companion (`Weave`)**: Full-duplex conversational voice interface using LiveKit and Gemini Realtime with spontaneous cognition.
+- **Event & Sensory Fabric (`Elastic`)**: Unified cross-process event bus with urgency tiers, retained slot management, and SQLite WAL IPC synchronization.
+- **Cognition & Proactivity (`Shuttle`)**: Two-speed tension resonance (Flash vs. Curiosity drift) that allows Weave to speak spontaneously when system events occur.
+- **Capability Plugins (`Yarns`, `@strand` & `@weft`)**: Decorate Python methods with `@strand` for tools and `@weft` for real-time streaming token interception with Pydantic v2 validation.
+- **Layered Dispatch (`Loom`)**: Prioritized layer dispatch (10 to 150) allowing specialized compositors/session managers to override lower OS fallbacks cleanly.
+- **Subprocess & Desk Isolation**: Sandboxed execution and reversible transaction undo stack for high-impact mutations.
+- **Canvas UI**: Quickshell Wayland overlay for dynamic emotive expressions, mood animations, and visual presence.
 
 ---
 
@@ -32,8 +34,8 @@ A layered Linux engine for realtime voice companions, MCP tools, and desktop aut
 - **Google Gemini API Key** (required for Weave voice agent):
   ```bash
   export GOOGLE_API_KEY="your-gemini-api-key"
-
   ```
+
 - **LiveKit CLI (`lk`)** (required for Weave interactive console and dev modes):
   ```bash
   # Arch Linux
@@ -101,9 +103,9 @@ uv run textile call clipboard_get
 
 ---
 
-## Authoring Plugins (`Yarns` & `@strand`)
+## Authoring Plugins (`Yarns`, `@strand` & `@weft`)
 
-Subclass `Yarn` alongside a declarative static `.toml` manifest to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered across the runtime and MCP:
+Subclass `Yarn` alongside a declarative static `.toml` manifest to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered as callable tools; methods decorated with `@weft` intercept streaming speech tokens in real time:
 
 ### 1. `media_control.toml` (Manifest)
 ```toml
@@ -123,7 +125,8 @@ system = ["playerctl"]           # System packages/binaries required on the host
 
 ### 2. `media_control.py` (Implementation)
 ```python
-from textile import Yarn, strand
+from textile import Yarn, strand, weft
+from textile.core.elastic import EventUrgency, elastic
 
 class CustomMediaYarn(Yarn):
     @strand(tier="interact")
@@ -140,7 +143,16 @@ class CustomMediaYarn(Yarn):
 
         :param level: Volume level between 0 and 100.
         """
+        elastic.occupy_seat("media.volume", level, source="media_control")
         return f"Volume set to {level}%"
+
+    @weft(
+        pattern=r"<volume:(?P<level>\d+)>",
+        description="Stream attunement to set audio volume inline while speaking (e.g. <volume:80>)."
+    )
+    def on_stream_volume(self, level: int) -> None:
+        """Real-time streaming token interceptor with automatic Pydantic coercion."""
+        self.set_volume(level)
 ```
 
 ---
@@ -153,13 +165,13 @@ class CustomMediaYarn(Yarn):
 | **Skein** | Plugin Registry | Discovers entrypoints, loads dynamic plugins, and manages lifecycle states. |
 | **Yarn** | Capability Module | Base class grouping related system capabilities and protocol implementations. |
 | **Strand** | Tool Definition | Callable function with Pydantic v2 argument validation and capability tiering. |
-| **Weft** | Stream Interceptor | Real-time token pattern matcher for streaming conversational output. |
-| **Warp** | Event Broker | Asynchronous pub/sub event distribution system for system state and UI events. |
-| **Tapestry** | State Store | In-memory key-value ledger for active context, notices, and session state. |
+| **Weft** | Stream Interceptor | Real-time token pattern matcher with Pydantic argument coercion for streaming conversational output. |
+| **Elastic** | Event Fabric | Universal cross-process event bus and sensory blackboard with SQLite WAL sync and urgency tiers. |
+| **Tapestry** | State Store | Persistent SQLite ledger for sensory notices, blackboard slots, and audit history. |
+| **Shuttle** | Proactive Cognition | Spontaneous cognition engine managing tension decay, curiosity drift, and flash alerts. |
 | **Twill** | MCP Server | Standard Model Context Protocol (stdio) interface for AI assistants. |
-| **Seams** | Health Diagnostics | Dependency resolution, conflict detection, and diagnostic audit engine. |
-| **Weave** | Voice Client | Embedded voice companion implemented as an MCP client powered by LiveKit and Gemini. |
-
+| **Seams** | Health Diagnostics | Pydantic-powered dependency resolution, conflict detection, and diagnostic audit engine. |
+| **Weave** | Voice Companion | Full-duplex conversational agent powered by LiveKit and Gemini Realtime with automatic alert awakening. |
 
 ---
 
