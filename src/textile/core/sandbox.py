@@ -187,7 +187,7 @@ class BubblewrapBuilder:
     """Builder pattern for constructing Bubblewrap (bwrap) execution arguments cleanly."""
 
     def __init__(self, bwrap_path: str):
-        self.args: list[str] = [bwrap_path]
+        self.args: list[str] = [bwrap_path, "--clearenv"]
 
     def bind_system_base(self) -> "BubblewrapBuilder":
         self.args.extend(["--ro-bind", "/usr", "/usr"])
