@@ -117,4 +117,5 @@ class PrivilegedDesk(MutateDesk):
     Object Capability Desk for PRIVILEGED tier strands.
     Requires verified high-trust local seat authentication.
     """
+
     pass

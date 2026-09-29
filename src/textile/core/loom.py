@@ -14,6 +14,8 @@ from typing import Any
 from textile.core.base import LAYER_BASE, Strand, Weft, Yarn
 from textile.core.context import OriginToken, verify_security_policy
 from textile.core.elastic import EventUrgency, elastic
+from textile.core.fabric import core_fabric_yarn
+from textile.core.seams import seams
 from textile.core.skein import Skein, skein
 from textile.core.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
 
@@ -46,7 +48,12 @@ class Loom:
         new_strand_map: dict[str, Yarn] = {}
         new_cap_map: dict[str, tuple[Strand, Yarn]] = {}
 
-        # Higher layer yarns override lower layers
+        # 1. Register Core Fabric native strands (Layer 0 foundation)
+        for strand in core_fabric_yarn.get_strands():
+            new_strands[strand.name] = strand
+            new_strand_map[strand.name] = core_fabric_yarn
+
+        # 2. Higher layer yarns override lower layers
         for yarn in sorted(new_active.values(), key=lambda p: getattr(p, "layer", LAYER_BASE)):
             try:
                 for strand in yarn.get_strands():
@@ -91,8 +98,7 @@ class Loom:
             s
             for name, s in self.strands.items()
             if not (
-                self._strand_to_yarn.get(name)
-                and self.get_strand_override_status(s, self._strand_to_yarn[name])[0]
+                self._strand_to_yarn.get(name) and self.get_strand_override_status(s, self._strand_to_yarn[name])[0]
             )
         ]
 
@@ -334,12 +340,11 @@ class Loom:
         if weft_docs:
             header += (
                 "## Real-Time Streaming Semantic Attunements\n"
-                "You are strongly encouraged to emit inline semantic tags during speech for real-time desktop attunement:\n"
-                + "\n".join(weft_docs)
-                + "\n"
+                "You are strongly encouraged to emit inline semantic tags during speech "
+                "for real-time desktop attunement:\n" + "\n".join(weft_docs) + "\n"
             )
         return header
 
 
 loom = Loom()
-
+seams.set_loom(loom)

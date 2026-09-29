@@ -78,7 +78,14 @@ def create_twill_server() -> Server:
             res_text = await loom.execute(name, arguments or {}, caller=effective_caller, origin_token=token)
             return [types.TextContent(type="text", text=str(res_text))]
         except (
-            AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError, PermissionError
+            AttributeError,
+            TypeError,
+            ValueError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TimeoutError,
+            PermissionError,
         ) as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
 
@@ -88,7 +95,7 @@ def create_twill_server() -> Server:
 async def run_twill_async():
     """Run standard IO Twill server transport using official MCP SDK."""
     if sys.stdin.isatty():
-        sys.stderr.write("⚡ Textile Twill • Model Context Protocol (MCP) server listening on stdio (JSON-RPC)...\n")
+        sys.stderr.write("   Textile Twill • Model Context Protocol (MCP) server listening on stdio (JSON-RPC)...\n")
         sys.stderr.write("   Ready for connections from MCP clients (Claude, Antigravity, Cursor, etc.)\n")
         sys.stderr.write("   Press Ctrl+C to terminate.\n")
         sys.stderr.flush()

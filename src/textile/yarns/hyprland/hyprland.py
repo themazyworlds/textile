@@ -88,20 +88,6 @@ class HyprlandIPC:
         ws_literal = json.dumps(str(workspace).strip())
         return self.dispatch(f"hl.dsp.focus({{ workspace = {ws_literal} }})")
 
-    @staticmethod
-    def _detect_terminal() -> str:
-        return detect_terminal()
-
-    @staticmethod
-    def _detect_shell() -> str:
-        user_shell = os.environ.get("SHELL", "")
-        if user_shell and shutil.which(user_shell):
-            return user_shell
-        for sh in ("zsh", "bash", "fish", "sh"):
-            if shutil.which(sh):
-                return sh
-        return "/bin/sh"
-
     def exit_session(self) -> str:
         return self.dispatch("exit")
 
@@ -457,11 +443,8 @@ class HyprlandIPC:
     def exec_app(self, app: str, is_tui: bool = False, title: str | None = None) -> str:
         app_clean = app.strip()
         if is_tui:
-            term = self._detect_terminal()
-            if title:
-                cmd = f"{term} -T {title} -e {app_clean}"
-            else:
-                cmd = f"{term} -e {app_clean}"
+            term = detect_terminal()
+            cmd = f"{term} -T {title} -e {app_clean}" if title else f"{term} -e {app_clean}"
         else:
             cmd = app_clean
 

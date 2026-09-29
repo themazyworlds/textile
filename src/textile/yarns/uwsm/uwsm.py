@@ -4,6 +4,7 @@ Exposes app launching and unit management via systemd user units under UWSM scop
 Layer 150 (Session Manager).
 """
 
+import shlex
 import shutil
 import subprocess
 
@@ -35,29 +36,39 @@ class UWSM(Yarn):
         """Launch a desktop application inside a dedicated systemd user scope via UWSM for clean cgroup tracking.
 
         :param command: The command or binary name to launch (e.g. 'firefox', 'foot', 'nvim').
-        :param is_tui: Terminal/TUI application flag. Set to true to launch inside a terminal emulator window (e.g. -e nvim).
+        :param is_tui: Terminal/TUI application flag (e.g. launches inside terminal with -e).
         :param args: Optional list of arguments for the application.
         """
-        cmd = str(command or "").strip()
+        raw_cmd = str(command or "").strip()
+        if not raw_cmd:
+            return "Error: No command specified to launch."
+
+        try:
+            parsed_cmd = shlex.split(raw_cmd)
+        except ValueError:
+            parsed_cmd = [raw_cmd]
+
+        if not parsed_cmd:
+            return "Error: No command specified to launch."
+
         cmd_args = args or []
         if isinstance(cmd_args, str):
             cmd_args = [cmd_args]
 
-        if not cmd:
-            return "Error: No command specified to launch."
+        extra_args = [str(a) for a in cmd_args]
 
         if is_tui:
             term = detect_terminal()
-            full_cmd = ["uwsm", "app", "--", term, "-e", cmd] + [str(a) for a in cmd_args]
+            full_cmd = ["uwsm", "app", "--", term, "-e", *parsed_cmd, *extra_args]
         else:
-            full_cmd = ["uwsm", "app", "--", cmd] + [str(a) for a in cmd_args]
+            full_cmd = ["uwsm", "app", "--", *parsed_cmd, *extra_args]
 
         try:
             proc = subprocess.Popen(
                 full_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
             )
             mode_str = " (TUI terminal scope)" if is_tui else ""
-            return f"Successfully launched '{cmd}' via UWSM cgroup scope{mode_str} (PID {proc.pid})."
+            return f"Successfully launched '{raw_cmd}' via UWSM cgroup scope{mode_str} (PID {proc.pid})."
         except (OSError, subprocess.SubprocessError) as e:
             return f"Error launching app via UWSM: {e}"
 

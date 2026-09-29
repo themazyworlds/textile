@@ -17,9 +17,8 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 ## Features
 
 - **Model Context Protocol (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, and any MCP client over stdio.
-- **Autonomous Voice Companion (`Weave`)**: Full-duplex conversational voice interface using LiveKit and Gemini Realtime with spontaneous cognition.
+- **Autonomous Voice Companion (`Weave`)**: Full-duplex conversational voice interface using LiveKit and Gemini Realtime with streaming semantic attunements.
 - **Event & Sensory Fabric (`Elastic`)**: Unified cross-process event bus with urgency tiers, retained slot management, and SQLite WAL IPC synchronization.
-- **Cognition & Proactivity (`Shuttle`)**: Two-speed tension resonance (Flash vs. Curiosity drift) that allows Weave to speak spontaneously when system events occur.
 - **Capability Plugins (`Yarns`, `@strand` & `@weft`)**: Decorate Python methods with `@strand` for tools and `@weft` for real-time streaming token interception with Pydantic v2 validation.
 - **Layered Dispatch (`Loom`)**: Prioritized layer dispatch (10 to 150) allowing specialized compositors/session managers to override lower OS fallbacks cleanly.
 - **Subprocess & Desk Isolation**: Sandboxed execution and reversible transaction undo stack for high-impact mutations.
@@ -128,6 +127,7 @@ system = ["playerctl"]           # System packages/binaries required on the host
 from textile import Yarn, strand, weft
 from textile.core.elastic import EventUrgency, elastic
 
+
 class CustomMediaYarn(Yarn):
     @strand(tier="interact")
     def toggle_playback(self, player: str | None = None) -> str:
@@ -148,7 +148,7 @@ class CustomMediaYarn(Yarn):
 
     @weft(
         pattern=r"<volume:(?P<level>\d+)>",
-        description="Stream attunement to set audio volume inline while speaking (e.g. <volume:80>)."
+        description="Stream attunement to set audio volume inline while speaking (e.g. <volume:80>).",
     )
     def on_stream_volume(self, level: int) -> None:
         """Real-time streaming token interceptor with automatic Pydantic coercion."""
@@ -168,10 +168,9 @@ class CustomMediaYarn(Yarn):
 | **Weft** | Stream Interceptor | Real-time token pattern matcher with Pydantic argument coercion for streaming conversational output. |
 | **Elastic** | Event Fabric | Universal cross-process event bus and sensory blackboard with SQLite WAL sync and urgency tiers. |
 | **Tapestry** | State Store | Persistent SQLite ledger for sensory notices, blackboard slots, and audit history. |
-| **Shuttle** | Proactive Cognition | Spontaneous cognition engine managing tension decay, curiosity drift, and flash alerts. |
 | **Twill** | MCP Server | Standard Model Context Protocol (stdio) interface for AI assistants. |
 | **Seams** | Health Diagnostics | Pydantic-powered dependency resolution, conflict detection, and diagnostic audit engine. |
-| **Weave** | Voice Companion | Full-duplex conversational agent powered by LiveKit and Gemini Realtime with automatic alert awakening. |
+| **Weave** | Voice Companion | Full-duplex conversational agent powered by LiveKit and Gemini Realtime with real-time stream attunements. |
 
 ---
 

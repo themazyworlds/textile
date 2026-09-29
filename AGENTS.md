@@ -33,9 +33,10 @@ The Textile automation subsystem operates on a layered, protocol-first fabric ma
 4. **`Weave` (Voice Agent Engine)**: Full-duplex live audio, vision, and real-time conversation companion with semantic mood tag integration.
 5. **`Strands` (Tools & Actions)**: Individual callable operations written with Pydantic v2 `@strand` decorators across fabric layers:
    - **Layer 150 (Session Lifecycle)**: `uwsm_status`, `uwsm_stop`, `uwsm_finalize`.
-   - **Layer 100 (Compositor & Canvas)**: `hyprland_dispatch`, `hyprland_focus_window`, `caelestia_*`, `canvas_*`.
+   - **Layer 100 (Compositor & Canvas)**: `hyprland_*`, `caelestia_*`, `canvas_*`.
    - **Layer 50 (Semantic Protocols)**: `polkit_*`, `dbus_*`, `clipboard_*`, `ydotool_*`, `journal_*`.
-   - **Layer 10 (Core POSIX)**: `file_*`, `inotify_*`, `process_*`, `sensors_*`, `packagekit_*`, `run_command`, `search_web`, `fetch_webpage`, `capture_screen`.
+   - **Layer 10 (Core POSIX & Domain Utilities)**: `file_*`, `inotify_*`, `process_*`, `sensors_*`, `packagekit_*`, `set_timer`, `list_timers`, `cancel_timer`, `search_web`, `fetch_webpage`, `capture_screen`.
+   - **Layer 0 (Core Fabric Administration)**: `textile_get_state`, `textile_get_sensory_state`, `textile_get_engine_state`, `audit_yarn_integrity`, `run_system_tests`, `cancel_live_task`.
 
 
 ### Yarn Directory Layout
@@ -44,7 +45,6 @@ Every yarn lives in its own self-contained directory under `src/textile/yarns/`:
 
 ```
 src/textile/yarns/
-├── basics/          # Core web search, webpage fetch, and basic utilities yarn
 ├── caelestia/       # Caelestia shell UI launcher & sidebar control yarn
 ├── canvas/          # Quickshell Canvas QML UI, emotive state, and mood yarn
 ├── clipboard/       # Wayland/X11 zero-dependency clipboard manager yarn
@@ -56,6 +56,7 @@ src/textile/yarns/
 ├── process/         # POSIX process management & session process guard yarn
 ├── screen_vision/   # Screenshot capture & OCR screen vision yarn
 ├── sensors/         # Hardware temperature & power telemetry yarn
+├── timer/           # Countdown timer & reminder alerts yarn
 ├── uwsm/            # UWSM session & systemd user scope management yarn
 ├── weave/           # LiveKit full-duplex Voice AI companion agent yarn
 ├── web_research/    # Web research & scraping tools yarn
@@ -142,8 +143,8 @@ hyprland_close_window()
 # Blue Light Filter / Color Temperature (hyprsunset)
 hyprland_set_night_light(temperature="4000")  # Warm evening light
 hyprland_set_night_light(temperature="3000")  # Candle / deep night
-hyprland_set_night_light(temperature="off")   # Reset to normal daytime (identity)
-hyprland_get_night_light()                 # Check active status & PID
+hyprland_set_night_light(temperature="off")  # Reset to normal daytime (identity)
+hyprland_get_night_light()  # Check active status & PID
 ```
 
 ---

@@ -10,10 +10,12 @@ from textile.core.base import (
     LAYER_USER_OVERRIDE,
     CapabilityTier,
     Yarn,
+    detect_shell,
+    detect_terminal,
+    detect_terminal_and_shell,
     strand,
     weft,
 )
-
 from textile.core.elastic import EventFrame, EventUrgency, elastic
 
 __version__ = "0.1.0"
@@ -23,6 +25,9 @@ __all__ = [
     "CapabilityTier",
     "strand",
     "weft",
+    "detect_terminal",
+    "detect_shell",
+    "detect_terminal_and_shell",
     "elastic",
     "EventFrame",
     "EventUrgency",

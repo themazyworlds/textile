@@ -2,6 +2,9 @@ import asyncio
 import sys
 import unittest
 
+from mcp import ClientSession, types
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
 from textile.core.base import (
     LAYER_BASE,
     LAYER_COMPOSITOR_DE,
@@ -12,13 +15,6 @@ from textile.core.base import (
 from textile.core.cli import _layer_info
 from textile.core.loom import loom
 from textile.core.twill import create_twill_server
-
-try:
-    from mcp import ClientSession
-    from mcp.client.stdio import StdioServerParameters, stdio_client
-    MCP_CLIENT_AVAILABLE = True
-except ImportError:
-    MCP_CLIENT_AVAILABLE = False
 
 
 class TestLayerHierarchy(unittest.TestCase):
@@ -79,21 +75,22 @@ class TestTwillServer(unittest.TestCase):
         self.assertEqual(app.name, "textile")
 
     def test_twill_stdio_client_connection(self):
-        if not MCP_CLIENT_AVAILABLE:
-            self.skipTest("mcp client SDK not available")
-
         async def _run_test():
             params = StdioServerParameters(command=sys.executable, args=["-m", "textile.core.twill"])
-            async with stdio_client(params) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    tools_res = await session.list_tools()
-                    self.assertGreater(len(tools_res.tools), 0)
+            async with (
+                stdio_client(params) as (read_stream, write_stream),
+                ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                tools_res = await session.list_tools()
+                self.assertGreater(len(tools_res.tools), 0)
 
-                    res = await session.call_tool("textile_get_state", {})
-                    self.assertIsNotNone(res.content)
-                    self.assertGreater(len(res.content), 0)
-                    self.assertIn("slots", res.content[0].text)
+                res = await session.call_tool("textile_get_state", {})
+                self.assertIsNotNone(res.content)
+                self.assertGreater(len(res.content), 0)
+                item = res.content[0]
+                text_content = item.text if isinstance(item, types.TextContent) else getattr(item, "text", "")
+                self.assertIn("slots", text_content)
 
         asyncio.run(_run_test())
 

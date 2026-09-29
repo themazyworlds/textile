@@ -24,7 +24,9 @@ class DummyYarn(Yarn):
     def get_strands(self) -> list[Strand]:
         return [
             self.build_strand("normal_tool", "Normal tool", lambda args: "normal_ok"),
-            self.build_strand("isolated_tool", "Isolated tool", lambda args: f"isolated_{args.get('x')}", isolated=True),
+            self.build_strand(
+                "isolated_tool", "Isolated tool", lambda args: f"isolated_{args.get('x')}", isolated=True
+            ),
             self.build_strand("crashing_tool", "Crashing tool", lambda args: os._exit(11), isolated=True),
             self.build_strand(
                 "typed_tool",
@@ -32,16 +34,16 @@ class DummyYarn(Yarn):
                 lambda args: "typed_ok",
                 parameters={
                     "count": {"type": "integer", "description": "Count"},
-                    "mode": {"type": "string", "enum": ["fast", "slow"], "description": "Mode"}
+                    "mode": {"type": "string", "enum": ["fast", "slow"], "description": "Mode"},
                 },
-                required=["count"]
+                required=["count"],
             ),
             self.build_strand(
                 "pydantic_tool",
                 "Pydantic tool",
                 lambda args: f"pydantic_{args.get('message')}_{args.get('priority')}",
                 args_schema=CustomPydanticModel,
-            )
+            ),
         ]
 
 
@@ -112,7 +114,9 @@ class TestYarnArchitecture(unittest.TestCase):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="low_cap_yarn", layer=10))
 
-            def is_available(self): return True
+            def is_available(self):
+                return True
+
             def get_strands(self):
                 return [self.build_strand("low_app", "Low App", lambda args: "low_out", capability="test.launcher")]
 
@@ -120,7 +124,9 @@ class TestYarnArchitecture(unittest.TestCase):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="high_cap_yarn", layer=100))
 
-            def is_available(self): return True
+            def is_available(self):
+                return True
+
             def get_strands(self):
                 return [self.build_strand("high_app", "High App", lambda args: "high_out", capability="test.launcher")]
 
@@ -150,7 +156,9 @@ class TestYarnArchitecture(unittest.TestCase):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="nocap_a", layer=10))
 
-            def is_available(self): return True
+            def is_available(self):
+                return True
+
             def get_strands(self):
                 return [self.build_strand("same_name", "Same Name A", lambda args: "a")]
 
@@ -158,7 +166,9 @@ class TestYarnArchitecture(unittest.TestCase):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="nocap_b", layer=100))
 
-            def is_available(self): return True
+            def is_available(self):
+                return True
+
             def get_strands(self):
                 return [self.build_strand("same_name", "Same Name B", lambda args: "b")]
 
@@ -174,6 +184,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_canvas_yarn_and_mood(self):
         from textile.yarns.canvas.canvas import Canvas
+
         canvas = Canvas()
         self.assertEqual(canvas.name, "canvas")
         self.assertEqual(canvas.layer, 100)
@@ -192,6 +203,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertIn("excited", res)
         st_raw = canvas.execute_sync("canvas_get_state", {})
         import json
+
         json.loads(st_raw) if isinstance(st_raw, str) else st_raw
 
     def test_capability_tiers_and_auto_isolation(self):
@@ -201,7 +213,8 @@ class TestYarnArchitecture(unittest.TestCase):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="tier_test", layer=50))
 
-            def is_available(self): return True
+            def is_available(self):
+                return True
 
             @strand(description="Read telemetry", tier="observe")
             def read_stat(self) -> str:
@@ -236,7 +249,8 @@ class TestYarnArchitecture(unittest.TestCase):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="weft_test", layer=50))
 
-            def is_available(self): return True
+            def is_available(self):
+                return True
 
             @weft(pattern=r"<target:(?P<name>[a-zA-Z0-9_-]+),(?P<count>\d+)>")
             def on_target(self, name: str, count: int):
@@ -269,7 +283,6 @@ class TestYarnArchitecture(unittest.TestCase):
         from textile.core.skein import skein
         from textile.core.tapestry import sensory_tapestry
         from textile.yarns.canvas.canvas import Canvas
-        from textile.yarns.weave.weave import extract_and_apply_mood_tags
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -278,9 +291,10 @@ class TestYarnArchitecture(unittest.TestCase):
 
         # Simulate Gemini returning speech text with inline semantic mood tags
         gemini_speech = "<mood:curious> Let me check that system log for you... <mood:thinking> analyzing now... <mood:happy> everything looks clean!"
-        extract_and_apply_mood_tags(gemini_speech)
+        clean_text = loom.process_stream(gemini_speech)
         time.sleep(0.1)
 
+        self.assertNotIn("<mood:", clean_text)
         # The final tag should be applied to canvas slot in tapestry
         self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "happy")
 
@@ -360,6 +374,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_clipboard_yarn(self):
         from textile.yarns.clipboard.clipboard import Clipboard
+
         cb = Clipboard()
         self.assertEqual(cb.name, "clipboard")
         self.assertEqual(cb.layer, 50)
@@ -379,6 +394,7 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_toml_manifest_pydantic_validation(self):
         import tempfile
         from pathlib import Path
+
         from textile.core.base import YarnManifest
 
         # Test valid TOML manifest
@@ -405,13 +421,18 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_app_launching_terminal_e_flag(self):
         from unittest.mock import MagicMock, patch
+
+        from textile.yarns.hyprland.hyprland import HyprlandIPC
         from textile.yarns.process.process import ProcessControl
         from textile.yarns.uwsm.uwsm import UWSM
-        from textile.yarns.hyprland.hyprland import HyprlandIPC
 
         # 1. ProcessControl launch_app with is_tui=True using dynamic $TERMINAL env var
         proc_yarn = ProcessControl()
-        with patch.dict("os.environ", {"TERMINAL": "ghostty"}), patch("shutil.which", return_value="/usr/bin/ghostty"), patch("subprocess.Popen") as mock_popen:
+        with (
+            patch.dict("os.environ", {"TERMINAL": "ghostty"}),
+            patch("shutil.which", return_value="/usr/bin/ghostty"),
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_proc = MagicMock()
             mock_proc.pid = 12345
             mock_popen.return_value = mock_proc
@@ -425,7 +446,11 @@ class TestYarnArchitecture(unittest.TestCase):
 
         # 2. UWSM launch_app with is_tui=True using dynamic terminal detection
         uwsm_yarn = UWSM()
-        with patch.dict("os.environ", {"TERMINAL": "kitty"}), patch("shutil.which", return_value="/usr/bin/kitty"), patch("subprocess.Popen") as mock_popen:
+        with (
+            patch.dict("os.environ", {"TERMINAL": "kitty"}),
+            patch("shutil.which", return_value="/usr/bin/kitty"),
+            patch("subprocess.Popen") as mock_popen,
+        ):
             mock_proc = MagicMock()
             mock_proc.pid = 23456
             mock_popen.return_value = mock_proc
@@ -439,7 +464,11 @@ class TestYarnArchitecture(unittest.TestCase):
 
         # 3. HyprlandIPC exec_app with is_tui=True
         hl_ipc = HyprlandIPC()
-        with patch.dict("os.environ", {"TERMINAL": "alacritty"}), patch("shutil.which", return_value="/usr/bin/alacritty"), patch.object(hl_ipc, "dispatch", return_value="ok") as mock_disp:
+        with (
+            patch.dict("os.environ", {"TERMINAL": "alacritty"}),
+            patch("shutil.which", return_value="/usr/bin/alacritty"),
+            patch.object(hl_ipc, "dispatch", return_value="ok") as mock_disp,
+        ):
             hl_ipc.exec_app("nvim", is_tui=True)
             mock_disp.assert_called_once()
             disp_arg = mock_disp.call_args[0][0]
@@ -447,13 +476,13 @@ class TestYarnArchitecture(unittest.TestCase):
             self.assertNotIn("-i", disp_arg)
             self.assertNotIn("-c", disp_arg)
 
-    def test_basics_timer_strands(self):
+    def test_timer_yarn_strands(self):
         import asyncio
-        import time
-        from textile.core.elastic import EventFrame, elastic
-        from textile.yarns.basics.basics import Basics
 
-        basics = Basics()
+        from textile.core.elastic import EventFrame, elastic
+        from textile.yarns.timer.timer import Timer
+
+        timer_yarn = Timer()
         events_fired: list[EventFrame] = []
 
         def _on_expired(frame: EventFrame):
@@ -463,21 +492,21 @@ class TestYarnArchitecture(unittest.TestCase):
 
         async def _run_timer_test():
             # 1. Invalid duration
-            err = await basics.set_timer(duration_seconds=0, label="bad")
+            err = await timer_yarn.set_timer(duration_seconds=0, label="bad")
             self.assertIn("Error", err)
 
             # 2. Set multiple timers (one with auto-id, one with custom id)
-            res1 = await basics.set_timer(duration_seconds=0.05, label="tea ready", timer_id="tea_01")
+            res1 = await timer_yarn.set_timer(duration_seconds=0.05, label="tea ready", timer_id="tea_01")
             self.assertIn("tea_01", res1)
 
-            res2 = await basics.set_timer(duration_seconds=10, label="oven check", timer_id="oven_01")
+            res2 = await timer_yarn.set_timer(duration_seconds=10, label="oven check", timer_id="oven_01")
             self.assertIn("oven_01", res2)
 
-            res3 = await basics.set_timer(duration_seconds=20, label="workout")
+            res3 = await timer_yarn.set_timer(duration_seconds=20, label="workout")
             self.assertIn("started", res3)
 
             # 3. Check list_timers and elastic slot "timers.active"
-            active = basics.list_timers()
+            active = timer_yarn.list_timers()
             self.assertGreaterEqual(len(active), 3)
             slot_timers = elastic.get_slot("timers.active")
             self.assertIsNotNone(slot_timers)
@@ -492,7 +521,7 @@ class TestYarnArchitecture(unittest.TestCase):
             self.assertEqual(events_fired[0].data["label"], "tea ready")
 
             # 5. Cancel oven timer
-            c_out = basics.cancel_timer("oven_01")
+            c_out = timer_yarn.cancel_timer("oven_01")
             self.assertIn("successfully cancelled", c_out)
 
             # Ensure cancelled and expired timers are removed from Tapestry slot
@@ -501,8 +530,8 @@ class TestYarnArchitecture(unittest.TestCase):
             self.assertFalse(any(t["id"] == "oven_01" for t in slot_after))
 
             # Clean up remaining timer
-            for t in list(basics.list_timers()):
-                basics.cancel_timer(t["id"])
+            for t in list(timer_yarn.list_timers()):
+                timer_yarn.cancel_timer(t["id"])
 
         loop = asyncio.new_event_loop()
         try:
@@ -511,32 +540,6 @@ class TestYarnArchitecture(unittest.TestCase):
             elastic.unsubscribe(token)
             loop.close()
 
-    def test_basics_shuttle_strands(self):
-        from textile.yarns.basics.basics import Basics
-
-        basics = Basics()
-
-        # 1. get_state
-        state = basics.shuttle_get_state()
-        self.assertIn("enabled", state)
-        self.assertIn("quiet", state)
-        self.assertIn("curiosity_level", state)
-        self.assertIn("inner_monologue", state)
-
-        # 2. set_quiet
-        res_q = basics.shuttle_set_quiet(duration_minutes=2.0)
-        self.assertIn("quiet mode enabled", res_q.lower())
-        state_q = basics.shuttle_get_state()
-        self.assertTrue(state_q["quiet"])
-
-        # 3. unmute
-        res_u = basics.shuttle_unmute()
-        self.assertIn("unmuted", res_u.lower())
-        state_u = basics.shuttle_get_state()
-        self.assertFalse(state_u["quiet"])
-
 
 if __name__ == "__main__":
     unittest.main()
-
-

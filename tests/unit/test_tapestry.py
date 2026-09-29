@@ -1,3 +1,4 @@
+import sqlite3
 import threading
 import unittest
 
@@ -7,7 +8,7 @@ from textile.core.tapestry import CoreTapestry, NoticeLevel, SensoryTapestry
 class TestTapestry(unittest.TestCase):
     def test_core_task_ledger(self):
         core = CoreTapestry()
-        
+
         # Start task
         rec = core.record_task_start("t1", "sensors_get_cpu_freqs", {"sensor": "cpu0"})
         self.assertEqual(rec.task_id, "t1")
@@ -38,7 +39,7 @@ class TestTapestry(unittest.TestCase):
 
     def test_sensory_blackboard_stitch_and_slots(self):
         sensory = SensoryTapestry()
-        
+
         # Test slots
         sensory.set_slot("compositor.active_window", {"title": "Neovim", "class": "foot"})
         self.assertEqual(sensory.get_slot("compositor.active_window")["title"], "Neovim")
@@ -73,7 +74,7 @@ class TestTapestry(unittest.TestCase):
                     sensory.set_slot(f"worker_{idx}", i)
                     sensory.stitch("INFO", f"worker_{idx}", f"Step {i}")
                     _ = sensory.get_state()
-            except Exception as e:
+            except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
                 errors.append(e)
 
         threads = [threading.Thread(target=worker, args=(idx,)) for idx in range(5)]

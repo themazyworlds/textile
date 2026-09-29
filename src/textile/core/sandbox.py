@@ -47,11 +47,19 @@ def _resolve_display_bind() -> list[str]:
     if wayland_display and runtime:
         wl_sock = os.path.join(runtime, wayland_display)
         if os.path.exists(wl_sock):
-            args.extend([
-                "--ro-bind", wl_sock, wl_sock,
-                "--setenv", "WAYLAND_DISPLAY", wayland_display,
-                "--setenv", "XDG_RUNTIME_DIR", runtime,
-            ])
+            args.extend(
+                [
+                    "--ro-bind",
+                    wl_sock,
+                    wl_sock,
+                    "--setenv",
+                    "WAYLAND_DISPLAY",
+                    wayland_display,
+                    "--setenv",
+                    "XDG_RUNTIME_DIR",
+                    runtime,
+                ]
+            )
     x11_display = os.environ.get("DISPLAY")
     if x11_display:
         args.extend(["--setenv", "DISPLAY", x11_display])
@@ -149,9 +157,7 @@ class LandlockSandbox:
             libc = ctypes.CDLL(None, use_errno=True)
             attr = LandlockRulesetAttr()
             attr.handled_access_fs = ALL_HANDLED_ACCESS
-            ruleset_fd = libc.syscall(
-                SYS_landlock_create_ruleset, ctypes.byref(attr), ctypes.sizeof(attr), 0
-            )
+            ruleset_fd = libc.syscall(SYS_landlock_create_ruleset, ctypes.byref(attr), ctypes.sizeof(attr), 0)
             if ruleset_fd < 0:
                 return False
 
@@ -192,17 +198,35 @@ class BubblewrapBuilder:
         else:
             self.args.extend(["--symlink", "usr/lib", "/lib64"])
 
-        self.args.extend([
-            "--symlink", "usr/lib", "/lib",
-            "--symlink", "usr/bin", "/bin",
-            "--symlink", "usr/bin", "/sbin",
-            "--ro-bind-try", "/etc", "/etc",
-            "--ro-bind-try", "/sys", "/sys",
-            "--ro-bind-try", "/opt", "/opt",
-            "--ro-bind-try", "/nix", "/nix",
-            "--dev", "/dev",
-            "--proc", "/proc",
-        ])
+        self.args.extend(
+            [
+                "--symlink",
+                "usr/lib",
+                "/lib",
+                "--symlink",
+                "usr/bin",
+                "/bin",
+                "--symlink",
+                "usr/bin",
+                "/sbin",
+                "--ro-bind-try",
+                "/etc",
+                "/etc",
+                "--ro-bind-try",
+                "/sys",
+                "/sys",
+                "--ro-bind-try",
+                "/opt",
+                "/opt",
+                "--ro-bind-try",
+                "/nix",
+                "/nix",
+                "--dev",
+                "/dev",
+                "--proc",
+                "/proc",
+            ]
+        )
         return self
 
     def bind_tmpfs(self, paths: list[str]) -> "BubblewrapBuilder":

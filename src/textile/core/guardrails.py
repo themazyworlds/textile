@@ -15,6 +15,7 @@ from pathlib import Path
 
 class AccessBoundaryError(PermissionError):
     """Raised when an operation attempts to escape its ambient capability boundary."""
+
     pass
 
 
@@ -48,9 +49,7 @@ class ScopedPath:
         target = (self._root / Path(os.path.expanduser(raw))).resolve()
 
         if not target.is_relative_to(self._root):
-            raise AccessBoundaryError(
-                f"Access Denied: Path '{raw}' escapes declared capability root '{self._root}'."
-            )
+            raise AccessBoundaryError(f"Access Denied: Path '{raw}' escapes declared capability root '{self._root}'.")
 
         return target
 

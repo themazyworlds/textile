@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from textile.core.elastic import EventFrame, EventUrgency, ElasticEngine
+from textile.core.elastic import ElasticEngine, EventFrame, EventUrgency
 from textile.core.tapestry import sensory_tapestry
 
 
@@ -44,10 +44,10 @@ class TestElasticEngine(unittest.TestCase):
     def test_wildcard_pattern_subscription(self):
         received = []
 
-        token = self.elastic.subscribe("timer.*", lambda f: received.append(f))
+        token = self.elastic.subscribe("timer.*", received.append)
         try:
-            self.elastic.broadcast("timer.started", "Timer started", "basics")
-            self.elastic.broadcast("timer.expired", "Timer expired", "basics")
+            self.elastic.broadcast("timer.started", "Timer started", "timer")
+            self.elastic.broadcast("timer.expired", "Timer expired", "timer")
             self.elastic.broadcast("sensors.temp", "Temp normal", "sensors")
 
             self.assertEqual(len(received), 2)
@@ -61,7 +61,7 @@ class TestElasticEngine(unittest.TestCase):
 
         token = self.elastic.subscribe(
             pattern="*",
-            callback=lambda f: urgent_events.append(f),
+            callback=urgent_events.append,
             min_urgency=EventUrgency.ALERT,
         )
         try:
@@ -97,7 +97,7 @@ class TestElasticEngine(unittest.TestCase):
     def test_async_event_stream(self):
         async def _test_stream():
             stream_gen = self.elastic.stream("stream.*")
-            
+
             # Emit in background after starting stream
             async def _emitter():
                 await asyncio.sleep(0.01)
@@ -107,12 +107,12 @@ class TestElasticEngine(unittest.TestCase):
 
             emit_task = asyncio.create_task(_emitter())
             frames = []
-            
+
             async for f in stream_gen:
                 frames.append(f)
                 if len(frames) == 2:
                     break
-            
+
             await emit_task
             self.assertEqual(len(frames), 2)
             self.assertEqual(frames[0].topic, "stream.chunk_1")
@@ -132,13 +132,13 @@ class TestElasticEngine(unittest.TestCase):
 
         received_by_b = []
 
-        token = engine_b.subscribe("timer.expired", lambda f: received_by_b.append(f))
+        token = engine_b.subscribe("timer.expired", received_by_b.append)
         try:
             # Engine A broadcasts a timer expiration
             engine_a.broadcast(
                 topic="timer.expired",
                 summary="Timer 'Tea' has finished (180s)",
-                source="basics",
+                source="timer",
                 urgency=EventUrgency.ALERT,
                 data={"label": "Tea", "id": "tea_01"},
             )
@@ -151,6 +151,7 @@ class TestElasticEngine(unittest.TestCase):
             self.assertEqual(received_by_b[0].data["label"], "Tea")
             self.assertEqual(received_by_b[0].data["id"], "tea_01")
         finally:
+            engine_b.unsubscribe(token)
             engine_a.close()
             engine_b.close()
 

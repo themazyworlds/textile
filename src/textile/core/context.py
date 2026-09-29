@@ -14,18 +14,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class OriginType(StrEnum):
     """Classification of intent input origin."""
-    LOCAL_VOICE = "local_voice"            # Local microphone audio voice stream (High Trust)
-    LOCAL_SEAT = "local_seat"              # Local keyboard/UI shortcut or terminal (High Trust)
-    SYSTEM_INTERNAL = "system_internal"    # Native Textile system event or Elastic bus (Medium Trust)
-    EXTERNAL_UNTRUSTED = "external_untrusted" # Web scraping, external files, email, network payloads (Zero Trust)
+
+    LOCAL_VOICE = "local_voice"  # Local microphone audio voice stream (High Trust)
+    LOCAL_SEAT = "local_seat"  # Local keyboard/UI shortcut or terminal (High Trust)
+    SYSTEM_INTERNAL = "system_internal"  # Native Textile system event or Elastic bus (Medium Trust)
+    EXTERNAL_UNTRUSTED = "external_untrusted"  # Web scraping, external files, email, network payloads (Zero Trust)
 
 
 class TrustLevel(StrEnum):
     """Calculated trust tier of an intent origin."""
-    HIGH = "high"       # Full autonomous execution of observe, interact, and mutate strands
-    MEDIUM = "medium"   # Execution of observe and interact strands
-    LOW = "low"         # Observe-only strands
-    NONE = "none"       # Zero execution power (rejection of all strands including observe)
+
+    HIGH = "high"  # Full autonomous execution of observe, interact, and mutate strands
+    MEDIUM = "medium"  # Execution of observe and interact strands
+    LOW = "low"  # Observe-only strands
+    NONE = "none"  # Zero execution power (rejection of all strands including observe)
 
 
 class OriginToken(BaseModel):
@@ -119,7 +121,6 @@ class TaintTracker:
         return cls._active_taint is not None
 
 
-
 @dataclass
 class SeatContext:
     """Verifies physical presence and local desktop ownership."""
@@ -133,6 +134,7 @@ class SeatContext:
 
 class PolicyViolationError(PermissionError):
     """Raised when an operation violates Layer 1/3 security policy matrix."""
+
     pass
 
 
@@ -163,5 +165,3 @@ def verify_security_policy(
             f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
             f"is denied execution of '{tier_val}' strand '{strand_name}'."
         )
-
-

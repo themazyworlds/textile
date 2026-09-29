@@ -16,7 +16,6 @@ from textile.core.transaction import transaction_stack
 
 
 class TestTierPassDesks:
-
     def test_observer_desk_read_within_boundary(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -80,7 +79,6 @@ class TestTierPassDesks:
 
 
 class TestLandlockSandbox:
-
     def test_landlock_is_supported_on_linux(self):
         if sys.platform == "linux":
             # On Linux kernels >= 5.13 Landlock is supported
@@ -90,7 +88,6 @@ class TestLandlockSandbox:
 
 
 class TestBubblewrapSandbox:
-
     def test_bwrap_availability(self):
         # On this system bwrap is installed
         if sys.platform == "linux":
@@ -130,6 +127,7 @@ class TestBubblewrapSandbox:
             read_cmd = [sys.executable, "-c", f'print(open("{f}").read())']
             wrapped_read = BubblewrapSandbox.wrap_command(read_cmd, tier="OBSERVE", workspace_root=tmpdir)
             import subprocess
+
             res_read = subprocess.run(wrapped_read, capture_output=True, text=True, check=False)
             assert res_read.returncode == 0
             assert "observe this" in res_read.stdout
@@ -143,15 +141,16 @@ class TestBubblewrapSandbox:
 
     def test_wrap_command_known_resources(self):
         cmd = ["echo", "test"]
-        with unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/test_bus.sock"}):
-            with tempfile.NamedTemporaryFile(suffix=".sock") as dummy_sock:
-                dummy_addr = f"unix:path={dummy_sock.name}"
-                with unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": dummy_addr}):
-                    wrapped = BubblewrapSandbox.wrap_command(
-                        cmd, tier="OBSERVE", workspace_root="/tmp", resources=["dbus-session", "invalid-resource"]
-                    )
-                    assert "--ro-bind" in wrapped
-                    assert dummy_sock.name in wrapped
-                    assert "--setenv" in wrapped
-                    assert "DBUS_SESSION_BUS_ADDRESS" in wrapped
-
+        with (
+            unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/test_bus.sock"}),
+            tempfile.NamedTemporaryFile(suffix=".sock") as dummy_sock,
+        ):
+            dummy_addr = f"unix:path={dummy_sock.name}"
+            with unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": dummy_addr}):
+                wrapped = BubblewrapSandbox.wrap_command(
+                    cmd, tier="OBSERVE", workspace_root="/tmp", resources=["dbus-session", "invalid-resource"]
+                )
+                assert "--ro-bind" in wrapped
+                assert dummy_sock.name in wrapped
+                assert "--setenv" in wrapped
+                assert "DBUS_SESSION_BUS_ADDRESS" in wrapped

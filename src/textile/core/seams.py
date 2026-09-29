@@ -14,7 +14,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from textile.core.base import validate_strand_schema
-from textile.core.loom import loom
 from textile.core.skein import skein
 
 logger = logging.getLogger(__name__)
@@ -37,6 +36,7 @@ class HealthStatus(StrEnum):
 
 class DependencyCheck(BaseModel):
     """Represents a single system requirement checked for a yarn."""
+
     dep_type: DependencyType
     target: str
     is_satisfied: bool
@@ -46,6 +46,7 @@ class DependencyCheck(BaseModel):
 
 class StrandIntegrityReport(BaseModel):
     """Integrity report for a single Strand."""
+
     strand_name: str
     yarn_name: str
     is_valid_schema: bool
@@ -59,6 +60,7 @@ class StrandIntegrityReport(BaseModel):
 
 class YarnIntegrityReport(BaseModel):
     """Comprehensive integrity report for a yarn."""
+
     yarn_name: str
     version: str = "1.0.0"
     layer: int = 10
@@ -115,11 +117,7 @@ class SeamOrchestrator:
         exists = path.exists()
         writable = os.access(device_path, os.W_OK) if exists else False
         satisfied = exists and (not write_access or writable)
-        details = (
-            f"Device exists (writable: {writable})"
-            if exists
-            else f"Device node '{device_path}' does not exist"
-        )
+        details = f"Device exists (writable: {writable})" if exists else f"Device node '{device_path}' does not exist"
         return DependencyCheck(
             dep_type=DependencyType.DEVICE_NODE,
             target=device_path,
@@ -250,13 +248,10 @@ class SeamOrchestrator:
 
         is_overridden, active_provider, _ = loom_inst.get_strand_override_status(strand, yarn)
         is_active = (
-            strand.name in loom_inst._strand_to_yarn
-            and loom_inst._strand_to_yarn[strand.name].name == yarn.name
+            strand.name in loom_inst._strand_to_yarn and loom_inst._strand_to_yarn[strand.name].name == yarn.name
         )
 
-        genai_compat = is_valid_schema and all(
-            k.isidentifier() for k in strand.parameters
-        )
+        genai_compat = is_valid_schema and all(k.isidentifier() for k in strand.parameters)
         mcp_compat = is_valid_schema
 
         return StrandIntegrityReport(
@@ -271,9 +266,16 @@ class SeamOrchestrator:
             validation_errors=errors,
         )
 
+    def _resolve_loom(self, loom_inst: Any = None) -> Any:
+        if loom_inst is not None:
+            return loom_inst
+        if self._loom is not None:
+            return self._loom
+        raise RuntimeError("Loom instance not configured for SeamOrchestrator")
+
     def audit_yarn(self, yarn: Any, skein_inst: Any = None, loom_inst: Any = None) -> YarnIntegrityReport:
         s_inst = skein_inst or skein
-        l_inst = loom_inst or self._loom or loom
+        l_inst = self._resolve_loom(loom_inst)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -322,7 +324,7 @@ class SeamOrchestrator:
 
     def audit_all(self, loom_inst: Any | None = None, skein_inst: Any | None = None) -> dict[str, Any]:
         s_inst = skein_inst or skein
-        l_inst = loom_inst or self._loom or loom
+        l_inst = self._resolve_loom(loom_inst)
         l_inst.initialize()
 
         reports: list[YarnIntegrityReport] = []

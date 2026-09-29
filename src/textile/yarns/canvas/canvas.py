@@ -207,17 +207,13 @@ class Canvas(Yarn):
         if canvas_ctl.is_running():
             canvas_ctl.close()
 
-    @weft(
-        pattern=r"<mood:([a-zA-Z_-]+)>",
-        description=(
-            "Emit inline semantic mood tags across your speech to animate avatar face in real time. "
-            "Supported moods: neutral, happy, excited, celebrating, thinking, focused, listening, curious, calm, "
-            "shy, mischievous, confused, surprised, alert, sleepy, error, glitch. "
-            "Example: '<mood:curious> Let me inspect that... <mood:happy> All set!'"
-        ),
-    )
+    @weft(pattern=r"<mood:([a-zA-Z_-]+)>")
     def on_stream_mood(self, mood: str) -> None:
-        """Handle real-time streaming mood attunement from speech/transcription."""
+        """Emit inline semantic mood tags across your speech to animate avatar face in real time.
+        Supported moods: neutral, happy, excited, celebrating, thinking, focused, listening, curious, calm,
+        shy, mischievous, confused, surprised, alert, sleepy, error, glitch.
+        Example: '<mood:curious> Let me inspect that... <mood:happy> All set!'
+        """
         clean_mood = mood.lower().strip()
         sensory_tapestry.set_slot("canvas.mood", clean_mood)
         elastic.broadcast(
@@ -231,12 +227,9 @@ class Canvas(Yarn):
         )
         canvas_ctl.call_ipc("setMood", clean_mood)
 
-    @weft(
-        pattern=r"<gaze:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)>",
-        description="Emit inline eye gaze offsets (where X is -16.0 to 16.0, Y is -12.0 to 12.0, e.g. <gaze:8.0,-5.0> to look up-right).",
-    )
+    @weft(pattern=r"<gaze:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)>")
     def on_stream_gaze(self, x: float, y: float) -> None:
-        """Handle real-time streaming eye gaze attunement."""
+        """Emit inline eye gaze offsets (where X is -16.0 to 16.0, Y is -12.0 to 12.0, e.g. <gaze:8.0,-5.0>)."""
         canvas_ctl.call_ipc("setGaze", str(x), str(y))
 
     @strand(tier="interact")

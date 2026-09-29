@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class NoticeLevel(StrEnum):
     """Notice and Alert priority levels for the Sensory Tapestry Blackboard."""
+
     INFO = "INFO"
     NOTICE = "NOTICE"
     WARNING = "WARNING"
@@ -31,6 +32,7 @@ class NoticeLevel(StrEnum):
 
 class Notice(BaseModel):
     """A structured sensory/system notice stitched into Sensory Tapestry."""
+
     timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     level: NoticeLevel = NoticeLevel.INFO
     source: str
@@ -40,6 +42,7 @@ class Notice(BaseModel):
 
 class TaskRecord(BaseModel):
     """Engine task execution tracking."""
+
     task_id: str
     strand_name: str
     start_time: str
@@ -470,9 +473,7 @@ class SensoryTapestry:
 
             # Prune old events if table grows over 1000 items
             if inserted_id % 50 == 0:
-                conn.execute(
-                    "DELETE FROM elastic_events WHERE id < (SELECT max(id) - 500 FROM elastic_events)"
-                )
+                conn.execute("DELETE FROM elastic_events WHERE id < (SELECT max(id) - 500 FROM elastic_events)")
 
             return inserted_id
 
@@ -509,19 +510,21 @@ class SensoryTapestry:
                 except (json.JSONDecodeError, TypeError):
                     retained_val = None
 
-                events.append({
-                    "seq_id": r[0],
-                    "id": r[1],
-                    "topic": r[2],
-                    "source": r[3],
-                    "urgency": r[4],
-                    "summary": r[5],
-                    "data": payload_data,
-                    "timestamp": r[7],
-                    "process_id": r[8],
-                    "retained_slot": r[9],
-                    "retained_value": retained_val,
-                })
+                events.append(
+                    {
+                        "seq_id": r[0],
+                        "id": r[1],
+                        "topic": r[2],
+                        "source": r[3],
+                        "urgency": r[4],
+                        "summary": r[5],
+                        "data": payload_data,
+                        "timestamp": r[7],
+                        "process_id": r[8],
+                        "retained_slot": r[9],
+                        "retained_value": retained_val,
+                    }
+                )
             return events
 
     def clear(self) -> None:

@@ -45,6 +45,7 @@ def _layer_info(layer: int) -> dict[str, Any]:
 
 # --- Pydantic v2 Output Models for CLI Commands ---
 
+
 class SeamsSummaryModel(BaseModel):
     overall_health: str = Field(..., description="Overall engine health status")
     total_yarns: int = Field(0, description="Total discovered yarns")
@@ -330,15 +331,13 @@ def cmd_twill():
 def cmd_weave(
     dev: bool = typer.Option(False, "--dev", help="Run in dev LiveKit worker mode"),
     start_worker: bool = typer.Option(False, "--start-worker", help="Start background worker process"),
-    model: str = typer.Option("gemini-3.8-live", "--model", help="Gemini Live model name"),
-    voice: str = typer.Option("Puck", "--voice", help="Gemini voice name (e.g. Puck, Aoede, Charon, Fenrir, Kore)"),
     text_mode: bool = typer.Option(False, "--text", help="Run in text-only console mode"),
 ):
     """Launch Weave real-time voice & desktop companion."""
     mod = importlib.import_module("textile.yarns.weave.weave")
     run_voice_agent = getattr(mod, "run_voice_agent")
     mode = "dev" if dev else ("start" if start_worker else "console")
-    run_voice_agent(mode=mode, model=model, voice=voice, text_mode=text_mode)
+    run_voice_agent(mode=mode, text_mode=text_mode)
 
 
 @app.command("canvas")

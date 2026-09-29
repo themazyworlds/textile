@@ -46,11 +46,7 @@ class Skein:
                 try:
                     mod = importlib.import_module(modname)
                     for _, attr in inspect.getmembers(mod, inspect.isclass):
-                        if (
-                            issubclass(attr, Yarn)
-                            and attr is not Yarn
-                            and getattr(attr, "__module__", None) == modname
-                        ):
+                        if issubclass(attr, Yarn) and attr is not Yarn and getattr(attr, "__module__", None) == modname:
                             instance = attr()
                             with self._lock:
                                 self.all_yarns[instance.name] = instance

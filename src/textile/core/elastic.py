@@ -5,10 +5,12 @@ sensory deltas, LLM weft triggers, and Tapestry state updates.
 """
 
 import asyncio
+import contextlib
 import fnmatch
 import inspect
 import logging
 import os
+import sqlite3
 import threading
 import time
 import uuid
@@ -25,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 class EventUrgency(StrEnum):
     """Urgency / Priority tiers for Elastic events."""
-    AMBIENT = "ambient"   # Background telemetry, periodic status (urgency ~0.1)
-    NOTICE = "notice"     # Standard state changes, task completion, info (urgency ~0.3)
-    ALERT = "alert"       # High priority alerts, warnings, tension sparks (urgency ~0.7)
-    FLASH = "flash"       # Critical errors, crashes, immediate emergency (urgency 1.0)
+
+    AMBIENT = "ambient"  # Background telemetry, periodic status (urgency ~0.1)
+    NOTICE = "notice"  # Standard state changes, task completion, info (urgency ~0.3)
+    ALERT = "alert"  # High priority alerts, warnings, tension sparks (urgency ~0.7)
+    FLASH = "flash"  # Critical errors, crashes, immediate emergency (urgency 1.0)
 
     @property
     def numeric(self) -> float:
@@ -56,6 +59,7 @@ class EventUrgency(StrEnum):
 
 class EventFrame(BaseModel):
     """Standardized, self-describing immutable event packet."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:12])
     topic: str
     source: str = "system"
@@ -82,11 +86,10 @@ class _Subscription:
         self.min_urgency = min_urgency
 
     def matches(self, frame: EventFrame) -> bool:
-        if self.min_urgency is not None:
-            if frame.urgency.numeric < self.min_urgency.numeric:
-                return False
+        if self.min_urgency is not None and frame.urgency.numeric < self.min_urgency.numeric:
+            return False
 
-        if self.pattern == "*" or self.pattern == frame.topic:
+        if self.pattern in ("*", frame.topic):
             return True
 
         return fnmatch.fnmatch(frame.topic, self.pattern)
@@ -116,7 +119,7 @@ class ElasticEngine:
                     name=f"elastic-ipc-{self._pid}",
                 )
                 self._ipc_thread.start()
-            except Exception as e:
+            except (sqlite3.Error, OSError, RuntimeError) as e:
                 logger.debug("Could not start Elastic IPC worker: %s", e)
 
     def _ipc_worker(self) -> None:
@@ -143,7 +146,7 @@ class ElasticEngine:
                         retained_value=ev["retained_value"],
                     )
                     self._deliver_local(frame)
-            except Exception as e:
+            except (sqlite3.Error, OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
                 logger.debug("Elastic IPC poller notice: %s", e)
 
             time.sleep(0.05)
@@ -220,7 +223,7 @@ class ElasticEngine:
                 retained_slot=retained_slot,
                 retained_value=retained_value,
             )
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.debug("Failed to record cross-process Elastic event: %s", e)
 
         # 4. Deliver in-process immediately
@@ -239,10 +242,8 @@ class ElasticEngine:
                 self._invoke_callback(sub.callback, frame)
 
         for q in queues:
-            try:
+            with contextlib.suppress(asyncio.QueueFull, RuntimeError):
                 q.put_nowait(frame)
-            except (asyncio.QueueFull, RuntimeError):
-                pass
 
     def close(self) -> None:
         """Stop background IPC polling worker."""
@@ -262,10 +263,10 @@ class ElasticEngine:
                 if inspect.isawaitable(res):
                     try:
                         loop = asyncio.get_running_loop()
-                        loop.create_task(res)
+                        asyncio.ensure_future(res, loop=loop)
                     except RuntimeError:
                         asyncio.run(res)
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError, RuntimeError, KeyError, IndexError, OSError) as e:
             logger.warning("Error in Elastic subscriber callback for topic '%s': %s", frame.topic, e)
 
     def subscribe(
@@ -317,7 +318,7 @@ class ElasticEngine:
         try:
             while True:
                 frame = await q.get()
-                if pattern == "*" or pattern == frame.topic or fnmatch.fnmatch(frame.topic, pattern):
+                if pattern in ("*", frame.topic) or fnmatch.fnmatch(frame.topic, pattern):
                     yield frame
         finally:
             with self._lock:

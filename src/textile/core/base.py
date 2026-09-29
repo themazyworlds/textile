@@ -6,7 +6,6 @@ import inspect
 import json
 import logging
 import os
-import pwd
 import re
 import shutil
 import subprocess
@@ -14,7 +13,6 @@ import sys
 import tomllib
 from abc import ABC
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, get_type_hints
@@ -29,11 +27,11 @@ from textile.core.tapestry import sensory_tapestry
 logger = logging.getLogger(__name__)
 
 # Standard Layer Tiers (Higher number = outer layer with higher override authority)
-LAYER_BASE = 10                # Base OS / Pure POSIX kernel fallbacks
-LAYER_DESKTOP_PROTOCOL = 50   # Generic Wayland, XDG, D-Bus protocols
-LAYER_COMPOSITOR_DE = 100     # Specific Compositors & DEs (Hyprland, Caelestia, GNOME, KDE)
-LAYER_SESSION_MANAGER = 150   # Session Managers & Cgroup Wrappers (UWSM, systemd-run)
-LAYER_USER_OVERRIDE = 1000    # User custom overrides (~/.config/textile/yarns/)
+LAYER_BASE = 10  # Base OS / Pure POSIX kernel fallbacks
+LAYER_DESKTOP_PROTOCOL = 50  # Generic Wayland, XDG, D-Bus protocols
+LAYER_COMPOSITOR_DE = 100  # Specific Compositors & DEs (Hyprland, Caelestia, GNOME, KDE)
+LAYER_SESSION_MANAGER = 150  # Session Managers & Cgroup Wrappers (UWSM, systemd-run)
+LAYER_USER_OVERRIDE = 1000  # User custom overrides (~/.config/textile/yarns/)
 
 STRAND_EXEC_ERRORS = (
     TextileError,
@@ -49,11 +47,12 @@ STRAND_EXEC_ERRORS = (
 
 class CapabilityTier(StrEnum):
     """Execution risk & privilege tiers for Textile Strands."""
-    OBSERVE = "observe"         # Read-only telemetry, state inspection, queries, logs
-    INTERACT = "interact"       # Desktop GUI interactions, notifications, clipboard, media
-    MUTATE = "mutate"           # File modifications, killing user processes, local workspace changes
-    PRIVILEGED = "privileged"   # System configuration, package installs, D-Bus system calls, Polkit
-    SYSTEM_EXEC = "system_exec" # Arbitrary shell command execution (auto-isolated)
+
+    OBSERVE = "observe"  # Read-only telemetry, state inspection, queries, logs
+    INTERACT = "interact"  # Desktop GUI interactions, notifications, clipboard, media
+    MUTATE = "mutate"  # File modifications, killing user processes, local workspace changes
+    PRIVILEGED = "privileged"  # System configuration, package installs, D-Bus system calls, Polkit
+    SYSTEM_EXEC = "system_exec"  # Arbitrary shell command execution (auto-isolated)
 
 
 def detects_native_ffi(target: Any) -> bool:
@@ -73,31 +72,18 @@ def detects_native_ffi(target: Any) -> bool:
 
 
 def detect_terminal() -> str:
-    """Detect available terminal emulator executable on the system.
-
-    Respects the standard $TERMINAL environment variable and xdg-terminal-exec
-    before probing installed terminal emulators.
-    """
-    env_term = os.environ.get("TERMINAL", "").strip()
-    if env_term and shutil.which(env_term):
-        return env_term
-    if shutil.which("xdg-terminal-exec"):
-        return "xdg-terminal-exec"
-    for term in ("foot", "kitty", "alacritty", "ghostty", "wezterm", "st", "urxvt", "xterm"):
-        if shutil.which(term):
-            return term
-    return "xterm"
+    """Detect available terminal emulator from $TERMINAL / $TERM environment variables."""
+    return os.environ.get("TERMINAL") or os.environ.get("TERM") or "xterm"
 
 
-def resolve_terminal_and_shell() -> tuple[str, str]:
-    term = detect_terminal()
-    try:
-        shell_path = pwd.getpwuid(os.getuid()).pw_shell
-        if not (os.path.isfile(shell_path) and os.access(shell_path, os.X_OK)):
-            shell_path = os.environ.get("SHELL", "/bin/sh")
-    except (KeyError, AttributeError, OSError):
-        shell_path = os.environ.get("SHELL", "/bin/sh")
-    return term, shell_path
+def detect_shell() -> str:
+    """Detect default shell executable from $SHELL or fallback to /bin/bash."""
+    return os.environ.get("SHELL") or "/bin/bash"
+
+
+def detect_terminal_and_shell() -> tuple[str, str]:
+    """Resolve preferred desktop terminal emulator and active shell."""
+    return detect_terminal(), detect_shell()
 
 
 def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list[str]) -> type[BaseModel]:
@@ -409,15 +395,14 @@ def _create_invoker(
     tier: CapabilityTier = CapabilityTier.INTERACT,
 ) -> Callable[[dict[str, Any]], Any]:
     if is_async:
+
         async def _async_invoker(args: dict[str, Any]) -> str:
             return await _exec_async_strand(method, strand_name, args, args_model, params, req_list)
 
         return _async_invoker
 
     def _sync_invoker(args: dict[str, Any]) -> str:
-        return _exec_sync_strand(
-            yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout, tier
-        )
+        return _exec_sync_strand(yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout, tier)
 
     return _sync_invoker
 
@@ -707,11 +692,7 @@ class Yarn(ABC):
                 fields[p_name] = (p_type, Field(default=param.default, description=p_desc))
 
         args_model = create_model(f"{strand_name}_Args", **fields) if fields else None
-        schema = (
-            args_model.model_json_schema()
-            if args_model
-            else {"type": "object", "properties": {}, "required": []}
-        )
+        schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
         params, req_list = schema.get("properties", {}), schema.get("required", [])
 
         invoker = _create_invoker(
@@ -768,13 +749,9 @@ class Yarn(ABC):
         else:
             is_isolated = False
 
-        schema_model = args_schema or (
-            schema_to_model(name, parameters or {}, required or []) if parameters else None
-        )
+        schema_model = args_schema or (schema_to_model(name, parameters or {}, required or []) if parameters else None)
         schema = (
-            schema_model.model_json_schema()
-            if schema_model
-            else {"type": "object", "properties": {}, "required": []}
+            schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
         )
         params = schema.get("properties", {})
         req_list = schema.get("required", []) if schema_model else (required or [])
@@ -824,15 +801,17 @@ class Yarn(ABC):
         cmd = [uv_bin, "run", "--no-project", "--no-sync", "--quiet"]
         for dep in self.get_python_dependencies():
             cmd.extend(["--with", str(dep)])
-        cmd.extend([
-            "-m",
-            "textile.core.isolated_runner",
-            self.__class__.__module__,
-            self.__class__.__name__,
-            strand_name,
-            json.dumps(args),
-            tier_str,
-        ])
+        cmd.extend(
+            [
+                "-m",
+                "textile.core.isolated_runner",
+                self.__class__.__module__,
+                self.__class__.__name__,
+                strand_name,
+                json.dumps(args),
+                tier_str,
+            ]
+        )
         env = dict(os.environ)
         python_path = env.get("PYTHONPATH", "")
         cwd = os.getcwd()
@@ -892,6 +871,8 @@ class Yarn(ABC):
                 return s.handler(args)
         return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
-    def on_load(self) -> None: pass
-    def on_unload(self) -> None: pass
-    def start_event_stream(self, publish_cb: Callable[[str], None], stop_event: Any) -> None: pass
+    def on_load(self) -> None:
+        pass
+
+    def on_unload(self) -> None:
+        pass
