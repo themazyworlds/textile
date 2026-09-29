@@ -436,21 +436,24 @@ class Yarn(ABC):
             return f"Error executing isolated strand '{strand_name}': {e}"
 
     def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
-        for s in self.get_strands():
-            if s.name == strand_name:
-                if s.raw_handler is not None:
-                    raw_h: Any = s.raw_handler
-                    try:
-                        res = raw_h(**args)
-                    except TypeError:
-                        res = raw_h(args)
-                elif s.handler is not None:
-                    res = s.handler(args)
-                else:
-                    return "ok"
+        strand = next((s for s in self.get_strands() if s.name == strand_name), None)
+        if strand is None:
+            return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
-                return _format_handler_result(res)
-        return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
+        if strand.raw_handler is not None:
+            raw_h: Any = strand.raw_handler
+            sig = inspect.signature(raw_h)
+            try:
+                bound = sig.bind(**args)
+                res = raw_h(*bound.args, **bound.kwargs)
+            except TypeError:
+                res = raw_h(args)
+        elif strand.handler is not None:
+            res = strand.handler(args)
+        else:
+            return "ok"
+
+        return _format_handler_result(res)
 
     def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
         for s in self.get_strands():

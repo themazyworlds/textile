@@ -85,3 +85,6 @@ max-returns = 10
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+typeCheckingMode = "standard"
+include = ["src"]
+pythonPlatform = "Linux"
