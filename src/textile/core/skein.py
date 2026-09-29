@@ -2,6 +2,7 @@
 Textile Skein - Layer 3 Symbolic Intent Compiler, Policy Engine, and Yarn Registry.
 """
 
+import contextlib
 import importlib
 import importlib.util
 import inspect
@@ -10,6 +11,7 @@ import logging
 import threading
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
 import textile.yarns
 from textile import Strand, Yarn, YarnManifest
@@ -20,6 +22,9 @@ from textile.core.transaction import Transaction, transaction_stack
 logger = logging.getLogger(__name__)
 
 __all__ = ["PolicyViolationError", "Skein", "skein"]
+
+
+MODULE_LOAD_ERRORS = (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError)
 
 
 class Skein:
@@ -34,42 +39,45 @@ class Skein:
         self._disabled_yarns: set[str] = set()
         self._initialized: bool = False
 
+    def _register_module_yarns(self, mod: Any) -> None:
+        """Inspect a Python module and register all non-base Yarn subclasses."""
+        for _, attr in inspect.getmembers(mod, inspect.isclass):
+            if issubclass(attr, Yarn) and attr is not Yarn:
+                try:
+                    instance = attr()
+                    with self._lock:
+                        self.all_yarns[instance.name] = instance
+                except MODULE_LOAD_ERRORS as e:
+                    logger.debug(f"Failed instantiating yarn {attr}: {e}")
+
     def load_yarns(self) -> None:
-        """Dynamically discover and register all Yarns under textile.yarns."""
-        try:
+        """Discover and register all built-in, entrypoint, and user Yarns."""
+        # 1. Built-in Yarns under textile.yarns package
+        with contextlib.suppress(*MODULE_LOAD_ERRORS):
             yarns_root = Path(textile.yarns.__file__).parent
             for py_file in yarns_root.rglob("*.py"):
                 if py_file.name.startswith("_"):
                     continue
                 rel_path = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
                 modname = f"textile.yarns.{rel_path}"
-                try:
-                    mod = importlib.import_module(modname)
-                    for _, attr in inspect.getmembers(mod, inspect.isclass):
-                        if issubclass(attr, Yarn) and attr is not Yarn and getattr(attr, "__module__", None) == modname:
-                            instance = attr()
-                            with self._lock:
-                                self.all_yarns[instance.name] = instance
-                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                    logger.debug(f"Skipping yarn module {modname}: {e}")
-        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-            logger.debug(f"Failed scanning yarns: {e}")
+                with contextlib.suppress(*MODULE_LOAD_ERRORS):
+                    self._register_module_yarns(importlib.import_module(modname))
 
-    def load_entrypoint_yarns(self) -> None:
-        try:
+        # 2. PEP 621 Entry Point Yarns
+        with contextlib.suppress(*MODULE_LOAD_ERRORS):
             for ep in entry_points(group="textile.yarns"):
-                try:
+                with contextlib.suppress(*MODULE_LOAD_ERRORS):
                     yarn_cls = ep.load()
                     if issubclass(yarn_cls, Yarn) and yarn_cls is not Yarn:
                         instance = yarn_cls()
                         with self._lock:
                             self.all_yarns[instance.name] = instance
-                except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                    logger.debug(f"Failed loading entrypoint yarn {ep}: {e}")
-        except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-            logger.debug(f"Failed scanning entrypoints: {e}")
+
+        # 3. User Custom Yarns (~/.config/textile/yarns/*.py)
+        self.load_user_yarns()
 
     def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
+        """Discover and register custom user Yarns from local directory."""
         target_dir = yarn_dir or self._user_yarns_dir
         if not target_dir.exists():
             return
@@ -81,11 +89,7 @@ class Skein:
                 if spec and spec.loader:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
-                    for _, attr in inspect.getmembers(mod, inspect.isclass):
-                        if issubclass(attr, Yarn) and attr is not Yarn:
-                            instance = attr()
-                            with self._lock:
-                                self.all_yarns[instance.name] = instance
+                    self._register_module_yarns(mod)
             except (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 logger.debug(f"Failed loading user yarn {py_file}: {e}")
 
@@ -95,8 +99,6 @@ class Skein:
                 return
             self._load_config()
             self.load_yarns()
-            self.load_entrypoint_yarns()
-            self.load_user_yarns()
             self._initialized = True
 
     def register_yarn(self, yarn: Yarn) -> None:
@@ -146,7 +148,7 @@ class Skein:
         return None
 
     def compile_and_execute_intent(self, intent: IntentNode) -> str:
-        """Layer 3: Validate grammar, verify origin security policy, compile intent, and execute transactionally."""
+        """Layer 3: Validate grammar, verify origin security policy, compile intent, and execute."""
         # 1. Grammar & Injection Sanitization
         intent.validate_grammar()
 
@@ -160,14 +162,13 @@ class Skein:
         # 3. Layer 3 Policy Verification — canonical single-source-of-truth gate.
         verify_security_policy(intent.origin_token, target_strand.tier, target_strand.name)
 
-        # 4. In-Memory Execution
+        # 4. Execution
         if target_strand.handler is None:
             raise IntentValidationError(f"Strand '{target_strand.name}' has no registered handler.")
 
         res = target_strand.handler(intent.parameters)
 
-        # 5. Layer 4: Register only state-mutating transactions on the undo stack.
-        # OBSERVE and INTERACT strands are read-only — no undo entry needed.
+        # 5. Layer 4: Register state-mutating transactions on the undo stack
         if target_strand.tier in ("mutate", "privileged", "system_exec"):
             transaction_stack.push(
                 Transaction(
@@ -189,22 +190,16 @@ class Skein:
     def get_static_manifests(self) -> dict[str, YarnManifest]:
         """Statically inspect all TOML manifests without importing Python modules."""
         manifests: dict[str, YarnManifest] = {}
-        yarns_root = Path(__file__).parent.parent / "yarns"
-        for toml_file in yarns_root.rglob("*.toml"):
-            try:
-                m = YarnManifest.from_toml(toml_file)
-                if m.name:
-                    manifests[m.name] = m
-            except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
-                logger.debug(f"Failed parsing manifest {toml_file}: {e}")
+        dirs = [Path(__file__).parent.parent / "yarns"]
         if self._user_yarns_dir.exists():
-            for toml_file in self._user_yarns_dir.rglob("*.toml"):
-                try:
+            dirs.append(self._user_yarns_dir)
+
+        for target_dir in dirs:
+            for toml_file in target_dir.rglob("*.toml"):
+                with contextlib.suppress(OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError):
                     m = YarnManifest.from_toml(toml_file)
                     if m.name:
                         manifests[m.name] = m
-                except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
-                    logger.debug(f"Failed parsing user manifest {toml_file}: {e}")
         return manifests
 
     def _save_config(self) -> None:

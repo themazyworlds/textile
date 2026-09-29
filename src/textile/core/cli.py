@@ -43,9 +43,6 @@ def _layer_info(layer: int) -> dict[str, Any]:
         return {"level": 1, "name": "Core POSIX"}
 
 
-# --- Pydantic v2 Output Models for CLI Commands ---
-
-
 class SeamsSummaryModel(BaseModel):
     overall_health: str = Field(..., description="Overall engine health status")
     total_yarns: int = Field(0, description="Total discovered yarns")
