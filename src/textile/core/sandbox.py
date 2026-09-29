@@ -161,7 +161,7 @@ class BubblewrapBuilder:
     def __init__(self, bwrap_path: str):
         self.args: list[str] = [bwrap_path, "--clearenv"]
 
-    def bind_system_base(self) -> "BubblewrapBuilder":
+    def bind_system_base(self) -> BubblewrapBuilder:
         self.args.extend(["--ro-bind", "/usr", "/usr"])
         lib64_target = "usr/lib64" if os.path.exists("/usr/lib64") else "usr/lib"
         self.args.extend(
@@ -186,18 +186,18 @@ class BubblewrapBuilder:
         self.args.extend(["--dev", "/dev", "--proc", "/proc"])
         return self
 
-    def bind_tmpfs(self, paths: list[str]) -> "BubblewrapBuilder":
+    def bind_tmpfs(self, paths: list[str]) -> BubblewrapBuilder:
         for p in paths:
             self.args.extend(["--tmpfs", p])
         return self
 
-    def set_namespaces(self, allow_network: bool) -> "BubblewrapBuilder":
+    def set_namespaces(self, allow_network: bool) -> BubblewrapBuilder:
         self.args.extend(["--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent"])
         if not allow_network:
             self.args.append("--unshare-net")
         return self
 
-    def bind_resources(self, resources: list[str] | None) -> "BubblewrapBuilder":
+    def bind_resources(self, resources: list[str] | None) -> BubblewrapBuilder:
         if resources:
             for res_name in resources:
                 clean_res = str(res_name).strip().lower()
@@ -207,12 +207,12 @@ class BubblewrapBuilder:
                     logger.warning("Unrecognized sandbox resource request '%s' ignored.", res_name)
         return self
 
-    def bind_workspace(self, workspace: Path, writable: bool) -> "BubblewrapBuilder":
+    def bind_workspace(self, workspace: Path, writable: bool) -> BubblewrapBuilder:
         flag = "--bind" if writable else "--ro-bind"
         self.args.extend([flag, str(workspace), str(workspace), "--chdir", str(workspace)])
         return self
 
-    def set_env(self, key: str, val: str | None) -> "BubblewrapBuilder":
+    def set_env(self, key: str, val: str | None) -> BubblewrapBuilder:
         if val:
             self.args.extend(["--setenv", key, val])
         return self

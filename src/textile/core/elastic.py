@@ -44,7 +44,7 @@ class EventUrgency(StrEnum):
         return mapping.get(self, 0.3)
 
     @classmethod
-    def from_value(cls, val: Any) -> "EventUrgency":
+    def from_value(cls, val: Any) -> EventUrgency:
         if isinstance(val, EventUrgency):
             return val
         s = str(val or "").lower().strip()

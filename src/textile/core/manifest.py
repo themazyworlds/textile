@@ -50,7 +50,7 @@ class YarnManifest(BaseModel):
         return self.dependencies.system
 
     @classmethod
-    def from_toml(cls, path: Path) -> "YarnManifest":
+    def from_toml(cls, path: Path) -> YarnManifest:
         with open(path, "rb") as f:
             raw_data = tomllib.load(f)
         try:

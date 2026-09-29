@@ -32,7 +32,7 @@ class WeaveAgent(Agent):
 
     async def transcription_node(
         self, text: AsyncIterable[str | Any], model_settings: Any
-    ) -> AsyncGenerator[str | Any, None]:
+    ) -> AsyncGenerator[str | Any]:
         async for delta in text:
             delta_text = getattr(delta, "text", None) or (delta if isinstance(delta, str) else str(delta))
             clean_delta = loom.process_stream(delta_text)
