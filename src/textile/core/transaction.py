@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from textile.core.yarn import STRAND_EXEC_ERRORS
+from textile.core.invoker import STRAND_EXEC_ERRORS
 
 logger = logging.getLogger(__name__)
 

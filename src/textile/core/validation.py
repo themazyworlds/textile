@@ -16,8 +16,7 @@ def detects_native_ffi(target: Any) -> bool:
     """Detect if a class or module imports native C-FFI modules (ctypes, cffi)."""
     try:
         mod_name = target.__class__.__module__ if hasattr(target, "__class__") else getattr(target, "__module__", "")
-        mod = sys.modules.get(mod_name)
-        if mod:
+        if mod := sys.modules.get(mod_name):
             for val in mod.__dict__.values():
                 if getattr(val, "__name__", "") in ("ctypes", "cffi", "_ctypes"):
                     return True
@@ -45,13 +44,15 @@ def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list
 
 
 def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> list[str]:
-    errors = []
     if not isinstance(parameters, dict):
         return [f"Strand '{strand_name}' parameters must be a dictionary."]
     valid_types = {"string", "number", "integer", "boolean", "array", "object"}
-    for p_name, p_spec in parameters.items():
-        if not isinstance(p_spec, dict) or str(p_spec.get("type", "")).lower() not in valid_types:
-            errors.append(f"Parameter '{p_name}' has invalid specification.")
+    errors = [
+        f"Parameter '{p_name}' has invalid specification."
+        for p_name, p_spec in parameters.items()
+        if not isinstance(p_spec, dict)
+        or str(p_spec.get("type", "")).lower() not in valid_types
+    ]
     if isinstance(required, list):
         for req in required:
             if req not in parameters:

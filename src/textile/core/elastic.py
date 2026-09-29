@@ -15,6 +15,7 @@ import threading
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -48,13 +49,22 @@ class EventUrgency(StrEnum):
         if isinstance(val, EventUrgency):
             return val
         s = str(val or "").lower().strip()
-        if s in ("flash", "crit", "critical", "emerg", "emergency", "1.0", "1"):
+        if s in {"flash", "crit", "critical", "emerg", "emergency", "1.0", "1"}:
             return EventUrgency.FLASH
-        if s in ("alert", "warning", "warn", "0.7", "0.8", "0.9"):
+        if s in {"alert", "warning", "warn", "0.7", "0.8", "0.9"}:
             return EventUrgency.ALERT
-        if s in ("ambient", "debug", "trace", "0.1", "0.2"):
+        if s in {"ambient", "debug", "trace", "0.1", "0.2"}:
             return EventUrgency.AMBIENT
         return EventUrgency.NOTICE
+
+
+@dataclass
+class BroadcastOptions:
+    source: str = "system"
+    urgency: EventUrgency | str = EventUrgency.NOTICE
+    data: dict[str, Any] | None = None
+    retained_slot: str | None = None
+    retained_value: Any = None
 
 
 class EventFrame(BaseModel):
@@ -155,43 +165,42 @@ class ElasticEngine:
         self,
         topic: str,
         summary: str,
-        source: str = "system",
-        urgency: EventUrgency | str = EventUrgency.NOTICE,
-        data: dict[str, Any] | None = None,
-        retained_slot: str | None = None,
-        retained_value: Any = None,
+        options: BroadcastOptions | str | None = None,
+        **kwargs: Any,
     ) -> EventFrame:
         """
         Broadcast an event to all subscribers, persist to Tapestry, and update retained slots.
 
         :param topic: Hierarchical event topic (e.g., 'timer.expired', 'canvas.mood', 'sensors.cpu').
         :param summary: Human-readable narrative description of the event.
-        :param source: Name of the emitting yarn or subsystem (e.g., 'basics', 'weave', 'canvas').
-        :param urgency: Urgency level ('ambient', 'notice', 'alert', 'flash').
-        :param data: Context dictionary payload.
-        :param retained_slot: Optional Tapestry retained blackboard slot key to update simultaneously.
-        :param retained_value: Value to store in the retained slot.
+        :param options: Optional BroadcastOptions instance or source string.
         """
-        clean_topic = str(topic).strip()
-        clean_source = str(source).strip()
-        parsed_urgency = EventUrgency.from_value(urgency)
-        payload_data = dict(data or {})
+        if isinstance(options, str):
+            opts = BroadcastOptions(source=options, **kwargs)
+        elif isinstance(options, BroadcastOptions):
+            opts = options
+        else:
+            opts = BroadcastOptions(**kwargs)
+        clean_topic = topic.strip()
+        clean_source = str(opts.source).strip()
+        parsed_urgency = EventUrgency.from_value(opts.urgency)
+        payload_data = dict(opts.data or {})
 
         frame = EventFrame(
             topic=clean_topic,
             source=clean_source,
             urgency=parsed_urgency,
-            summary=str(summary).strip(),
+            summary=summary.strip(),
             data=payload_data,
             timestamp=time.time(),
             process_id=self._pid,
-            retained_slot=retained_slot,
-            retained_value=retained_value,
+            retained_slot=opts.retained_slot,
+            retained_value=opts.retained_value,
         )
 
         # 1. Update Tapestry Retained Blackboard Slot if specified
-        if retained_slot is not None:
-            sensory_tapestry.set_slot(retained_slot, retained_value)
+        if opts.retained_slot is not None:
+            sensory_tapestry.set_slot(opts.retained_slot, opts.retained_value)
 
         # 2. Persist Notice to Tapestry SQLite Ledger
         notice_level = NoticeLevel.INFO
@@ -220,8 +229,8 @@ class ElasticEngine:
                 data=frame.data,
                 timestamp=frame.timestamp,
                 process_id=self._pid,
-                retained_slot=retained_slot,
-                retained_value=retained_value,
+                retained_slot=opts.retained_slot,
+                retained_value=opts.retained_value,
             )
         except (sqlite3.Error, OSError, RuntimeError, ValueError) as e:
             logger.debug("Failed to record cross-process Elastic event: %s", e)
@@ -331,6 +340,7 @@ class ElasticEngine:
         self,
         slot: str,
         value: Any,
+        *,
         summary: str = "",
         source: str = "system",
         urgency: EventUrgency | str = EventUrgency.AMBIENT,
@@ -345,7 +355,7 @@ class ElasticEngine:
         :param source: The yarn or component name claiming the seat.
         :param urgency: Broadcast urgency tier (default AMBIENT).
         """
-        clean_slot = str(slot).strip()
+        clean_slot = slot.strip()
         thought = summary or f"Tapestry seat '{clean_slot}' occupied by {source}"
         return self.broadcast(
             topic=f"tapestry.seat.{clean_slot}",

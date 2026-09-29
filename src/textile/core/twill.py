@@ -34,7 +34,7 @@ def create_twill_server() -> Server:
 
     @app.get_prompt()
     async def handle_get_prompt(name: str, arguments: dict | None = None) -> types.GetPromptResult:
-        if name in ("textile_system_instructions", "textile_system_contract"):
+        if name in {"textile_system_instructions", "textile_system_contract"}:
             return types.GetPromptResult(
                 description="Textile Desktop Fabric Active System Instructions",
                 messages=[
@@ -69,16 +69,7 @@ def create_twill_server() -> Server:
             effective_caller = os.getenv("TEXTILE_CALLER", "twill_mcp")
             res_text = await loom.execute(name, arguments or {}, caller=effective_caller, origin_token=token)
             return [types.TextContent(type="text", text=str(res_text))]
-        except (
-            AttributeError,
-            TypeError,
-            ValueError,
-            KeyError,
-            OSError,
-            RuntimeError,
-            TimeoutError,
-            PermissionError,
-        ) as e:
+        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError) as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
 
     return app

@@ -11,7 +11,25 @@ import asyncio
 import json
 import os
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+
+from textile import Yarn, strand
+
+
+@dataclass
+class DBusCallOptions:
+    bus: str = "session"
+    signature: str | None = None
+    body: list[Any] | None = None
+    args: str | list[Any] | None = None
+
+
+@dataclass
+class DBusPropertyOptions:
+    bus: str = "session"
+    value: Any = None
+    signature: str | None = None
 
 if TYPE_CHECKING:
     from dbus_fast import BusType, Message, MessageFlag, MessageType, Variant
@@ -27,8 +45,6 @@ else:
         MessageType = Any
         Variant = Any
         MessageBus = Any
-
-from textile import Yarn, strand
 
 MAX_INT_32_BITS = 31
 
@@ -104,16 +120,16 @@ class DBusAPI:
 
     async def call(
         self,
-        bus: str = "session",
-        destination: str = "",
-        path: str = "",
-        interface: str = "",
-        member: str = "",
-        signature: str | None = None,
-        body: list[Any] | None = None,
+        destination: str,
+        path: str,
+        interface: str,
+        member: str,
+        options: DBusCallOptions | None = None,
+        **kwargs: Any,
     ) -> Any:
-        msg_bus = await self._get_bus(bus)
-        body_args = body or []
+        opts = options or DBusCallOptions(**kwargs)
+        msg_bus = await self._get_bus(opts.bus)
+        body_args = opts.body or []
 
         msg_kwargs: dict[str, Any] = {
             "destination": destination.strip(),
@@ -123,8 +139,8 @@ class DBusAPI:
             "flags": MessageFlag.ALLOW_INTERACTIVE_AUTHORIZATION if MessageFlag else 0,
         }
 
-        if signature:
-            msg_kwargs["signature"] = signature.strip()
+        if opts.signature:
+            msg_kwargs["signature"] = opts.signature.strip()
             msg_kwargs["body"] = body_args
         elif body_args:
             msg_kwargs["body"] = body_args
@@ -182,17 +198,17 @@ class DBusAPI:
 
     async def set_property(
         self,
-        bus: str = "session",
         destination: str = "",
         path: str = "",
         interface: str = "",
         property_name: str = "",
-        value: Any = None,
-        signature: str | None = None,
+        options: DBusPropertyOptions | None = None,
+        **kwargs: Any,
     ) -> str:
-        msg_bus = await self._get_bus(bus)
-        val_sig = signature or self._infer_signature(value)
-        variant_val = Variant(val_sig, value)
+        opts = options or DBusPropertyOptions(**kwargs)
+        msg_bus = await self._get_bus(opts.bus)
+        val_sig = opts.signature or self._infer_signature(opts.value)
+        variant_val = Variant(val_sig, opts.value)
 
         msg = Message(
             destination=destination.strip(),
@@ -241,9 +257,8 @@ class DBus(Yarn):
         path: str,
         interface: str,
         method: str,
-        bus: Literal["session", "system"] = "session",
-        signature: str | None = None,
-        args: str | None = None,
+        options: DBusCallOptions | None = None,
+        **kwargs: Any,
     ) -> Any:
         """Call any D-Bus method on the session or system bus.
 
@@ -251,25 +266,24 @@ class DBus(Yarn):
         :param path: Object path (e.g. '/org/freedesktop/login1').
         :param interface: Interface name (e.g. 'org.freedesktop.login1.Manager').
         :param method: Method member name to invoke (e.g. 'Suspend').
-        :param bus: The D-Bus message bus to use ('session' or 'system').
-        :param signature: Optional D-Bus signature (e.g. 's', 'b').
-        :param args: Optional positional arguments as JSON array string.
         """
+        opts = options or DBusCallOptions(**kwargs)
         dest = destination.strip()
         p = path.strip()
         iface = interface.strip()
         m = method.strip()
-        b = str(bus or "session").strip()
+        b = str(opts.bus or "session").strip()
 
         call_args = []
-        if isinstance(args, list):
-            call_args = args
-        elif isinstance(args, str) and args.strip():
+        raw_args = opts.args if opts.args is not None else opts.body
+        if isinstance(raw_args, list):
+            call_args = raw_args
+        elif isinstance(raw_args, str) and raw_args.strip():
             try:
-                parsed = json.loads(args)
+                parsed = json.loads(raw_args)
                 call_args = parsed if isinstance(parsed, list) else [parsed]
             except (json.JSONDecodeError, ValueError, TypeError):
-                call_args = [args.strip()]
+                call_args = [raw_args.strip()]
 
         if not dest or not p or not iface or not m:
             return "Error: destination, path, interface, and method are all required."
@@ -277,7 +291,7 @@ class DBus(Yarn):
         try:
             return dbus_api.run_sync(
                 dbus_api.call(
-                    bus=b, destination=dest, path=p, interface=iface, member=m, signature=signature, body=call_args
+                    dest, p, iface, m, bus=b, signature=opts.signature, body=call_args
                 )
             )
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:
@@ -322,9 +336,8 @@ class DBus(Yarn):
         path: str,
         interface: str,
         property_name: str,
-        value: str,
-        bus: Literal["session", "system"] = "session",
-        signature: str | None = None,
+        options: DBusPropertyOptions | None = None,
+        **kwargs: Any,
     ) -> str:
         """Set a writable D-Bus property on an object interface.
 
@@ -332,33 +345,37 @@ class DBus(Yarn):
         :param path: Object path.
         :param interface: Interface name.
         :param property_name: Writable property name.
-        :param value: Value to set.
-        :param bus: D-Bus bus name ('session' or 'system').
-        :param signature: Optional D-Bus signature.
         """
+        opts = options or DBusPropertyOptions(**kwargs)
         dest = destination.strip()
         p = path.strip()
         iface = interface.strip()
         prop = property_name.strip()
-        b = str(bus or "session").strip()
+        b = str(opts.bus or "session").strip()
 
         if not dest or not p or not iface or not prop:
             return "Error: destination, path, interface, and property_name are required."
 
-        val: Any = value
-        if isinstance(value, str):
-            low = value.lower()
+        val: Any = opts.value if opts.value is not None else kwargs.get("value")
+        if isinstance(val, str):
+            low = val.lower()
             if low in ("true", "1", "yes", "on"):
                 val = True
             elif low in ("false", "0", "no", "off"):
                 val = False
-            elif value.isdigit():
-                val = int(value)
+            elif val.isdigit():
+                val = int(val)
 
         try:
             return dbus_api.run_sync(
                 dbus_api.set_property(
-                    bus=b, destination=dest, path=p, interface=iface, property_name=prop, value=val, signature=signature
+                    destination=dest,
+                    path=p,
+                    interface=iface,
+                    property_name=prop,
+                    bus=b,
+                    value=val,
+                    signature=opts.signature,
                 )
             )
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as e:

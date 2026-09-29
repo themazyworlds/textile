@@ -37,7 +37,7 @@ class IntentNode(BaseModel):
     origin_token: OriginToken
     description: str = ""
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, _context: Any) -> None:
         if TaintTracker.is_tainted() and not self.origin_token.tainted:
             object.__setattr__(
                 self,

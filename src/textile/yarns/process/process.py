@@ -56,12 +56,12 @@ class ProcessControl(Yarn):
             return f"Error launching application: {e}"
 
     @strand(tier="observe")
-    def process_list(self, filter: str | None = None) -> list[dict[str, Any]]:
+    def process_list(self, filter_query: str | None = None) -> list[dict[str, Any]]:
         """List running system processes with PID, CPU/memory usage, user, and command line.
 
-        :param filter: Optional filter string for process name or command.
+        :param filter_query: Optional filter string for process name or command.
         """
-        filter_name = str(filter or "").strip().lower()
+        filter_name = str(filter_query or "").strip().lower()
         procs = []
         try:
             for entry in os.scandir("/proc"):

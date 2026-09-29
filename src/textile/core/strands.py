@@ -80,13 +80,12 @@ class Weft(BaseModel):
     def execute_match(self, match: re.Match) -> Any:
         """Execute weft attunement handler with regex match extracted arguments coerced with Pydantic."""
         raw_kwargs: dict[str, Any] = {}
-        named = {k: v for k, v in match.groupdict().items() if v is not None}
-        if named:
+        if named := {k: v for k, v in match.groupdict().items() if v is not None}:
             raw_kwargs = named
         elif match.groups():
             raw_kwargs = dict(zip(self.param_names, match.groups(), strict=False))
         elif len(self.param_names) == 1:
-            raw_kwargs = {self.param_names[0]: match.group(0)}
+            raw_kwargs = {self.param_names[0]: match[0]}
 
         if self.args_schema:
             try:
@@ -98,6 +97,4 @@ class Weft(BaseModel):
         else:
             coerced = raw_kwargs
 
-        if self.handler:
-            return self.handler(**coerced)
-        return None
+        return self.handler(**coerced) if self.handler else None

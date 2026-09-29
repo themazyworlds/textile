@@ -159,8 +159,7 @@ class SeamOrchestrator:
 
     def check_python_dependency(self, req: str, optional: bool = False) -> DependencyCheck:
         """Audit a Python package dependency using uv pip compile dry-run resolution."""
-        uv_bin = shutil.which("uv")
-        if uv_bin:
+        if uv_bin := shutil.which("uv"):
             try:
                 res = subprocess.run(
                     [uv_bin, "pip", "compile", "-", "-q"],
@@ -178,15 +177,14 @@ class SeamOrchestrator:
                         details=f"Package requirement '{req}' resolvable via uv PubGrub resolver",
                         is_optional=optional,
                     )
-                else:
-                    err = res.stderr.strip().splitlines()[-1] if res.stderr else "Resolution error"
-                    return DependencyCheck(
-                        dep_type=DependencyType.PYTHON_MODULE,
-                        target=req,
-                        is_satisfied=False,
-                        details=f"uv dependency conflict: {err}",
-                        is_optional=optional,
-                    )
+                err = res.stderr.strip().splitlines()[-1] if res.stderr else "Resolution error"
+                return DependencyCheck(
+                    dep_type=DependencyType.PYTHON_MODULE,
+                    target=req,
+                    is_satisfied=False,
+                    details=f"uv dependency conflict: {err}",
+                    is_optional=optional,
+                )
             except (subprocess.SubprocessError, OSError, ValueError) as e:
                 logger.debug(f"uv dependency compile error: {e}")
 
@@ -233,9 +231,10 @@ class SeamOrchestrator:
                 results.append(self.check_env_variable(target, optional))
 
         if hasattr(yarn, "get_python_dependencies"):
-            for p_dep in yarn.get_python_dependencies():
-                results.append(self.check_python_dependency(p_dep))
-
+            results.extend(
+                self.check_python_dependency(p_dep)
+                for p_dep in yarn.get_python_dependencies()
+            )
         return results
 
     def audit_strand(self, strand: Any, yarn: Any, loom_inst: Any) -> StrandIntegrityReport:
@@ -327,15 +326,19 @@ class SeamOrchestrator:
         l_inst = self._resolve_loom(loom_inst)
         l_inst.initialize()
 
-        reports: list[YarnIntegrityReport] = []
-        for yarn in s_inst.all_yarns.values():
-            reports.append(self.audit_yarn(yarn, s_inst, l_inst))
-
+        reports: list[YarnIntegrityReport] = [
+            self.audit_yarn(yarn, s_inst, l_inst)
+            for yarn in s_inst.all_yarns.values()
+        ]
         total_yarns = len(reports)
-        healthy = sum(1 for r in reports if r.health_status == HealthStatus.HEALTHY)
-        degraded = sum(1 for r in reports if r.health_status == HealthStatus.DEGRADED)
-        critical = sum(1 for r in reports if r.health_status == HealthStatus.CRITICAL)
-        disabled = sum(1 for r in reports if r.health_status == HealthStatus.DISABLED)
+        healthy = sum(bool(r.health_status == HealthStatus.HEALTHY)
+                  for r in reports)
+        degraded = sum(bool(r.health_status == HealthStatus.DEGRADED)
+                   for r in reports)
+        critical = sum(bool(r.health_status == HealthStatus.CRITICAL)
+                   for r in reports)
+        disabled = sum(bool(r.health_status == HealthStatus.DISABLED)
+                   for r in reports)
         total_strands = len(l_inst._strand_to_yarn)
 
         audit_report = SystemAuditReport(

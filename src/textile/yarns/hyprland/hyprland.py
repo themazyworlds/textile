@@ -185,35 +185,46 @@ class HyprlandIPC:
             return self.get_self_window() or None
         return None
 
+    def _match_prefix_client(self, prefix: str, val: str, clients: list[dict[str, Any]]) -> dict[str, Any] | None:
+        val_lower = val.lower()
+        if prefix == "class":
+            return next((c for c in clients if c.get("class", "").lower() == val_lower), None)
+        if prefix == "title":
+            return next((c for c in clients if val_lower in c.get("title", "").lower()), None)
+        if prefix == "pid" and val.isdigit():
+            pid_int = int(val)
+            return next((c for c in clients if c.get("pid") == pid_int), None)
+        if prefix == "address":
+            found = next((c for c in clients if c.get("address", "").lower() == val_lower), None)
+            return found or {"address": val}
+        return None
+
     def _resolve_prefixed_target(self, target_clean: str, clients: list[dict[str, Any]]) -> dict[str, Any] | None:
         if target_clean.startswith("0x"):
-            for c in clients:
-                if c.get("address", "").lower() == target_clean.lower():
-                    return c
-            return {"address": target_clean}
+            found = next((c for c in clients if c.get("address", "").lower() == target_clean.lower()), None)
+            return found or {"address": target_clean}
 
         if any(target_clean.startswith(p) for p in ("class:", "title:", "pid:", "address:")):
             prefix, _, val = target_clean.partition(":")
-            val_lower = val.lower()
-            if prefix == "class":
-                for c in clients:
-                    if c.get("class", "").lower() == val_lower:
-                        return c
-            elif prefix == "title":
-                for c in clients:
-                    if val_lower in c.get("title", "").lower():
-                        return c
-            elif prefix == "pid" and val.isdigit():
-                pid_int = int(val)
-                for c in clients:
-                    if c.get("pid") == pid_int:
-                        return c
-            elif prefix == "address":
-                for c in clients:
-                    if c.get("address", "").lower() == val_lower:
-                        return c
-                return {"address": val}
+            return self._match_prefix_client(prefix, val, clients)
         return None
+
+    def _score_child_procs(self, child_procs: list[str], keywords: list[str]) -> tuple[int, bool]:
+        score = 0
+        matched = False
+        for proc_str in child_procs:
+            clean_str = proc_str.strip().lower()
+            for kw in keywords:
+                if kw == clean_str:
+                    score += 500
+                    matched = True
+                elif kw in clean_str.split():
+                    score += 300
+                    matched = True
+                elif kw in clean_str:
+                    score += 150
+                    matched = True
+        return score, matched
 
     def _score_client(
         self,
@@ -223,28 +234,16 @@ class HyprlandIPC:
         is_querying_self: bool,
         self_ancestors: list[int],
     ) -> int:
-        score = 0
         title = c.get("title", "").lower()
         cls_name = c.get("class", "").lower()
         init_cls = c.get("initialClass", "").lower()
         init_title = c.get("initialTitle", "").lower()
         pid = c.get("pid", 0)
-        is_self_window = pid in self_ancestors
 
-        child_procs = self._get_self_descendant_command_lines(pid)
-        proc_matched = False
-        for proc_str in child_procs:
-            proc_str_clean = proc_str.strip().lower()
-            for kw in keywords:
-                if kw == proc_str_clean:
-                    score += 500
-                    proc_matched = True
-                elif kw in proc_str_clean.split():
-                    score += 300
-                    proc_matched = True
-                elif kw in proc_str_clean:
-                    score += 150
-                    proc_matched = True
+        proc_score, proc_matched = self._score_child_procs(
+            self._get_self_descendant_command_lines(pid), keywords
+        )
+        score = proc_score
 
         if target_lower in title:
             score += 200
@@ -262,7 +261,7 @@ class HyprlandIPC:
             if kw in init_cls or kw in init_title:
                 score += 10
 
-        if is_self_window and not is_querying_self:
+        if (pid in self_ancestors) and not is_querying_self:
             score -= 1000
 
         focus_hist = c.get("focusHistoryID", 99)
@@ -479,6 +478,17 @@ class HyprlandIPC:
         res = self.send_json("j/monitors")
         return res if isinstance(res, list) else []
 
+    def _parse_event_lines(self, buffer: str, events: list[dict[str, str]], max_events: int) -> tuple[str, bool]:
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.strip()
+            if line and ">>" in line:
+                event_name, _, event_data = line.partition(">>")
+                events.append({"event": event_name.strip(), "data": event_data.strip()})
+                if len(events) >= max_events:
+                    return buffer, True
+        return buffer, False
+
     def read_events(self, timeout: float = 0.1, max_events: int = 20) -> list[dict[str, str]]:
         sock_path = self._get_event_socket_path()
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -504,15 +514,9 @@ class HyprlandIPC:
                     if not chunk:
                         break
                     buffer += chunk
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        line = line.strip()
-                        if not line or ">>" not in line:
-                            continue
-                        event_name, _, event_data = line.partition(">>")
-                        events.append({"event": event_name.strip(), "data": event_data.strip()})
-                        if len(events) >= max_events:
-                            break
+                    buffer, done = self._parse_event_lines(buffer, events, max_events)
+                    if done:
+                        break
                     r, _, _ = select.select([sock], [], [], 0.02)
                     if not r:
                         break
@@ -525,19 +529,11 @@ class HyprlandIPC:
             sock.close()
         return events
 
-    def set_night_light(
-        self,
-        temperature: int | str | None = None,
-        gamma: float | None = None,
-        identity: bool = False,
-    ) -> dict[str, Any]:
-        hyprsunset_bin = shutil.which("hyprsunset")
-        wlsunset_bin = shutil.which("wlsunset")
-        if not hyprsunset_bin and not wlsunset_bin:
-            return {"success": False, "error": "Neither hyprsunset nor wlsunset is installed."}
-
-        temp_val: int | None = None
+    def _parse_night_light_temp(
+        self, temperature: int | str | None, identity: bool
+    ) -> tuple[int | None, bool]:
         is_ident = identity
+        temp_val: int | None = None
 
         if isinstance(temperature, str):
             t_clean = temperature.strip().lower()
@@ -556,6 +552,20 @@ class HyprlandIPC:
 
         if not is_ident and temp_val is None:
             temp_val = 4000
+        return temp_val, is_ident
+
+    def set_night_light(
+        self,
+        temperature: int | str | None = None,
+        gamma: float | None = None,
+        identity: bool = False,
+    ) -> dict[str, Any]:
+        hyprsunset_bin = shutil.which("hyprsunset")
+        wlsunset_bin = shutil.which("wlsunset")
+        if not hyprsunset_bin and not wlsunset_bin:
+            return {"success": False, "error": "Neither hyprsunset nor wlsunset is installed."}
+
+        temp_val, is_ident = self._parse_night_light_temp(temperature, identity)
 
         pkill_bin = shutil.which("pkill") or "/usr/bin/pkill"
         subprocess.run(

@@ -3,24 +3,26 @@ Textile Core Yarn Abstract Base Class & Execution Engine.
 """
 
 import inspect
-import json
 import logging
-import os
-import shutil
-import subprocess
 import sys
 from abc import ABC
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import Any
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel
 
 from textile.core.decorators import _parse_tier
 from textile.core.elastic import EventUrgency, elastic
-from textile.core.errors import TextileError
+from textile.core.invoker import (
+    InvokerConfig,
+    _build_args_model,
+    _create_invoker,
+    _format_handler_result,
+)
+from textile.core.isolated_runner import execute_isolated_strand
 from textile.core.manifest import YarnManifest
-from textile.core.sandbox import BubblewrapSandbox
 from textile.core.strands import CapabilityTier, Strand, Weft
 from textile.core.tapestry import sensory_tapestry
 from textile.core.validation import (
@@ -32,98 +34,26 @@ from textile.core.validation import (
 
 logger = logging.getLogger(__name__)
 
-STRAND_EXEC_ERRORS = (
-    TextileError,
-    AttributeError,
-    TypeError,
-    ValueError,
-    KeyError,
-    OSError,
-    RuntimeError,
-    json.JSONDecodeError,
-)
+
+@dataclass
+class StrandConfig:
+    args_schema: type[BaseModel] | None = None
+    parameters: dict[str, Any] | None = None
+    required: list[str] | None = None
+    isolated: bool | None = None
+    timeout: float = 30.0
+    capability: str | None = None
+    tier: CapabilityTier | str = CapabilityTier.INTERACT
+    resources: list[str] | None = None
 
 
-def _format_handler_result(res: Any) -> str:
-    """Format handler execution output into string or formatted JSON."""
-    if isinstance(res, (dict, list)):
-        return json.dumps(res, indent=2)
-    return str(res) if res is not None else "ok"
-
-
-def _build_args_model(
-    method: Callable,
-    model_name: str,
-    param_docs: dict[str, str] | None = None,
-) -> type[BaseModel] | None:
-    """Helper to synthesize Pydantic BaseModel for method parameters."""
-    sig = inspect.signature(method)
-    try:
-        hints = get_type_hints(method)
-    except (AttributeError, TypeError, NameError, ValueError, KeyError):
-        hints = {}
-
-    docs = param_docs or {}
-    fields = {}
-    for p_name, param in sig.parameters.items():
-        if p_name in ("self", "cls"):
-            continue
-        p_type = hints.get(p_name, Any)
-        p_desc = docs.get(p_name, "")
-        if param.default is inspect.Parameter.empty:
-            fields[p_name] = (p_type, Field(..., description=p_desc))
-        else:
-            fields[p_name] = (p_type, Field(default=param.default, description=p_desc))
-
-    return create_model(model_name, **fields) if fields else None
-
-
-def _create_invoker(
-    yarn: Any,
-    method: Callable,
-    strand_name: str,
-    args_model: type[BaseModel] | None,
-    params: dict[str, Any],
-    req_list: list[str],
-    isolated: bool,
-    is_async: bool,
-    timeout: float,
-    tier: CapabilityTier = CapabilityTier.INTERACT,
-) -> Callable[[dict[str, Any]], Any]:
-    """Create unified sync or async execution invoker for a strand."""
-
-    def _validate_and_coerce(args: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
-        return validate_strand_arguments(
-            strand_name, args, schema_model=args_model, parameters=params, required=req_list
-        )
-
-    if is_async:
-
-        async def _async_invoker(args: dict[str, Any]) -> str:
-            val_err, coerced = _validate_and_coerce(args)
-            if val_err:
-                return val_err
-            try:
-                res = await method(**coerced)
-                return _format_handler_result(res)
-            except STRAND_EXEC_ERRORS as e:
-                return f"Error executing strand '{strand_name}': {e}"
-
-        return _async_invoker
-
-    def _sync_invoker(args: dict[str, Any]) -> str:
-        val_err, coerced = _validate_and_coerce(args)
-        if val_err:
-            return val_err
-        if isolated:
-            return yarn._run_isolated(strand_name, coerced, timeout=timeout, tier=tier)
-        try:
-            res = method(**coerced)
-            return _format_handler_result(res)
-        except STRAND_EXEC_ERRORS as e:
-            return f"Error executing strand '{strand_name}': {e}"
-
-    return _sync_invoker
+@dataclass
+class EventOptions:
+    data: Any = None
+    summary: str = ""
+    urgency: EventUrgency = EventUrgency.NOTICE
+    retained_slot: str | None = None
+    retained_value: Any = None
 
 
 class Yarn(ABC):
@@ -136,8 +66,9 @@ class Yarn(ABC):
             self.manifest = manifest
             return
 
-        mod_file = getattr(sys.modules.get(self.__class__.__module__), "__file__", None)
-        if mod_file:
+        if mod_file := getattr(
+            sys.modules.get(self.__class__.__module__), "__file__", None
+        ):
             p = Path(mod_file)
             toml_file = p.with_suffix(".toml")
             if not toml_file.exists():
@@ -181,21 +112,23 @@ class Yarn(ABC):
     def publish_event(
         self,
         topic: str,
-        data: Any = None,
-        summary: str = "",
-        urgency: EventUrgency = EventUrgency.NOTICE,
-        retained_slot: str | None = None,
-        retained_value: Any = None,
+        options: EventOptions | None = None,
+        **kwargs: Any,
     ) -> None:
         """Publish a real-time event to Elastic."""
+        opts = options or EventOptions(**kwargs)
         self.elastic.broadcast(
-            topic=str(topic),
+            topic=topic,
             source=self.name,
-            summary=summary or f"Event '{topic}' from yarn '{self.name}'",
-            urgency=urgency,
-            data=data if isinstance(data, dict) else {"payload": data},
-            retained_slot=retained_slot,
-            retained_value=retained_value,
+            summary=opts.summary or f"Event '{topic}' from yarn '{self.name}'",
+            urgency=opts.urgency,
+            data=(
+                opts.data
+                if isinstance(opts.data, dict)
+                else {"payload": opts.data}
+            ),
+            retained_slot=opts.retained_slot,
+            retained_value=opts.retained_value,
         )
 
     def stitch(self, level: str, message: str, data: dict[str, Any] | None = None) -> Any:
@@ -211,6 +144,7 @@ class Yarn(ABC):
         return self.elastic.get_seat(key, default)
 
     def get_dependencies(self) -> list[dict[str, Any]]:
+        """Return system dependency manifests declared for this yarn."""
         return getattr(self, "dependencies", [])
 
     def is_available(self) -> bool:
@@ -248,6 +182,7 @@ class Yarn(ABC):
         return discovered
 
     def _method_to_weft(self, method: Callable) -> Weft:
+        """Convert a @weft decorated method into a Weft instance."""
         sig = inspect.signature(method)
         weft_name = getattr(method, "_weft_name", method.__name__)
         weft_pattern = getattr(method, "_weft_pattern")
@@ -270,7 +205,18 @@ class Yarn(ABC):
             param_names=param_names,
         )
 
+    def _determine_isolation(self, explicit_isolated: bool | None, tier_val: CapabilityTier) -> bool:
+        """Determine whether a strand requires process isolation based on explicit config or system tier."""
+        if explicit_isolated is not None:
+            return bool(explicit_isolated)
+        return bool(
+            self.get_python_dependencies()
+            or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
+            or detects_native_ffi(self)
+        )
+
     def _method_to_strand(self, method: Callable) -> Strand:
+        """Convert a @strand decorated method into a Strand instance."""
         main_desc, param_docs = _extract_docstring_info(inspect.getdoc(method))
         strand_name = getattr(method, "_strand_name", method.__name__)
         strand_desc = getattr(method, "_strand_description", None) or main_desc or strand_name
@@ -279,14 +225,7 @@ class Yarn(ABC):
 
         explicit_isolated = getattr(method, "_strand_isolated", None)
         strand_resources = getattr(method, "_strand_resources", None) or getattr(self.manifest, "resources", [])
-        if explicit_isolated is not None:
-            isolated = bool(explicit_isolated)
-        else:
-            isolated = bool(
-                self.get_python_dependencies()
-                or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
-                or detects_native_ffi(self)
-            )
+        isolated = self._determine_isolation(explicit_isolated, tier_val)
 
         timeout = getattr(method, "_strand_timeout", 30.0)
         is_async = inspect.iscoroutinefunction(method)
@@ -296,7 +235,18 @@ class Yarn(ABC):
         params, req_list = schema.get("properties", {}), schema.get("required", [])
 
         invoker = _create_invoker(
-            self, method, strand_name, args_model, params, req_list, isolated, is_async, timeout, tier=tier_val
+            self,
+            method,
+            strand_name,
+            InvokerConfig(
+                args_model=args_model,
+                params=params,
+                req_list=req_list,
+                isolated=isolated,
+                is_async=is_async,
+                timeout=timeout,
+                tier=tier_val,
+            ),
         )
 
         return Strand(
@@ -318,36 +268,23 @@ class Yarn(ABC):
         name: str,
         description: str,
         handler: Callable[[dict[str, Any]], Any],
-        args_schema: type[BaseModel] | None = None,
-        parameters: dict[str, Any] | None = None,
-        required: list[str] | None = None,
-        isolated: bool | None = None,
-        timeout: float = 30.0,
-        capability: str | None = None,
-        tier: CapabilityTier | str = CapabilityTier.INTERACT,
-        resources: list[str] | None = None,
+        config: StrandConfig | None = None,
+        **kwargs: Any,
     ) -> Strand:
         """Helper to build a Strand dynamically."""
-        tier_val = _parse_tier(tier, name)
+        cfg = config or StrandConfig(**kwargs)
+        tier_val = _parse_tier(cfg.tier, name)
+        is_isolated = self._determine_isolation(cfg.isolated, tier_val)
 
-        if isolated is not None:
-            is_isolated = bool(isolated)
-        elif (
-            self.get_python_dependencies()
-            or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
-            or detects_native_ffi(self)
-        ):
-            is_isolated = True
-        else:
-            is_isolated = False
-
-        schema_model = args_schema or (schema_to_model(name, parameters or {}, required or []) if parameters else None)
+        schema_model = cfg.args_schema or (
+            schema_to_model(name, cfg.parameters or {}, cfg.required or []) if cfg.parameters else None
+        )
         schema = (
             schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
         )
         params = schema.get("properties", {})
-        req_list = schema.get("required", []) if schema_model else (required or [])
-        res_list = resources or getattr(self.manifest, "resources", [])
+        req_list = schema.get("required", []) if schema_model else (cfg.required or [])
+        res_list = cfg.resources or getattr(self.manifest, "resources", [])
 
         def _safe_handler(args: dict[str, Any]) -> str:
             val_err, coerced = validate_strand_arguments(
@@ -356,7 +293,7 @@ class Yarn(ABC):
             if val_err:
                 return val_err
             if is_isolated:
-                return self._run_isolated(name, coerced, timeout=timeout, tier=tier_val)
+                return self._run_isolated(name, coerced, timeout=cfg.timeout, tier=tier_val)
             try:
                 res = handler(coerced)
                 return _format_handler_result(res)
@@ -370,7 +307,7 @@ class Yarn(ABC):
             required=req_list,
             handler=_safe_handler,
             raw_handler=handler,
-            capability=capability,
+            capability=cfg.capability,
             args_schema=schema_model,
             tier=tier_val,
             isolated=is_isolated,
@@ -385,57 +322,10 @@ class Yarn(ABC):
         tier: CapabilityTier | str = CapabilityTier.INTERACT,
     ) -> str:
         """Run strand in an isolated ephemeral subprocess using `uv`."""
-        uv_bin = shutil.which("uv")
-        if not uv_bin:
-            return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
-
-        tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
-        cmd = [uv_bin, "run", "--no-project", "--no-sync", "--quiet"]
-        for dep in self.get_python_dependencies():
-            cmd.extend(["--with", str(dep)])
-        cmd.extend(
-            [
-                "-m",
-                "textile.core.isolated_runner",
-                self.__class__.__module__,
-                self.__class__.__name__,
-                strand_name,
-                json.dumps(args),
-                tier_str,
-            ]
-        )
-        env = dict(os.environ)
-        python_path = env.get("PYTHONPATH", "")
-        cwd = os.getcwd()
-        env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
-
-        if BubblewrapSandbox.is_available() and tier_str.upper() != "PRIVILEGED":
-            matching_strand = next((s for s in self.get_strands() if s.name == strand_name), None)
-            res_list = matching_strand.resources if matching_strand else getattr(self.manifest, "resources", [])
-            cmd = BubblewrapSandbox.wrap_command(cmd, tier=tier_str, workspace_root=cwd, resources=res_list)
-
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False, env=env)
-            out = res.stdout.strip()
-            err = res.stderr.strip()
-
-            if res.returncode == 0 and out:
-                try:
-                    payload = json.loads(out)
-                    if payload.get("success"):
-                        return _format_handler_result(payload.get("result"))
-                    return f"Error: {payload.get('error', 'Execution failed')}"
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    return out
-
-            err_msg = err if err else f"Exit code {res.returncode}"
-            return f"Error: Strand '{strand_name}' isolated worker process crashed ({err_msg}). Host process preserved."
-        except subprocess.TimeoutExpired:
-            return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
-        except (subprocess.SubprocessError, OSError, ValueError) as e:
-            return f"Error executing isolated strand '{strand_name}': {e}"
+        return execute_isolated_strand(self, strand_name, args, timeout=timeout, tier=tier)
 
     def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
+        """Execute strand raw handler or bound handler directly without validation or isolation wrapper."""
         strand = next((s for s in self.get_strands() if s.name == strand_name), None)
         if strand is None:
             return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
@@ -456,13 +346,18 @@ class Yarn(ABC):
         return _format_handler_result(res)
 
     def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
-        for s in self.get_strands():
-            if s.name == strand_name and s.handler is not None:
-                return s.handler(args)
-        return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
+        """Execute strand synchronously by matching name in discovered strands."""
+        return next(
+            (
+                s.handler(args)
+                for s in self.get_strands()
+                if s.name == strand_name and s.handler is not None
+            ),
+            f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'.",
+        )
 
     def on_load(self) -> None:
-        pass
+        """Lifecycle hook invoked when the yarn is initialized and loaded into Loom."""
 
     def on_unload(self) -> None:
-        pass
+        """Lifecycle hook invoked when the yarn is unloaded from Loom."""

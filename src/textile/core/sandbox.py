@@ -36,8 +36,7 @@ def _resolve_display_bind() -> list[str]:
                     runtime,
                 ]
             )
-    x11_display = os.environ.get("DISPLAY")
-    if x11_display:
+    if x11_display := os.environ.get("DISPLAY"):
         args.extend(["--setenv", "DISPLAY", x11_display])
         x11_sock = os.path.join("/", "tmp", ".X11-unix")
         if os.path.exists(x11_sock):
@@ -48,8 +47,7 @@ def _resolve_display_bind() -> list[str]:
 def _resolve_sound_bind() -> list[str]:
     """Resolve dynamic PipeWire / PulseAudio sound socket mounts for audio strands."""
     args = []
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime:
+    if runtime := os.environ.get("XDG_RUNTIME_DIR"):
         for sock_name in ("pipewire-0", "pulse"):
             p = os.path.join(runtime, sock_name)
             if os.path.exists(p):
@@ -252,6 +250,7 @@ class BubblewrapSandbox:
         cls,
         cmd: list[str],
         tier: str,
+        *,
         workspace_root: str | Path | None = None,
         allow_network: bool = False,
         resources: list[str] | None = None,
@@ -261,7 +260,7 @@ class BubblewrapSandbox:
         if not bwrap_path:
             return cmd
 
-        tier_upper = str(tier).upper()
+        tier_upper = tier.upper()
         if "PRIVILEGED" in tier_upper:
             return cmd
 

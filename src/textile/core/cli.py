@@ -210,14 +210,15 @@ def cmd_loom(
     for p_name, yarn_obj in loom.active_yarns.items():
         if filter_yarn and p_name != filter_yarn:
             continue
-        strands_list = yarn_obj.get_strands()
-        if strands_list:
+        if strands_list := yarn_obj.get_strands():
             yarns_map[yarn_obj] = strands_list
             total_strands += len(strands_list)
 
     sorted_yarns = sorted(yarns_map.keys(), key=lambda p: (-p.layer, p.name))
     if not sorted_yarns:
-        console.print(f"[dim]No active yarns found{' matching filter ' + filter_yarn if filter_yarn else ''}.[/dim]")
+        console.print(
+            f"[dim]No active yarns found{f' matching filter {filter_yarn}' if filter_yarn else ''}.[/dim]"
+        )
         return
 
     console.print(
@@ -261,7 +262,7 @@ def call_strand(
             parsed_kwargs = json.loads(json_args)
         except json.JSONDecodeError as e:
             console.print(f"[bold red]Error parsing JSON arguments:[/bold red] {e}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
     elif args:
         for arg in args:
             if "=" in arg:
@@ -285,7 +286,7 @@ def call_strand(
         console.print(f"[bold red]{e.message}[/bold red]")
         if e.hint:
             console.print(f"[dim yellow]Hint: {e.hint}[/dim yellow]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command("inspect")
@@ -307,8 +308,7 @@ def inspect_strand(
     console.print(f"[bold white]Tier:[/bold white] {target.tier}")
     console.print(f"[bold white]Description:[/bold white] {target.description}")
 
-    params = target.parameters or {}
-    if params:
+    if params := target.parameters or {}:
         table = Table(title="Parameters", box=box.SIMPLE)
         table.add_column("Parameter", style="bold white")
         table.add_column("Type", style="cyan")

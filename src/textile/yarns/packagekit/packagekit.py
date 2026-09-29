@@ -120,7 +120,7 @@ class PackageKitDBusClient:
         def on_error(code: int, details: str):
             errors.append(f"PackageKit Error {code}: {details}")
 
-        def on_finished(exit_code: int, runtime: int):
+        def on_finished(_exit_code: int, _runtime: int):
             finished.set()
 
         tx.on_package(on_package)
@@ -145,7 +145,7 @@ class PackageKitDBusClient:
             meta["summary"] = summary
             results.append(meta)
 
-        def on_finished(exit_code: int, runtime: int):
+        def on_finished(_exit_code: int, _runtime: int):
             finished.set()
 
         tx.on_package(on_package)
@@ -175,7 +175,7 @@ class PackageKitDBusClient:
             if isinstance(unwrapped, dict):
                 details_map.update(unwrapped)
 
-        def on_finished(exit_code: int, runtime: int):
+        def on_finished(_exit_code: int, _runtime: int):
             finished.set()
 
         tx.on_details(on_details)
@@ -197,7 +197,7 @@ class PackageKitDBusClient:
                 meta["summary"] = summary
                 updates.append(meta)
 
-            def on_finished(exit_code: int, runtime: int):
+            def on_finished(_exit_code: int, _runtime: int):
                 finished.set()
 
             def on_error(code: int, details: str):
@@ -265,7 +265,7 @@ class PackageKitDBusClient:
         def on_package(info: int, pkg_id: str, summary: str):
             providers.append(pkg_id)
 
-        def on_finished(exit_code: int, runtime: int):
+        def on_finished(_exit_code: int, _runtime: int):
             finished.set()
 
         tx.on_package(on_package)
@@ -283,8 +283,8 @@ class PackageKitDBusClient:
         try:
             _, tx = await self._create_transaction()
             finished = asyncio.Event()
-            tx.on_finished(lambda code, rt: finished.set())
-            tx.on_error_code(lambda code, det: finished.set())
+            tx.on_finished(lambda *_: finished.set())
+            tx.on_error_code(lambda *_: finished.set())
             await tx.call_refresh_cache(force)
             await asyncio.wait_for(finished.wait(), timeout=180.0)
             self._updates_cache = None  # Invalidate cached updates
@@ -325,7 +325,7 @@ class PackageKitDBusClient:
         def on_error(code: int, details: str):
             errors.append(f"Error {code}: {details}")
 
-        def on_finished(exit_code: int, runtime: int):
+        def on_finished(_exit_code: int, _runtime: int):
             finished.set()
 
         tx.on_error_code(on_error)
@@ -352,7 +352,7 @@ class PackageKitDBusClient:
         def on_error(code: int, details: str):
             errors.append(f"Error {code}: {details}")
 
-        def on_finished(exit_code: int, runtime: int):
+        def on_finished(_exit_code: int, _runtime: int):
             finished.set()
 
         tx.on_error_code(on_error)

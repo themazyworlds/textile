@@ -16,6 +16,7 @@ import stat
 import struct
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +24,21 @@ from textile import Yarn, strand
 from textile.core.guardrails import ScopedPath
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FileOpOptions:
+    path: str | None = None
+    content: str | None = None
+    target: str | None = None
+    replacement: str | None = ""
+    mode: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    pattern: str | None = "*"
+    events: str | None = "all"
+    recursive: bool = False
+    timeout_seconds: float = 5.0
 
 # ---------------------------------------------------------------------------
 # Linux inotify Constants
@@ -636,46 +652,28 @@ class FilesystemStorage(Yarn):
             "read_events",
             "wait_event",
         ],
-        path: str | None = None,
-        content: str | None = None,
-        target: str | None = None,
-        replacement: str | None = "",
-        mode: str | None = None,
-        start_line: int | None = None,
-        end_line: int | None = None,
-        pattern: str | None = "*",
-        events: str | None = "all",
-        recursive: bool = False,
-        timeout_seconds: float = 5.0,
+        options: FileOpOptions | None = None,
+        **kwargs: Any,
     ) -> Any:
         """Pure Python native file reader, writer, replacer, directory navigator, stat, chmod, disk usage, and inotify.
 
         :param operation: File/Directory/Storage operation.
-        :param path: Target path.
-        :param content: Content to write.
-        :param target: Text to replace.
-        :param replacement: Replacement text.
-        :param mode: Permissions octal (e.g. '755').
-        :param start_line: Start line (1-indexed).
-        :param end_line: End line (1-indexed).
-        :param pattern: Glob search pattern.
-        :param events: inotify mask ('all', 'modify', 'create', 'delete', 'write', 'move').
-        :param recursive: Recursive watch flag.
-        :param timeout_seconds: Timeout in seconds.
+        :param options: Optional FileOpOptions instance.
         """
+        opts = options or FileOpOptions(**kwargs)
         op = str(operation).strip().lower()
-        raw_path = str(path or "").strip()
-        cnt = str(content or "")
-        tgt = str(target or "")
-        repl = str(replacement or "")
-        m = str(mode or "")
-        pat = str(pattern or "*").strip()
-        evts = str(events or "all").strip()
+        raw_path = str(opts.path or "").strip()
+        cnt = str(opts.content or "")
+        tgt = str(opts.target or "")
+        repl = str(opts.replacement or "")
+        m = str(opts.mode or "")
+        pat = str(opts.pattern or "*").strip()
+        evts = str(opts.events or "all").strip()
 
         handlers = {
             "getcwd": lambda: f"Current working directory: {file_io.getcwd()}",
             "chdir": lambda: file_io.chdir(raw_path or "."),
-            "read": lambda: file_io.read(raw_path, start_line=start_line, end_line=end_line),
+            "read": lambda: file_io.read(raw_path, start_line=opts.start_line, end_line=opts.end_line),
             "write": lambda: file_io.write(raw_path, content=cnt, atomic=True),
             "replace": lambda: file_io.replace(raw_path, target=tgt, replacement=repl),
             "list": lambda: file_io.list_dir(raw_path or "."),
@@ -690,12 +688,12 @@ class FilesystemStorage(Yarn):
             "get_all_disks": file_io.get_all_disks,
             "all_disks": file_io.get_all_disks,
             "disks": file_io.get_all_disks,
-            "watch": lambda: inotify_api.add_watch(raw_path or ".", events=evts, recursive=recursive),
+            "watch": lambda: inotify_api.add_watch(raw_path or ".", events=evts, recursive=opts.recursive),
             "unwatch": lambda: inotify_api.remove_watch(raw_path),
             "list_watches": inotify_api.list_watches,
-            "read_events": lambda: inotify_api.read_events(timeout_ms=int(timeout_seconds * 1000)),
+            "read_events": lambda: inotify_api.read_events(timeout_ms=int(opts.timeout_seconds * 1000)),
             "wait_event": lambda: inotify_api.wait_for_event(
-                raw_path or ".", events=evts, timeout_seconds=timeout_seconds
+                raw_path or ".", events=evts, timeout_seconds=opts.timeout_seconds
             ),
         }
         if op in handlers:

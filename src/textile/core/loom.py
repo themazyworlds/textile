@@ -114,6 +114,7 @@ class Loom:
         self,
         strand_name: str,
         args: dict[str, Any],
+        *,
         caller: str | None = None,
         origin_token: OriginToken | None = None,
     ) -> str:
@@ -157,7 +158,7 @@ class Loom:
         core_tapestry.record_task_start(
             task_id,
             strand_name,
-            args,
+            args=args,
             tier=tier_val,
             trust_level=trust_val,
             tainted=token.tainted,
@@ -219,6 +220,7 @@ class Loom:
         self,
         strand_name: str,
         args: dict[str, Any],
+        *,
         caller: str | None = None,
         origin_token: OriginToken | None = None,
     ) -> str:
@@ -255,9 +257,10 @@ class Loom:
         # Collect all matches across active wefts
         all_matches = []
         for weft in self.wefts:
-            for m in weft.pattern.finditer(chunk):
-                all_matches.append((m.start(), -weft.priority, weft, m))
-
+            all_matches.extend(
+                (m.start(), -weft.priority, weft, m)
+                for m in weft.pattern.finditer(chunk)
+            )
         # Sort chronologically by position in the text stream
         all_matches.sort(key=lambda x: (x[0], x[1]))
 
@@ -290,9 +293,10 @@ class Loom:
 
         all_matches = []
         for weft in self.wefts:
-            for m in weft.pattern.finditer(chunk):
-                all_matches.append((m.start(), -weft.priority, weft, m))
-
+            all_matches.extend(
+                (m.start(), -weft.priority, weft, m)
+                for m in weft.pattern.finditer(chunk)
+            )
         all_matches.sort(key=lambda x: (x[0], x[1]))
 
         for _, _, weft, match in all_matches:

@@ -10,9 +10,24 @@ import os
 import re
 import shutil
 import subprocess
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any
 
 from textile import Yarn, strand
+
+
+@dataclass
+class JournalQueryParams:
+    unit: str | None = None
+    user_unit: str | None = None
+    priority: str | None = None
+    since: str | None = "-1h"
+    until: str | None = None
+    lines: int = 25
+    kernel: bool = False
+    grep: str | None = None
+    boot: int | None = None
+    user: bool = False
 
 PRIORITY_NAMES = {
     0: "emerg",
@@ -123,22 +138,7 @@ class JournalAPI:
         except (OSError, subprocess.SubprocessError) as e:
             return [{"error": f"Error executing journalctl: {e}"}]
 
-    def query_logs(
-        self,
-        unit: str | None = None,
-        user_unit: str | None = None,
-        priority: str | None = None,
-        since: str | None = None,
-        until: str | None = None,
-        lines: int = 25,
-        kernel: bool = False,
-        grep: str | None = None,
-        boot: int | None = None,
-        user: bool = False,
-    ) -> list[dict[str, Any]]:
-        if not self.is_available():
-            return [{"error": "systemd journalctl is not available."}]
-
+    def _build_journalctl_cmd(self, p: JournalQueryParams) -> list[str]:
         base_cmd = [
             self._journalctl_bin,
             "-o",
@@ -146,48 +146,58 @@ class JournalAPI:
             "--no-pager",
             f"--output-fields={OUTPUT_FIELDS}",
         ]
-        limit = max(1, min(int(lines or 25), 200))
+        limit = max(1, min(int(p.lines or 25), 200))
         base_cmd.extend(["-n", str(limit)])
 
-        if boot is not None:
-            base_cmd.extend(["-b", str(boot)])
-        if kernel:
+        if p.boot is not None:
+            base_cmd.extend(["-b", str(p.boot)])
+        if p.kernel:
             base_cmd.append("-k")
-        if user:
+        if p.user:
             base_cmd.append("--user")
-        if user_unit:
-            base_cmd.extend(["--user-unit", str(user_unit)])
-        if priority:
-            base_cmd.extend(["-p", str(priority)])
+        if p.user_unit:
+            base_cmd.extend(["--user-unit", str(p.user_unit)])
+        if p.priority:
+            base_cmd.extend(["-p", str(p.priority)])
 
-        norm_since = _normalize_time_spec(since)
+        norm_since = _normalize_time_spec(p.since)
         if norm_since:
             base_cmd.extend(["--since", norm_since])
 
-        norm_until = _normalize_time_spec(until)
+        norm_until = _normalize_time_spec(p.until)
         if norm_until:
             base_cmd.extend(["--until", norm_until])
 
-        if grep:
-            base_cmd.extend(["-g", str(grep)])
+        if p.grep:
+            base_cmd.extend(["-g", str(p.grep)])
+        return base_cmd
 
-        if unit and not user_unit:
-            # First try system unit
+    def query_logs(
+        self,
+        query: JournalQueryParams | None = None,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        if not self.is_available():
+            return [{"error": "systemd journalctl is not available."}]
+
+        p = query or JournalQueryParams(**kwargs)
+        base_cmd = self._build_journalctl_cmd(p)
+
+        if p.unit and not p.user_unit:
             cmd_system = list(base_cmd)
-            cmd_system.extend(["-u", str(unit)])
+            cmd_system.extend(["-u", str(p.unit)])
             results = self._exec_journal(cmd_system)
 
-            # If no system logs found and no errors, fallback to checking user unit
             if not results or (len(results) == 1 and "error" in results[0]):
                 cmd_user = list(base_cmd)
-                cmd_user.extend(["--user-unit", str(unit)])
+                cmd_user.extend(["--user-unit", str(p.unit)])
                 user_results = self._exec_journal(cmd_user)
                 if user_results and not (len(user_results) == 1 and "error" in user_results[0]):
                     return user_results
             return results
 
-        if unit and user_unit:
-            base_cmd.extend(["-u", str(unit)])
+        if p.unit and p.user_unit:
+            base_cmd.extend(["-u", str(p.unit)])
 
         return self._exec_journal(base_cmd)
 
@@ -208,42 +218,11 @@ class Journal(Yarn):
     @strand(tier="observe")
     def journal_query(
         self,
-        unit: str | None = None,
-        user_unit: str | None = None,
-        priority: Literal["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"] | None = None,
-        since: str | None = "-1h",
-        until: str | None = None,
-        lines: int = 25,
-        kernel: bool = False,
-        grep: str | None = None,
-        boot: int | None = None,
-        user: bool = False,
+        query: JournalQueryParams | None = None,
+        **kwargs: Any,
     ) -> list[dict[str, Any]]:
-        """Query systemd journal logs with structured filtering by unit, priority, time range, or grep.
-
-        :param unit: Filter by service name (automatically searches system and user units).
-        :param user_unit: Filter explicitly by systemd user session unit.
-        :param priority: Priority threshold.
-        :param since: Time range filter (e.g. '-1h', '-30m', 'yesterday').
-        :param until: End time filter.
-        :param lines: Max log entries (default 25, max 200).
-        :param kernel: Query kernel logs only.
-        :param grep: Text pattern filter.
-        :param boot: Boot offset (e.g. 0 for current boot, -1 for previous).
-        :param user: Query user session logs.
-        """
-        return journal_api.query_logs(
-            unit=unit,
-            user_unit=user_unit,
-            priority=priority,
-            since=since or "-1h",
-            until=until,
-            lines=lines,
-            kernel=kernel,
-            grep=grep,
-            boot=boot,
-            user=user,
-        )
+        """Query systemd journal logs with structured filtering by unit, priority, time range, or grep."""
+        return journal_api.query_logs(query=query, **kwargs)
 
     @strand(tier="observe")
     def journal_get_errors(self, since: str = "-1h", lines: int = 25) -> list[dict[str, Any]]:

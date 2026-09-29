@@ -10,6 +10,7 @@ import os
 import sqlite3
 import tempfile
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -18,6 +19,28 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TaskOptions:
+    args: dict[str, Any] | None = None
+    tier: str | None = None
+    trust_level: str | None = None
+    tainted: bool = False
+
+
+@dataclass
+class ElasticEventSpec:
+    event_id: str
+    topic: str
+    source: str
+    urgency: str
+    summary: str
+    data: dict[str, Any] | None = None
+    timestamp: float | None = None
+    process_id: int | None = None
+    retained_slot: str | None = None
+    retained_value: Any = None
 
 
 class NoticeLevel(StrEnum):
@@ -150,19 +173,23 @@ class CoreTapestry:
         self,
         task_id: str,
         strand_name: str,
-        args: dict[str, Any] | None = None,
-        tier: str | None = None,
-        trust_level: str | None = None,
-        tainted: bool = False,
+        options: TaskOptions | dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> TaskRecord:
+        if isinstance(options, dict):
+            opts = TaskOptions(args=options, **kwargs)
+        elif isinstance(options, TaskOptions):
+            opts = options
+        else:
+            opts = TaskOptions(**kwargs)
         record = TaskRecord(
             task_id=task_id,
             strand_name=strand_name,
             start_time=datetime.now(UTC).isoformat(),
-            args=args or {},
-            tier=tier,
-            trust_level=trust_level,
-            tainted=tainted,
+            args=opts.args or {},
+            tier=opts.tier,
+            trust_level=opts.trust_level,
+            tainted=opts.tainted,
         )
         with self._db._lock, self._db.get_conn() as conn:
             query = """
@@ -244,15 +271,14 @@ class CoreTapestry:
         if not clean_id:
             return "Error: No task identifier or strand name specified to cancel."
 
-        with self._db._lock, self._db.get_conn() as conn:
+        with (self._db._lock, self._db.get_conn() as conn):
             cur = conn.cursor()
             query = """
                 SELECT task_id, strand_name FROM active_tasks
                 WHERE task_id = ? OR strand_name = ?
             """
             cur.execute(query, (clean_id, clean_id))
-            row = cur.fetchone()
-            if row:
+            if row := cur.fetchone():
                 tid, sname = row[0], row[1]
                 conn.execute("DELETE FROM active_tasks WHERE task_id = ?", (tid,))
                 return f"Successfully cancelled active task '{sname}' (ID: {tid})."
@@ -323,6 +349,7 @@ class SensoryTapestry:
     """Open Sensory Blackboard: Retained state slots and notice feed via SQLite."""
 
     def __init__(self, max_notices: int = 100, persist: bool = False):
+        self._max_notices = max_notices
         self._db = TapestryDB(persist=persist)
 
     def stitch(
@@ -343,8 +370,8 @@ class SensoryTapestry:
 
         notice = Notice(
             level=lvl,
-            source=str(source).strip(),
-            message=str(message).strip(),
+            source=source.strip(),
+            message=message.strip(),
             data=data or {},
         )
         with self._db._lock, self._db.get_conn() as conn:
@@ -367,7 +394,7 @@ class SensoryTapestry:
 
     def set_slot(self, key: str, value: Any) -> None:
         """Set a retained state slot in the sensory blackboard."""
-        clean_key = str(key).strip()
+        clean_key = key.strip()
         with self._db._lock, self._db.get_conn() as conn:
             query = """
                 INSERT INTO slots (key, val_json) VALUES (?, ?)
@@ -377,7 +404,7 @@ class SensoryTapestry:
 
     def get_slot(self, key: str, default: Any = None) -> Any:
         """Get a retained state slot value."""
-        clean_key = str(key).strip()
+        clean_key = key.strip()
         with self._db._lock, self._db.get_conn() as conn:
             cur = conn.cursor()
             cur.execute("SELECT val_json FROM slots WHERE key = ?", (clean_key,))
@@ -434,18 +461,11 @@ class SensoryTapestry:
 
     def record_elastic_event(
         self,
-        event_id: str,
-        topic: str,
-        source: str,
-        urgency: str,
-        summary: str,
-        data: dict[str, Any],
-        timestamp: float,
-        process_id: int,
-        retained_slot: str | None = None,
-        retained_value: Any = None,
+        spec: ElasticEventSpec | None = None,
+        **kwargs: Any,
     ) -> int:
         """Record an Elastic event into the shared SQLite event stream for cross-process IPC."""
+        s = spec or ElasticEventSpec(**kwargs)
         with self._db._lock, self._db.get_conn() as conn:
             query = """
                 INSERT INTO elastic_events (
@@ -457,16 +477,16 @@ class SensoryTapestry:
             cur = conn.execute(
                 query,
                 (
-                    str(event_id),
-                    str(topic),
-                    str(source),
-                    str(urgency),
-                    str(summary),
-                    json.dumps(data) if data else "{}",
-                    float(timestamp),
-                    int(process_id),
-                    retained_slot,
-                    json.dumps(retained_value) if retained_value is not None else None,
+                    str(s.event_id),
+                    str(s.topic),
+                    str(s.source),
+                    str(s.urgency),
+                    str(s.summary),
+                    json.dumps(s.data) if s.data else "{}",
+                    float(s.timestamp or 0.0),
+                    int(s.process_id or 0),
+                    s.retained_slot,
+                    json.dumps(s.retained_value) if s.retained_value is not None else None,
                 ),
             )
             inserted_id = cur.lastrowid or 0
@@ -487,7 +507,7 @@ class SensoryTapestry:
 
     def get_elastic_events_since(self, last_id: int, limit: int = 100) -> list[dict[str, Any]]:
         """Query all Elastic events inserted after last_id for cross-process event polling."""
-        with self._db._lock, self._db.get_conn() as conn:
+        with (self._db._lock, self._db.get_conn() as conn):
             cur = conn.cursor()
             query = """
                 SELECT id, event_id, topic, source, urgency, summary, data_json,
@@ -497,7 +517,7 @@ class SensoryTapestry:
                 ORDER BY id ASC
                 LIMIT ?
             """
-            cur.execute(query, (int(last_id), int(limit)))
+            cur.execute(query, (last_id, limit))
             events = []
             for r in cur.fetchall():
                 try:

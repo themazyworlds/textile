@@ -71,14 +71,14 @@ class SessionProcessGuard:
         Verify that target PID belongs strictly to the caller's desktop session tree.
         Raises AccessBoundaryError if target is in another session or system daemon scope.
         """
-        target_pid = int(pid)
+        target_pid = pid
         if target_pid <= 0:
             raise AccessBoundaryError(f"Access Denied: Invalid target PID {target_pid}.")
 
         try:
             current_sid = cls.get_active_session_id()
             target_sid = os.getsid(target_pid)
-        except (ProcessLookupError, OSError) as e:
+        except OSError as e:
             raise AccessBoundaryError(f"Process verification failed for PID {target_pid}: {e}") from e
 
         if current_sid != target_sid:

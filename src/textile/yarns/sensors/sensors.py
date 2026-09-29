@@ -46,21 +46,23 @@ class SensorsAPI:
             return True
         return os.path.exists("/sys/class/hwmon") or os.path.exists("/sys/class/thermal")
 
-    def get_sensor_data(self) -> dict[str, Any]:
+    def _get_sensors_cli_data(self) -> dict[str, Any] | None:
         sensors_bin = shutil.which("sensors")
-        if sensors_bin:
-            with contextlib.suppress(OSError, ValueError, TypeError, json.JSONDecodeError, subprocess.SubprocessError):
-                res = subprocess.run([sensors_bin, "-j"], capture_output=True, text=True, timeout=3, check=False)
-                raw_out = res.stdout.strip()
-                if raw_out:
-                    idx = raw_out.find("{")
-                    if idx != -1:
-                        data = json.loads(raw_out[idx:])
-                        res_dict = self._format_sensors_json(data)
-                        if res_dict and (res_dict.get("cpu") or res_dict.get("other") or res_dict.get("fans")):
-                            return res_dict
+        if not sensors_bin:
+            return None
+        with contextlib.suppress(OSError, ValueError, TypeError, json.JSONDecodeError, subprocess.SubprocessError):
+            res = subprocess.run([sensors_bin, "-j"], capture_output=True, text=True, timeout=3, check=False)
+            raw_out = res.stdout.strip()
+            if raw_out:
+                idx = raw_out.find("{")
+                if idx != -1:
+                    data = json.loads(raw_out[idx:])
+                    res_dict = self._format_sensors_json(data)
+                    if res_dict and (res_dict.get("cpu") or res_dict.get("other") or res_dict.get("fans")):
+                        return res_dict
+        return None
 
-        # Fallback to psutil
+    def _get_psutil_sensor_data(self) -> dict[str, Any] | None:
         with contextlib.suppress(Exception):
             p_data: dict[str, Any] = {"cpu": {}, "gpu": {}, "fans": {}, "battery": {}, "other": {}}
             temps = psutil.sensors_temperatures()
@@ -94,8 +96,48 @@ class SensorsAPI:
 
             if p_data["cpu"] or p_data["fans"] or p_data["battery"] or p_data["other"]:
                 return p_data
+        return None
+
+    def get_sensor_data(self) -> dict[str, Any]:
+        cli_data = self._get_sensors_cli_data()
+        if cli_data:
+            return cli_data
+
+        psutil_data = self._get_psutil_sensor_data()
+        if psutil_data:
+            return psutil_data
 
         return self._read_sysfs_hwmon()
+
+    def _parse_sensor_subfeature(
+        self,
+        chip_name: str,
+        feature: str,
+        sub_key: str,
+        sub_val: int | float,
+        result: dict[str, Any],
+    ) -> float:
+        feat_lower = feature.lower()
+        sub_lower = sub_key.lower()
+        max_cpu_temp = 0.0
+
+        if "temp" in sub_lower and "input" in sub_lower:
+            val_c = round(float(sub_val), 1)
+            if "coretemp" in chip_name or "k10temp" in chip_name or "cpu" in feat_lower:
+                result["cpu"][f"{chip_name} {feature}"] = f"{val_c}°C"
+                max_cpu_temp = val_c
+            elif "amdgpu" in chip_name or "nouveau" in chip_name or "nvidia" in chip_name:
+                result["gpu"][f"{chip_name} {feature}"] = f"{val_c}°C"
+            else:
+                result["other"][f"{chip_name} {feature}"] = f"{val_c}°C"
+
+        elif "fan" in sub_lower and "input" in sub_lower:
+            result["fans"][f"{chip_name} {feature}"] = f"{int(sub_val)} RPM"
+
+        elif "in" in sub_lower and "input" in sub_lower:
+            result["other"][f"{chip_name} {feature} (Voltage)"] = f"{round(float(sub_val), 2)} V"
+
+        return max_cpu_temp
 
     def _format_sensors_json(self, raw_data: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {"cpu": {}, "gpu": {}, "fans": {}, "battery": {}, "other": {}, "raw": raw_data}
@@ -108,26 +150,9 @@ class SensorsAPI:
                 if feature == "Adapter" or not isinstance(subfeatures, dict):
                     continue
                 for sub_key, sub_val in subfeatures.items():
-                    if not isinstance(sub_val, (int, float)):
-                        continue
-                    feat_lower = feature.lower()
-                    sub_lower = sub_key.lower()
-
-                    if "temp" in sub_lower and "input" in sub_lower:
-                        val_c = round(float(sub_val), 1)
-                        if "coretemp" in chip_name or "k10temp" in chip_name or "cpu" in feat_lower:
-                            result["cpu"][f"{chip_name} {feature}"] = f"{val_c}°C"
-                            max_cpu_temp = max(max_cpu_temp, val_c)
-                        elif "amdgpu" in chip_name or "nouveau" in chip_name or "nvidia" in chip_name:
-                            result["gpu"][f"{chip_name} {feature}"] = f"{val_c}°C"
-                        else:
-                            result["other"][f"{chip_name} {feature}"] = f"{val_c}°C"
-
-                    elif "fan" in sub_lower and "input" in sub_lower:
-                        result["fans"][f"{chip_name} {feature}"] = f"{int(sub_val)} RPM"
-
-                    elif "in" in sub_lower and "input" in sub_lower:
-                        result["other"][f"{chip_name} {feature} (Voltage)"] = f"{round(float(sub_val), 2)} V"
+                    if isinstance(sub_val, (int, float)):
+                        t = self._parse_sensor_subfeature(chip_name, feature, sub_key, sub_val, result)
+                        max_cpu_temp = max(max_cpu_temp, t)
 
         if max_cpu_temp > 0:
             result["max_cpu_temp"] = f"{max_cpu_temp}°C"
