@@ -12,7 +12,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 import textile.yarns
-from textile.core.base import Strand, Yarn, YarnManifest
+from textile import Strand, Yarn, YarnManifest
 from textile.core.context import PolicyViolationError, verify_security_policy
 from textile.core.intent import IntentNode, IntentValidationError
 from textile.core.transaction import Transaction, transaction_stack

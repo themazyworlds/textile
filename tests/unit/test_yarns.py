@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from textile.core.base import Strand, Yarn, YarnManifest
+from textile import Strand, Yarn, YarnManifest
 from textile.core.loom import loom
 from textile.core.skein import skein
 
@@ -207,7 +207,7 @@ class TestYarnArchitecture(unittest.TestCase):
         json.loads(st_raw) if isinstance(st_raw, str) else st_raw
 
     def test_capability_tiers_and_auto_isolation(self):
-        from textile.core.base import strand
+        from textile import strand
 
         class TierTestYarn(Yarn):
             def __init__(self):
@@ -241,7 +241,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertTrue(strands["exec_task"].isolated)
 
     def test_weft_attunements_and_pydantic_coercion(self):
-        from textile.core.base import weft
+        from textile import weft
 
         events_received = []
 
@@ -395,7 +395,7 @@ class TestYarnArchitecture(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
-        from textile.core.base import YarnManifest
+        from textile import YarnManifest
 
         # Test valid TOML manifest
         with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:

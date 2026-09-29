@@ -25,7 +25,7 @@ else:
         Variant = Any
         MessageBus = Any
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 
 logger = logging.getLogger(__name__)
 

@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 from textile.core.guardrails import ScopedPath
 
 logger = logging.getLogger(__name__)

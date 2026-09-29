@@ -10,7 +10,7 @@ import subprocess
 import sys
 from typing import Any
 
-from textile.core.base import CapabilityTier, Yarn, YarnManifest, strand
+from textile import CapabilityTier, Yarn, YarnManifest, strand
 from textile.core.elastic import elastic
 from textile.core.seams import seams
 from textile.core.tapestry import core_tapestry

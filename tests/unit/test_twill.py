@@ -5,7 +5,7 @@ import unittest
 from mcp import ClientSession, types
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-from textile.core.base import (
+from textile import (
     LAYER_BASE,
     LAYER_COMPOSITOR_DE,
     LAYER_DESKTOP_PROTOCOL,

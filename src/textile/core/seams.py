@@ -13,8 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from textile.core.base import validate_strand_schema
 from textile.core.skein import skein
+from textile.core.validation import validate_strand_schema
 
 logger = logging.getLogger(__name__)
 

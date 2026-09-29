@@ -16,7 +16,7 @@ from typing import Any
 
 import psutil
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 
 
 class SensorsAPI:

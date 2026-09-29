@@ -28,7 +28,7 @@ else:
         Variant = Any
         MessageBus = Any
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 
 MAX_INT_32_BITS = 31
 

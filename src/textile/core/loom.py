@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import Any
 
-from textile.core.base import LAYER_BASE, Strand, Weft, Yarn
+from textile import LAYER_BASE, Strand, Weft, Yarn
 from textile.core.context import OriginToken, TaintTracker, verify_security_policy
 from textile.core.elastic import EventUrgency, elastic
 from textile.core.fabric import core_fabric_yarn

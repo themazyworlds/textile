@@ -15,7 +15,7 @@ try:
 except ImportError:
     pyxclip = None
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 from textile.yarns.hyprland.hyprland import hyprland_ipc
 
 

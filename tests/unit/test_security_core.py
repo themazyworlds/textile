@@ -18,7 +18,7 @@ import uuid
 
 import pytest
 
-from textile.core.base import CapabilityTier, Strand, Yarn, YarnManifest
+from textile import CapabilityTier, Strand, Yarn, YarnManifest
 from textile.core.context import OriginToken, OriginType, SeatContext, TaintTracker, TrustLevel
 from textile.core.intent import IntentGraph, IntentNode, IntentValidationError
 from textile.core.skein import PolicyViolationError, Skein

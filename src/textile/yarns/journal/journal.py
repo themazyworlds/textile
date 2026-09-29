@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from typing import Any, Literal
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 
 PRIORITY_NAMES = {
     0: "emerg",

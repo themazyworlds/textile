@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from textile.core.base import Yarn, strand, weft
+from textile import Yarn, strand, weft
 from textile.core.elastic import EventFrame, EventUrgency, elastic
 from textile.core.tapestry import sensory_tapestry
 

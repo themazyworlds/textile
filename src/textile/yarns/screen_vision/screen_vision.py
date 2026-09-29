@@ -19,7 +19,7 @@ try:
 except (ImportError, AttributeError, OSError):
     Image = None
 
-from textile.core.base import Yarn, strand
+from textile import Yarn, strand
 
 
 class ScreenVisionEngine:

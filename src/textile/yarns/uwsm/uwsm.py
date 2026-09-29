@@ -8,7 +8,7 @@ import shlex
 import shutil
 import subprocess
 
-from textile.core.base import (
+from textile import (
     Yarn,
     detect_terminal,
     strand,

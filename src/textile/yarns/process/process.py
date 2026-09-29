@@ -12,7 +12,7 @@ import subprocess
 import time
 from typing import Any
 
-from textile.core.base import Yarn, detect_terminal, strand
+from textile import Yarn, detect_terminal, strand
 from textile.core.guardrails import AccessBoundaryError, SessionProcessGuard
 
 BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}

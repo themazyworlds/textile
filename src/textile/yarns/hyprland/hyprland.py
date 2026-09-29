@@ -15,7 +15,7 @@ import subprocess
 import time
 from typing import Any, Literal
 
-from textile.core.base import Yarn, detect_terminal, strand
+from textile import Yarn, detect_terminal, strand
 
 
 class HyprlandIPC:
