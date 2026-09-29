@@ -235,7 +235,9 @@ class BubblewrapBuilder:
         return self
 
     def set_namespaces(self, allow_network: bool) -> "BubblewrapBuilder":
-        self.args.extend(["--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts"])
+        self.args.extend(["--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent"])
+        if not allow_network:
+            self.args.append("--unshare-net")
         return self
 
     def bind_resources(self, resources: list[str] | None) -> "BubblewrapBuilder":

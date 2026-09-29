@@ -48,15 +48,17 @@ class TransactionStack:
             if not self._stack:
                 return False, "No transactions available to undo."
 
-            tx = self._stack.pop()
-            if tx.rollback_handler is not None:
-                try:
-                    tx.rollback_handler()
-                    return True, f"Successfully rolled back transaction for strand '{tx.strand_name}'."
-                except STRAND_EXEC_ERRORS as e:
-                    logger.error(f"Rollback failed for transaction '{tx.transaction_id}': {e}")
-                    return False, f"Rollback failed for strand '{tx.strand_name}': {e}"
-            return True, f"Undid transaction for strand '{tx.strand_name}' (no state mutation occurred)."
+            tx = self._stack[-1]
+            if tx.rollback_handler is None:
+                return False, f"No rollback handler registered to undo transaction for strand '{tx.strand_name}'."
+
+            try:
+                tx.rollback_handler()
+                self._stack.pop()
+                return True, f"Successfully rolled back transaction for strand '{tx.strand_name}'."
+            except STRAND_EXEC_ERRORS as e:
+                logger.error(f"Rollback failed for transaction '{tx.transaction_id}': {e}")
+                return False, f"Rollback failed for strand '{tx.strand_name}': {e}"
 
     def clear(self) -> None:
         with self._lock:

@@ -528,8 +528,8 @@ class TestLayer4TransactionStack:
         tx = Transaction(strand_name="notify", parameters={}, rollback_handler=None)
         stack.push(tx)
         success, msg = stack.undo_last()
-        assert success is True
-        assert "no state mutation" in msg
+        assert success is False
+        assert "No rollback handler registered" in msg
 
     def test_undo_empty_stack_returns_false(self):
         stack = TransactionStack()

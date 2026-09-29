@@ -223,7 +223,7 @@ class ElasticEngine:
                 retained_slot=retained_slot,
                 retained_value=retained_value,
             )
-        except (OSError, RuntimeError, ValueError) as e:
+        except (sqlite3.Error, OSError, RuntimeError, ValueError) as e:
             logger.debug("Failed to record cross-process Elastic event: %s", e)
 
         # 4. Deliver in-process immediately

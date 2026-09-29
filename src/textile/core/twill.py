@@ -11,7 +11,7 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from textile.core.context import OriginToken, OriginType, TrustLevel
+from textile.core.context import OriginToken
 from textile.core.loom import loom
 
 
@@ -65,15 +65,7 @@ def create_twill_server() -> Server:
     @app.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
         try:
-            try:
-                token = OriginToken.create_local_seat(seat_id="twill_mcp_client")
-            except PermissionError:
-                token = OriginToken(
-                    origin_id="twill_unauthenticated_client",
-                    origin_type=OriginType.EXTERNAL_UNTRUSTED,
-                    trust_level=TrustLevel.LOW,
-                    metadata={"uri": "twill_unauthenticated_client"},
-                )
+            token = OriginToken.create_mcp_client(client_id="twill_mcp_client")
             effective_caller = os.getenv("TEXTILE_CALLER", "twill_mcp")
             res_text = await loom.execute(name, arguments or {}, caller=effective_caller, origin_token=token)
             return [types.TextContent(type="text", text=str(res_text))]

@@ -85,15 +85,15 @@ class MutateDesk(InteractDesk):
 
     def write_text(self, path: str | Path, content: str, encoding: str = "utf-8") -> Path:
         target = self._scoped.resolve(path)
-        old_content = target.read_text(encoding=encoding, errors="replace") if target.exists() else None
+        old_bytes = target.read_bytes() if target.exists() else None
 
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding=encoding)
 
         # Register rollback handler on transaction stack
         def _rollback():
-            if old_content is not None:
-                target.write_text(old_content, encoding=encoding)
+            if old_bytes is not None:
+                target.write_bytes(old_bytes)
             elif target.exists():
                 target.unlink()
 

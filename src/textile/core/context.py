@@ -3,6 +3,7 @@ Textile Core Layer 1 - Context & Biometric Seat Engine.
 Defines origin token authentication, trust levels, and local seat verification.
 """
 
+import contextvars
 import os
 import time
 from dataclasses import dataclass, field
@@ -10,6 +11,8 @@ from enum import StrEnum
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
+
+_active_taint_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("active_taint", default=None)
 
 
 class OriginType(StrEnum):
@@ -88,6 +91,20 @@ class OriginToken(BaseModel):
         )
 
     @classmethod
+    def create_mcp_client(cls, client_id: str = "mcp_client") -> Self:
+        """Create an origin token for an external MCP client (IDE agent, stdio transport).
+
+        MCP clients default to TrustLevel.MEDIUM (observe & interact tiers allowed;
+        mutate/privileged system changes require elevated seat tokens).
+        """
+        return cls(
+            origin_id=client_id,
+            origin_type=OriginType.SYSTEM_INTERNAL,
+            trust_level=TrustLevel.MEDIUM,
+            metadata={"uid": os.getuid()},
+        )
+
+    @classmethod
     def create_external_untrusted(cls, source_uri: str) -> Self:
         return cls(
             origin_id=source_uri,
@@ -100,25 +117,23 @@ class OriginToken(BaseModel):
 
 
 class TaintTracker:
-    """Ambient data flow taint tracker across LLM reasoning loops."""
-
-    _active_taint: str | None = None
+    """Async contextvars-scoped data flow taint tracker across LLM reasoning loops."""
 
     @classmethod
     def set_taint(cls, source: str) -> None:
-        cls._active_taint = source
+        _active_taint_var.set(source)
 
     @classmethod
     def clear_taint(cls) -> None:
-        cls._active_taint = None
+        _active_taint_var.set(None)
 
     @classmethod
     def get_taint(cls) -> str | None:
-        return cls._active_taint
+        return _active_taint_var.get()
 
     @classmethod
     def is_tainted(cls) -> bool:
-        return cls._active_taint is not None
+        return _active_taint_var.get() is not None
 
 
 @dataclass

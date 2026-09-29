@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 
 from textile.core.base import Yarn, strand
+from textile.core.context import TaintTracker
 
 MAX_WEBPAGE_BODY_CHARS = 12000
 
@@ -165,7 +166,10 @@ class WebResearch(Yarn):
 
         :param query: Search query terms.
         """
-        return search_web(query)
+        res = search_web(query)
+        if res and not res.startswith("Error"):
+            TaintTracker.set_taint("web_research")
+        return res
 
     @strand(tier="observe")
     def fetch_webpage(self, url: str) -> str:
@@ -173,4 +177,7 @@ class WebResearch(Yarn):
 
         :param url: Complete URL of the web page to read.
         """
-        return fetch_webpage(url)
+        res = fetch_webpage(url)
+        if res and not res.startswith("Error"):
+            TaintTracker.set_taint("web_research")
+        return res

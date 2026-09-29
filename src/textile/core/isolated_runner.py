@@ -37,7 +37,7 @@ def main():
     if os.path.exists(tests_dir) and tests_dir not in sys.path:
         sys.path.insert(0, tests_dir)
 
-    tier_name = sys.argv[5].upper() if len(sys.argv) > MIN_ARG_COUNT - 1 else ""
+    tier_name = sys.argv[5].upper() if len(sys.argv) > MIN_ARG_COUNT else ""
 
     try:
         mod = importlib.import_module(module_name)
@@ -45,8 +45,17 @@ def main():
         instance = cls()
 
         # Apply kernel-level read-only walls for OBSERVE and INTERACT tiers
-        if tier_name in ("OBSERVE", "INTERACT"):
-            LandlockSandbox.apply_read_only()
+        if (
+            tier_name in ("OBSERVE", "INTERACT")
+            and LandlockSandbox.is_supported()
+            and not LandlockSandbox.apply_read_only()
+        ):
+            print(
+                json.dumps(
+                    {"success": False, "error": f"Failed to apply Landlock read-only sandbox for tier {tier_name}"}
+                )
+            )
+            sys.exit(1)
 
         # Execute the raw handler or strand method directly
         res = instance._execute_direct(strand_name, args)
