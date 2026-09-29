@@ -2,6 +2,7 @@
 Unit tests for Textile Tier Passes & Desks (Object Capabilities) and Landlock Sandbox.
 """
 
+import os
 import sys
 import tempfile
 import unittest.mock
@@ -142,15 +143,15 @@ class TestBubblewrapSandbox:
     def test_wrap_command_known_resources(self):
         cmd = ["echo", "test"]
         with (
-            unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/test_bus.sock"}),
-            tempfile.NamedTemporaryFile(suffix=".sock") as dummy_sock,
+            tempfile.TemporaryDirectory() as tmp_dir,
+            tempfile.NamedTemporaryFile(dir=tmp_dir, suffix=".sock") as dummy_sock,
         ):
-            dummy_addr = f"unix:path={dummy_sock.name}"
-            with unittest.mock.patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": dummy_addr}):
+            wl_name = os.path.basename(dummy_sock.name)
+            with unittest.mock.patch.dict("os.environ", {"WAYLAND_DISPLAY": wl_name, "XDG_RUNTIME_DIR": tmp_dir}):
                 wrapped = BubblewrapSandbox.wrap_command(
-                    cmd, tier="OBSERVE", workspace_root="/tmp", resources=["dbus-session", "invalid-resource"]
+                    cmd, tier="OBSERVE", workspace_root="/tmp", resources=["display", "invalid-resource"]
                 )
                 assert "--ro-bind" in wrapped
                 assert dummy_sock.name in wrapped
                 assert "--setenv" in wrapped
-                assert "DBUS_SESSION_BUS_ADDRESS" in wrapped
+                assert "WAYLAND_DISPLAY" in wrapped

@@ -15,32 +15,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _resolve_dbus_session_bind() -> list[str]:
-    """Resolve dynamic D-Bus session bus socket file mount without mounting entire /run."""
-    addr = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
-    if addr.startswith("unix:path="):
-        sock_path = addr.split("unix:path=")[1].split(",")[0]
-        if os.path.exists(sock_path):
-            return ["--ro-bind", sock_path, sock_path, "--setenv", "DBUS_SESSION_BUS_ADDRESS", addr]
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime:
-        default_sock = os.path.join(runtime, "bus")
-        if os.path.exists(default_sock):
-            fallback_addr = f"unix:path={default_sock}"
-            return ["--ro-bind", default_sock, default_sock, "--setenv", "DBUS_SESSION_BUS_ADDRESS", fallback_addr]
-    return []
-
-
-def _resolve_dbus_system_bind() -> list[str]:
-    """Resolve dynamic D-Bus system bus socket file mount."""
-    for sock_path in ["/run/dbus/system_bus_socket", "/var/run/dbus/system_bus_socket"]:
-        if os.path.exists(sock_path):
-            return ["--ro-bind", sock_path, sock_path]
-    return []
-
-
 def _resolve_display_bind() -> list[str]:
-    """Resolve dynamic Wayland / X11 display socket mounts."""
+    """Resolve dynamic Wayland / X11 display socket mounts for GUI strands."""
     args = []
     wayland_display = os.environ.get("WAYLAND_DISPLAY")
     runtime = os.environ.get("XDG_RUNTIME_DIR")
@@ -70,22 +46,18 @@ def _resolve_display_bind() -> list[str]:
 
 
 def _resolve_sound_bind() -> list[str]:
-    """Resolve dynamic PipeWire / PulseAudio sound socket mounts."""
+    """Resolve dynamic PipeWire / PulseAudio sound socket mounts for audio strands."""
     args = []
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if runtime:
-        pw_sock = os.path.join(runtime, "pipewire-0")
-        if os.path.exists(pw_sock):
-            args.extend(["--ro-bind", pw_sock, pw_sock])
-        pulse_dir = os.path.join(runtime, "pulse")
-        if os.path.exists(pulse_dir):
-            args.extend(["--ro-bind", pulse_dir, pulse_dir])
+        for sock_name in ("pipewire-0", "pulse"):
+            p = os.path.join(runtime, sock_name)
+            if os.path.exists(p):
+                args.extend(["--ro-bind", p, p])
     return args
 
 
 KNOWN_RESOURCES: dict[str, Callable[[], list[str]]] = {
-    "dbus-session": _resolve_dbus_session_bind,
-    "dbus-system": _resolve_dbus_system_bind,
     "display": _resolve_display_bind,
     "sound": _resolve_sound_bind,
 }
@@ -191,15 +163,12 @@ class BubblewrapBuilder:
 
     def bind_system_base(self) -> "BubblewrapBuilder":
         self.args.extend(["--ro-bind", "/usr", "/usr"])
-        if os.path.exists("/usr/lib64"):
-            self.args.extend(["--symlink", "usr/lib64", "/lib64"])
-        elif os.path.exists("/lib64"):
-            self.args.extend(["--ro-bind-try", "/lib64", "/lib64"])
-        else:
-            self.args.extend(["--symlink", "usr/lib", "/lib64"])
-
+        lib64_target = "usr/lib64" if os.path.exists("/usr/lib64") else "usr/lib"
         self.args.extend(
             [
+                "--symlink",
+                lib64_target,
+                "/lib64",
                 "--symlink",
                 "usr/lib",
                 "/lib",
@@ -209,24 +178,12 @@ class BubblewrapBuilder:
                 "--symlink",
                 "usr/bin",
                 "/sbin",
-                "--ro-bind-try",
-                "/etc",
-                "/etc",
-                "--ro-bind-try",
-                "/sys",
-                "/sys",
-                "--ro-bind-try",
-                "/opt",
-                "/opt",
-                "--ro-bind-try",
-                "/nix",
-                "/nix",
-                "--dev",
-                "/dev",
-                "--proc",
-                "/proc",
             ]
         )
+
+        for p in ("/etc", "/sys", "/opt", "/nix"):
+            self.args.extend(["--ro-bind-try", p, p])
+        self.args.extend(["--dev", "/dev", "--proc", "/proc"])
         return self
 
     def bind_tmpfs(self, paths: list[str]) -> "BubblewrapBuilder":
