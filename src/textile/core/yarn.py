@@ -44,54 +44,38 @@ STRAND_EXEC_ERRORS = (
 )
 
 
-async def _exec_async_strand(
-    method: Callable,
-    strand_name: str,
-    args: dict[str, Any],
-    args_model: type[BaseModel] | None,
-    params: dict[str, Any],
-    req_list: list[str],
-) -> str:
-    val_err, coerced = validate_strand_arguments(
-        strand_name, args, schema_model=args_model, parameters=params, required=req_list
-    )
-    if val_err:
-        return val_err
-    try:
-        res = await method(**coerced)
-        if isinstance(res, (dict, list)):
-            return json.dumps(res, indent=2)
-        return str(res) if res is not None else "ok"
-    except STRAND_EXEC_ERRORS as e:
-        return f"Error executing strand '{strand_name}': {e}"
+def _format_handler_result(res: Any) -> str:
+    """Format handler execution output into string or formatted JSON."""
+    if isinstance(res, (dict, list)):
+        return json.dumps(res, indent=2)
+    return str(res) if res is not None else "ok"
 
 
-def _exec_sync_strand(
-    yarn: Any,
+def _build_args_model(
     method: Callable,
-    strand_name: str,
-    args: dict[str, Any],
-    args_model: type[BaseModel] | None,
-    params: dict[str, Any],
-    req_list: list[str],
-    isolated: bool,
-    timeout: float,
-    tier: CapabilityTier = CapabilityTier.INTERACT,
-) -> str:
-    val_err, coerced = validate_strand_arguments(
-        strand_name, args, schema_model=args_model, parameters=params, required=req_list
-    )
-    if val_err:
-        return val_err
-    if isolated:
-        return yarn._run_isolated(strand_name, coerced, timeout=timeout, tier=tier)
+    model_name: str,
+    param_docs: dict[str, str] | None = None,
+) -> type[BaseModel] | None:
+    """Helper to synthesize Pydantic BaseModel for method parameters."""
+    sig = inspect.signature(method)
     try:
-        res = method(**coerced)
-        if isinstance(res, (dict, list)):
-            return json.dumps(res, indent=2)
-        return str(res) if res is not None else "ok"
-    except STRAND_EXEC_ERRORS as e:
-        return f"Error executing strand '{strand_name}': {e}"
+        hints = get_type_hints(method)
+    except (AttributeError, TypeError, NameError, ValueError, KeyError):
+        hints = {}
+
+    docs = param_docs or {}
+    fields = {}
+    for p_name, param in sig.parameters.items():
+        if p_name in ("self", "cls"):
+            continue
+        p_type = hints.get(p_name, Any)
+        p_desc = docs.get(p_name, "")
+        if param.default is inspect.Parameter.empty:
+            fields[p_name] = (p_type, Field(..., description=p_desc))
+        else:
+            fields[p_name] = (p_type, Field(default=param.default, description=p_desc))
+
+    return create_model(model_name, **fields) if fields else None
 
 
 def _create_invoker(
@@ -106,15 +90,38 @@ def _create_invoker(
     timeout: float,
     tier: CapabilityTier = CapabilityTier.INTERACT,
 ) -> Callable[[dict[str, Any]], Any]:
+    """Create unified sync or async execution invoker for a strand."""
+
+    def _validate_and_coerce(args: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
+        return validate_strand_arguments(
+            strand_name, args, schema_model=args_model, parameters=params, required=req_list
+        )
+
     if is_async:
 
         async def _async_invoker(args: dict[str, Any]) -> str:
-            return await _exec_async_strand(method, strand_name, args, args_model, params, req_list)
+            val_err, coerced = _validate_and_coerce(args)
+            if val_err:
+                return val_err
+            try:
+                res = await method(**coerced)
+                return _format_handler_result(res)
+            except STRAND_EXEC_ERRORS as e:
+                return f"Error executing strand '{strand_name}': {e}"
 
         return _async_invoker
 
     def _sync_invoker(args: dict[str, Any]) -> str:
-        return _exec_sync_strand(yarn, method, strand_name, args, args_model, params, req_list, isolated, timeout, tier)
+        val_err, coerced = _validate_and_coerce(args)
+        if val_err:
+            return val_err
+        if isolated:
+            return yarn._run_isolated(strand_name, coerced, timeout=timeout, tier=tier)
+        try:
+            res = method(**coerced)
+            return _format_handler_result(res)
+        except STRAND_EXEC_ERRORS as e:
+            return f"Error executing strand '{strand_name}': {e}"
 
     return _sync_invoker
 
@@ -144,53 +151,18 @@ class Yarn(ABC):
             "(<name>.toml or yarn.toml)."
         )
 
-    @property
-    def name(self) -> str:
-        return self.manifest.name
+    def __getattr__(self, name: str) -> Any:
+        manifest = self.__dict__.get("manifest")
+        if manifest is not None and hasattr(manifest, name):
+            return getattr(manifest, name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
-    @name.setter
-    def name(self, value: str) -> None:
-        self.manifest.name = value
-
-    @property
-    def publisher(self) -> str:
-        return self.manifest.publisher
-
-    @publisher.setter
-    def publisher(self, value: str) -> None:
-        self.manifest.publisher = value
-
-    @property
-    def version(self) -> str:
-        return self.manifest.version
-
-    @version.setter
-    def version(self, value: str) -> None:
-        self.manifest.version = value
-
-    @property
-    def description(self) -> str:
-        return self.manifest.description
-
-    @description.setter
-    def description(self, value: str) -> None:
-        self.manifest.description = value
-
-    @property
-    def layer(self) -> int:
-        return self.manifest.layer
-
-    @layer.setter
-    def layer(self, value: int) -> None:
-        self.manifest.layer = value
-
-    @property
-    def python_dependencies(self) -> list[str]:
-        return self.manifest.python_dependencies
-
-    @python_dependencies.setter
-    def python_dependencies(self, value: list[str]) -> None:
-        self.manifest.python_dependencies = value
+    def __setattr__(self, name: str, value: Any) -> None:
+        manifest = self.__dict__.get("manifest")
+        if name != "manifest" and manifest is not None and hasattr(manifest, name):
+            setattr(manifest, name, value)
+        else:
+            super().__setattr__(name, value)
 
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""
@@ -283,22 +255,8 @@ class Yarn(ABC):
         weft_strip = getattr(method, "_weft_strip", True)
         weft_priority = getattr(method, "_weft_priority", 100)
 
-        try:
-            hints = get_type_hints(method)
-        except (AttributeError, TypeError, NameError, ValueError, KeyError):
-            hints = {}
-
         param_names = [p_name for p_name in sig.parameters if p_name not in ("self", "cls")]
-        fields = {}
-        for p_name in param_names:
-            param = sig.parameters[p_name]
-            p_type = hints.get(p_name, Any)
-            if param.default is inspect.Parameter.empty:
-                fields[p_name] = (p_type, Field(...))
-            else:
-                fields[p_name] = (p_type, Field(default=param.default))
-
-        args_model = create_model(f"{weft_name}_WeftArgs", **fields) if fields else None
+        args_model = _build_args_model(method, f"{weft_name}_WeftArgs")
 
         return Weft(
             name=weft_name,
@@ -313,7 +271,6 @@ class Yarn(ABC):
         )
 
     def _method_to_strand(self, method: Callable) -> Strand:
-        sig = inspect.signature(method)
         main_desc, param_docs = _extract_docstring_info(inspect.getdoc(method))
         strand_name = getattr(method, "_strand_name", method.__name__)
         strand_desc = getattr(method, "_strand_description", None) or main_desc or strand_name
@@ -334,23 +291,7 @@ class Yarn(ABC):
         timeout = getattr(method, "_strand_timeout", 30.0)
         is_async = inspect.iscoroutinefunction(method)
 
-        try:
-            hints = get_type_hints(method)
-        except (AttributeError, TypeError, NameError, ValueError, KeyError):
-            hints = {}
-
-        fields = {}
-        for p_name, param in sig.parameters.items():
-            if p_name in ("self", "cls"):
-                continue
-            p_type = hints.get(p_name, Any)
-            p_desc = param_docs.get(p_name, "")
-            if param.default is inspect.Parameter.empty:
-                fields[p_name] = (p_type, Field(..., description=p_desc))
-            else:
-                fields[p_name] = (p_type, Field(default=param.default, description=p_desc))
-
-        args_model = create_model(f"{strand_name}_Args", **fields) if fields else None
+        args_model = _build_args_model(method, f"{strand_name}_Args", param_docs)
         schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
         params, req_list = schema.get("properties", {}), schema.get("required", [])
 
@@ -418,7 +359,7 @@ class Yarn(ABC):
                 return self._run_isolated(name, coerced, timeout=timeout, tier=tier_val)
             try:
                 res = handler(coerced)
-                return str(res) if res is not None else "ok"
+                return _format_handler_result(res)
             except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
                 return f"Error executing strand '{name}': {e}"
 
@@ -482,10 +423,7 @@ class Yarn(ABC):
                 try:
                     payload = json.loads(out)
                     if payload.get("success"):
-                        res_val = payload.get("result")
-                        if isinstance(res_val, (dict, list)):
-                            return json.dumps(res_val, indent=2)
-                        return str(res_val) if res_val is not None else "ok"
+                        return _format_handler_result(payload.get("result"))
                     return f"Error: {payload.get('error', 'Execution failed')}"
                 except (json.JSONDecodeError, ValueError, TypeError):
                     return out
@@ -511,9 +449,7 @@ class Yarn(ABC):
                 else:
                     return "ok"
 
-                if isinstance(res, (dict, list)):
-                    return json.dumps(res, indent=2)
-                return str(res) if res is not None else "ok"
+                return _format_handler_result(res)
         return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
     def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
