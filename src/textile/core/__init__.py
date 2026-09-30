@@ -1,9 +1,9 @@
 """
 Textile Core Fabric Package.
-Organized into 5 functional domains: orchestration, security, telemetry, execution, and contracts.
+Organized into 5 functional domains: orchestration, security, telemetry, execution, and definitions.
 """
 
-from textile.core.contracts import (
+from textile.core.definitions import (
     DependenciesManifest,
     IntentNode,
     IntentValidationError,

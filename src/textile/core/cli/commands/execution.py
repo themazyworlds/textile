@@ -9,7 +9,7 @@ from rich import box
 from rich.table import Table
 
 from textile.core.cli.app import app, console, ensure_initialized
-from textile.core.contracts.errors import StrandNotFoundError, TextileError
+from textile.core.definitions.errors import StrandNotFoundError, TextileError
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
 

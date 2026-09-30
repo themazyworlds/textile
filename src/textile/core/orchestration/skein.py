@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import textile.yarns
-from textile.core.contracts.intent import IntentNode, IntentValidationError
-from textile.core.contracts.manifest import YarnManifest
+from textile.core.definitions.intent import IntentNode, IntentValidationError
+from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
 from textile.core.security.context import PolicyViolationError, verify_security_policy

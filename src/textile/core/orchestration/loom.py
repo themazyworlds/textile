@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import Any
 
-from textile.core.contracts.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
+from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
 from textile.core.execution.strands import Strand, Weft
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.fabric import core_fabric_yarn

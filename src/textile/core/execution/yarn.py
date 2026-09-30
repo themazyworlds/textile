@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from textile.core.contracts.manifest import YarnManifest
+from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.decorators import _parse_tier
 from textile.core.execution.invoker import (
     InvokerConfig,

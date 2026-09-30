@@ -12,7 +12,7 @@ from textile import (
     LAYER_SESSION_MANAGER,
     LAYER_USER_OVERRIDE,
 )
-from textile.core.contracts.layers import _layer_info
+from textile.core.definitions.layers import _layer_info
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.twill import create_twill_server
 

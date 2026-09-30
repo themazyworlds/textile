@@ -20,7 +20,7 @@ import pytest
 
 from textile import CapabilityTier, Strand, Yarn, YarnManifest
 from textile.core.security.context import OriginToken, OriginType, SeatContext, TaintTracker, TrustLevel
-from textile.core.contracts.intent import IntentGraph, IntentNode, IntentValidationError
+from textile.core.definitions.intent import IntentGraph, IntentNode, IntentValidationError
 from textile.core.orchestration.skein import PolicyViolationError, Skein
 from textile.core.telemetry.transaction import Transaction, TransactionStack
 

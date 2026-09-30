@@ -10,7 +10,7 @@ import subprocess
 import sys
 from typing import Any
 
-from textile.core.contracts.manifest import YarnManifest
+from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.decorators import strand
 from textile.core.execution.strands import CapabilityTier
 from textile.core.execution.yarn import Yarn

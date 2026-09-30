@@ -15,7 +15,7 @@ from textile.core.cli.app import (
     console,
     ensure_initialized,
 )
-from textile.core.contracts.layers import get_layer_info
+from textile.core.definitions.layers import get_layer_info
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
 from textile.core.telemetry.seams import seams
