@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from textile.core.strands import CapabilityTier
+from textile.core.execution.strands import CapabilityTier
 
 
 def _parse_tier(raw_tier: Any, strand_name: str = "") -> CapabilityTier:

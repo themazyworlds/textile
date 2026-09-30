@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from textile.core.tapestry import NoticeLevel, sensory_tapestry
+from textile.core.telemetry.tapestry import NoticeLevel, sensory_tapestry
 
 logger = logging.getLogger(__name__)
 

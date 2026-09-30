@@ -10,7 +10,7 @@ import uuid
 from typing import Any
 
 from textile import Yarn, strand
-from textile.core.elastic import EventUrgency, elastic
+from textile.core.telemetry.elastic import EventUrgency, elastic
 
 logger = logging.getLogger(__name__)
 

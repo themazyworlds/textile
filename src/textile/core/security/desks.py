@@ -11,8 +11,8 @@ Implements the "Room Pass" architecture:
 from pathlib import Path
 from typing import Any
 
-from textile.core.guardrails import ScopedPath
-from textile.core.transaction import Transaction, transaction_stack
+from textile.core.security.guardrails import ScopedPath
+from textile.core.telemetry.transaction import Transaction, transaction_stack
 
 
 class ObserverDesk:

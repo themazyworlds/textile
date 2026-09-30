@@ -5,8 +5,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from textile import Strand, Yarn, YarnManifest
-from textile.core.loom import loom
-from textile.core.skein import skein
+from textile.core.orchestration.loom import loom
+from textile.core.orchestration.skein import skein
 
 
 class CustomPydanticModel(BaseModel):
@@ -279,9 +279,9 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_weave_mood_tag_parsing(self):
         import time
 
-        from textile.core.loom import loom
-        from textile.core.skein import skein
-        from textile.core.tapestry import sensory_tapestry
+        from textile.core.orchestration.loom import loom
+        from textile.core.orchestration.skein import skein
+        from textile.core.telemetry.tapestry import sensory_tapestry
         from textile.yarns.canvas.canvas import Canvas
 
         canvas = Canvas()
@@ -302,9 +302,9 @@ class TestYarnArchitecture(unittest.TestCase):
         import asyncio
         import time
 
-        from textile.core.loom import loom
-        from textile.core.skein import skein
-        from textile.core.tapestry import sensory_tapestry
+        from textile.core.orchestration.loom import loom
+        from textile.core.orchestration.skein import skein
+        from textile.core.telemetry.tapestry import sensory_tapestry
         from textile.yarns.canvas.canvas import Canvas
         from textile.yarns.weave.weave import WeaveAgent
 
@@ -479,7 +479,7 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_timer_yarn_strands(self):
         import asyncio
 
-        from textile.core.elastic import EventFrame, elastic
+        from textile.core.telemetry.elastic import EventFrame, elastic
         from textile.yarns.timer.timer import Timer
 
         timer_yarn = Timer()

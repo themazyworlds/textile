@@ -11,13 +11,15 @@ import time
 import uuid
 from typing import Any
 
-from textile import LAYER_BASE, Strand, Weft, Yarn
-from textile.core.context import OriginToken, TaintTracker, verify_security_policy
-from textile.core.elastic import EventUrgency, elastic
-from textile.core.fabric import core_fabric_yarn
-from textile.core.seams import seams
-from textile.core.skein import Skein, skein
-from textile.core.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
+from textile.core.contracts.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
+from textile.core.execution.strands import Strand, Weft
+from textile.core.execution.yarn import Yarn
+from textile.core.orchestration.fabric import core_fabric_yarn
+from textile.core.orchestration.skein import Skein, skein
+from textile.core.security.context import OriginToken, TaintTracker, verify_security_policy
+from textile.core.telemetry.elastic import EventUrgency, elastic
+from textile.core.telemetry.seams import seams
+from textile.core.telemetry.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
 
 logger = logging.getLogger(__name__)
 

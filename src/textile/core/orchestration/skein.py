@@ -15,10 +15,12 @@ from pathlib import Path
 from typing import Any
 
 import textile.yarns
-from textile import Strand, Yarn, YarnManifest
-from textile.core.context import PolicyViolationError, verify_security_policy
-from textile.core.intent import IntentNode, IntentValidationError
-from textile.core.transaction import Transaction, transaction_stack
+from textile.core.contracts.intent import IntentNode, IntentValidationError
+from textile.core.contracts.manifest import YarnManifest
+from textile.core.execution.strands import Strand
+from textile.core.execution.yarn import Yarn
+from textile.core.security.context import PolicyViolationError, verify_security_policy
+from textile.core.telemetry.transaction import Transaction, transaction_stack
 
 logger = logging.getLogger(__name__)
 

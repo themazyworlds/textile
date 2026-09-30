@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from textile import Yarn, strand, weft
-from textile.core.elastic import EventFrame, EventUrgency, elastic
-from textile.core.tapestry import sensory_tapestry
+from textile.core.telemetry.elastic import EventFrame, EventUrgency, elastic
+from textile.core.telemetry.tapestry import sensory_tapestry
 
 logger = logging.getLogger(__name__)
 

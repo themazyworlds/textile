@@ -7,7 +7,7 @@ import importlib
 import typer
 
 from textile.core.cli.app import app, console
-from textile.core.twill import run_twill
+from textile.core.orchestration.twill import run_twill
 
 
 @app.command("twill")

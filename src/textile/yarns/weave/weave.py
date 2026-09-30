@@ -15,8 +15,8 @@ from livekit.agents import AgentServer, AutoSubscribe, JobContext, cli, mcp
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import google
 
-from textile.core.elastic import EventUrgency, elastic
-from textile.core.loom import loom
+from textile.core.orchestration.loom import loom
+from textile.core.telemetry.elastic import EventUrgency, elastic
 
 logger = logging.getLogger(__name__)
 

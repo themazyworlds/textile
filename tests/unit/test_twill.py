@@ -12,9 +12,9 @@ from textile import (
     LAYER_SESSION_MANAGER,
     LAYER_USER_OVERRIDE,
 )
-from textile.core.layers import _layer_info
-from textile.core.loom import loom
-from textile.core.twill import create_twill_server
+from textile.core.contracts.layers import _layer_info
+from textile.core.orchestration.loom import loom
+from textile.core.orchestration.twill import create_twill_server
 
 
 class TestLayerHierarchy(unittest.TestCase):
@@ -76,7 +76,7 @@ class TestTwillServer(unittest.TestCase):
 
     def test_twill_stdio_client_connection(self):
         async def _run_test():
-            params = StdioServerParameters(command=sys.executable, args=["-m", "textile.core.twill"])
+            params = StdioServerParameters(command=sys.executable, args=["-m", "textile.core.orchestration.twill"])
             async with (
                 stdio_client(params) as (read_stream, write_stream),
                 ClientSession(read_stream, write_stream) as session,

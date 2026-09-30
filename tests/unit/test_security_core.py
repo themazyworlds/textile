@@ -19,10 +19,10 @@ import uuid
 import pytest
 
 from textile import CapabilityTier, Strand, Yarn, YarnManifest
-from textile.core.context import OriginToken, OriginType, SeatContext, TaintTracker, TrustLevel
-from textile.core.intent import IntentGraph, IntentNode, IntentValidationError
-from textile.core.skein import PolicyViolationError, Skein
-from textile.core.transaction import Transaction, TransactionStack
+from textile.core.security.context import OriginToken, OriginType, SeatContext, TaintTracker, TrustLevel
+from textile.core.contracts.intent import IntentGraph, IntentNode, IntentValidationError
+from textile.core.orchestration.skein import PolicyViolationError, Skein
+from textile.core.telemetry.transaction import Transaction, TransactionStack
 
 # ---------------------------------------------------------------------------
 # Mock Yarn factory — pure core, zero Yarn ecosystem dependency
@@ -438,7 +438,7 @@ class TestLayer3PolicyEngine:
         assert result == "mock_ok"
 
     def test_unhandled_trust_level_fails_closed(self):
-        from textile.core.context import verify_security_policy
+        from textile.core.security.context import verify_security_policy
 
         token = OriginToken.create_local_voice()
         object.__setattr__(token, "trust_level", "invalid_trust_level")
@@ -471,7 +471,7 @@ class TestLayer3PolicyEngine:
     # --- Transaction stack integration ---
 
     def test_mutate_strand_pushes_to_transaction_stack(self):
-        from textile.core.transaction import transaction_stack
+        from textile.core.telemetry.transaction import transaction_stack
 
         transaction_stack.clear()
 
@@ -488,7 +488,7 @@ class TestLayer3PolicyEngine:
         assert transaction_stack._stack[-1].strand_name == "file_write_tx"
 
     def test_observe_strand_does_not_push_to_transaction_stack(self):
-        from textile.core.transaction import transaction_stack
+        from textile.core.telemetry.transaction import transaction_stack
 
         transaction_stack.clear()
 

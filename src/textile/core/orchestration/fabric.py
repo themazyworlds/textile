@@ -10,10 +10,13 @@ import subprocess
 import sys
 from typing import Any
 
-from textile import CapabilityTier, Yarn, YarnManifest, strand
-from textile.core.elastic import elastic
-from textile.core.seams import seams
-from textile.core.tapestry import core_tapestry
+from textile.core.contracts.manifest import YarnManifest
+from textile.core.execution.decorators import strand
+from textile.core.execution.strands import CapabilityTier
+from textile.core.execution.yarn import Yarn
+from textile.core.telemetry.elastic import elastic
+from textile.core.telemetry.seams import seams
+from textile.core.telemetry.tapestry import core_tapestry
 
 logger = logging.getLogger(__name__)
 

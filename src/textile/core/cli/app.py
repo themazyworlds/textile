@@ -9,7 +9,7 @@ import typer
 from pydantic import BaseModel, Field
 from rich.console import Console
 
-from textile.core.skein import skein
+from textile.core.orchestration.skein import skein
 
 console = Console()
 

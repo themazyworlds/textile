@@ -11,9 +11,9 @@ import subprocess
 import sys
 from typing import Any
 
-from textile.core.invoker import _format_handler_result
-from textile.core.sandbox import BubblewrapSandbox, LandlockSandbox
-from textile.core.strands import CapabilityTier
+from textile.core.execution.invoker import _format_handler_result
+from textile.core.execution.strands import CapabilityTier
+from textile.core.security.sandbox import BubblewrapSandbox, LandlockSandbox
 
 MIN_ARG_COUNT = 5
 
@@ -38,7 +38,7 @@ def execute_isolated_strand(
     cmd.extend(
         [
             "-m",
-            "textile.core.isolated_runner",
+            "textile.core.execution.isolated_runner",
             yarn.__class__.__module__,
             yarn.__class__.__name__,
             strand_name,

@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 
 from textile import Yarn, strand
-from textile.core.context import TaintTracker
+from textile.core.security.context import TaintTracker
 
 MAX_WEBPAGE_BODY_CHARS = 12000
 

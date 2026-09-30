@@ -13,8 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from textile.core.skein import skein
-from textile.core.validation import validate_strand_schema
+from textile.core.execution.validation import validate_strand_schema
 
 logger = logging.getLogger(__name__)
 
@@ -272,8 +271,13 @@ class SeamOrchestrator:
             return self._loom
         raise RuntimeError("Loom instance not configured for SeamOrchestrator")
 
+    def _resolve_skein(self, skein_inst: Any = None) -> Any:
+        if skein_inst is not None:
+            return skein_inst
+        return importlib.import_module("textile.core.orchestration.skein").skein
+
     def audit_yarn(self, yarn: Any, skein_inst: Any = None, loom_inst: Any = None) -> YarnIntegrityReport:
-        s_inst = skein_inst or skein
+        s_inst = self._resolve_skein(skein_inst)
         l_inst = self._resolve_loom(loom_inst)
         errors: list[str] = []
         warnings: list[str] = []
@@ -322,7 +326,7 @@ class SeamOrchestrator:
         )
 
     def audit_all(self, loom_inst: Any | None = None, skein_inst: Any | None = None) -> dict[str, Any]:
-        s_inst = skein_inst or skein
+        s_inst = self._resolve_skein(skein_inst)
         l_inst = self._resolve_loom(loom_inst)
         l_inst.initialize()
 

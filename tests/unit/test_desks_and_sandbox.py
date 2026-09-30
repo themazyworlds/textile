@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from textile.core.desks import InteractDesk, MutateDesk, ObserverDesk
-from textile.core.guardrails import AccessBoundaryError
-from textile.core.sandbox import BubblewrapSandbox, LandlockSandbox
-from textile.core.transaction import transaction_stack
+from textile.core.security.desks import InteractDesk, MutateDesk, ObserverDesk
+from textile.core.security.guardrails import AccessBoundaryError
+from textile.core.security.sandbox import BubblewrapSandbox, LandlockSandbox
+from textile.core.telemetry.transaction import transaction_stack
 
 
 class TestTierPassDesks:

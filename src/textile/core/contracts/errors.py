@@ -57,3 +57,22 @@ class StrandNotFoundError(TextileError):
             code="ERR_STRAND_NOT_FOUND",
             details={"strand": strand_name},
         )
+
+
+class YarnNotFoundError(TextileError):
+    """Raised when a requested yarn is not registered or active."""
+
+    def __init__(self, yarn_name: str, available_yarns: list[str] | None = None):
+        top_matches = sorted(available_yarns[:5]) if available_yarns else []
+        hint_msg = (
+            f"Did you mean one of: {', '.join(top_matches)}?"
+            if top_matches
+            else "Use 'textile yarns' to inspect available yarns."
+        )
+        super().__init__(
+            message=f"Yarn '{yarn_name}' not found.",
+            hint=hint_msg,
+            code="ERR_YARN_NOT_FOUND",
+            details={"yarn": yarn_name},
+        )
+

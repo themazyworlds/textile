@@ -13,7 +13,7 @@ import time
 from typing import Any
 
 from textile import Yarn, detect_terminal, strand
-from textile.core.guardrails import AccessBoundaryError, SessionProcessGuard
+from textile.core.security.guardrails import AccessBoundaryError, SessionProcessGuard
 
 BACKGROUND_JOBS: dict[int, dict[str, Any]] = {}
 MAX_PROC_SCAN_LIMIT = 50

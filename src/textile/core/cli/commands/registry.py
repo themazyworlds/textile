@@ -15,11 +15,11 @@ from textile.core.cli.app import (
     console,
     ensure_initialized,
 )
-from textile.core.layers import get_layer_info
-from textile.core.loom import loom
-from textile.core.seams import seams
-from textile.core.skein import skein
-from textile.core.tapestry import core_tapestry, sensory_tapestry
+from textile.core.contracts.layers import get_layer_info
+from textile.core.orchestration.loom import loom
+from textile.core.orchestration.skein import skein
+from textile.core.telemetry.seams import seams
+from textile.core.telemetry.tapestry import core_tapestry, sensory_tapestry
 
 
 @app.command("skein")

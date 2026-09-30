@@ -11,8 +11,8 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from textile.core.context import OriginToken
-from textile.core.loom import loom
+from textile.core.orchestration.loom import loom
+from textile.core.security.context import OriginToken
 
 
 def create_twill_server() -> Server:

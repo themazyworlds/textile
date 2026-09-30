@@ -13,24 +13,24 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from textile.core.decorators import _parse_tier
-from textile.core.elastic import EventUrgency, elastic
-from textile.core.invoker import (
+from textile.core.contracts.manifest import YarnManifest
+from textile.core.execution.decorators import _parse_tier
+from textile.core.execution.invoker import (
     InvokerConfig,
     _build_args_model,
     _create_invoker,
     _format_handler_result,
 )
-from textile.core.isolated_runner import execute_isolated_strand
-from textile.core.manifest import YarnManifest
-from textile.core.strands import CapabilityTier, Strand, Weft
-from textile.core.tapestry import sensory_tapestry
-from textile.core.validation import (
+from textile.core.execution.isolated_runner import execute_isolated_strand
+from textile.core.execution.strands import CapabilityTier, Strand, Weft
+from textile.core.execution.validation import (
     _extract_docstring_info,
     detects_native_ffi,
     schema_to_model,
     validate_strand_arguments,
 )
+from textile.core.telemetry.elastic import EventUrgency, elastic
+from textile.core.telemetry.tapestry import sensory_tapestry
 
 logger = logging.getLogger(__name__)
 

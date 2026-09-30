@@ -1,8 +1,8 @@
 import asyncio
 import unittest
 
-from textile.core.elastic import ElasticEngine, EventFrame, EventUrgency
-from textile.core.tapestry import sensory_tapestry
+from textile.core.telemetry.elastic import ElasticEngine, EventFrame, EventUrgency
+from textile.core.telemetry.tapestry import sensory_tapestry
 
 
 class TestElasticEngine(unittest.TestCase):

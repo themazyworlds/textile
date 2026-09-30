@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from textile import Yarn, strand
-from textile.core.guardrails import ScopedPath
+from textile.core.security.guardrails import ScopedPath
 
 logger = logging.getLogger(__name__)
 

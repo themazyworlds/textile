@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from textile.core.context import OriginToken, TaintTracker
+from textile.core.security.context import OriginToken, TaintTracker
 
 
 class IntentValidationError(Exception):

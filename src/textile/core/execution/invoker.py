@@ -11,9 +11,9 @@ from typing import Any, get_type_hints
 
 from pydantic import BaseModel, Field, create_model
 
-from textile.core.errors import TextileError
-from textile.core.strands import CapabilityTier
-from textile.core.validation import validate_strand_arguments
+from textile.core.contracts.errors import TextileError
+from textile.core.execution.strands import CapabilityTier
+from textile.core.execution.validation import validate_strand_arguments
 
 logger = logging.getLogger(__name__)
 
