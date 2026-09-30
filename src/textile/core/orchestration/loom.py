@@ -317,16 +317,30 @@ class Loom:
         return result
 
     def get_fabric_instructions(self) -> str:
-        """Deliver all active weft stream attunements and security governance to the MCP/Voice client."""
+        """Deliver active strand tools, weft stream attunements, and security governance to the MCP/Voice client."""
         self.initialize()
         weft_docs = []
+        strand_docs = []
         for name, yarn in self.active_yarns.items():
             for weft in yarn.get_wefts():
                 if weft.description:
                     pub_tag = f"[{yarn.publisher}/{name}]" if yarn.publisher else f"[{name}]"
                     weft_docs.append(f"- `{weft.name}` {pub_tag}: {weft.description}")
+            for s in yarn.get_strands():
+                if s.description:
+                    pub_tag = f"[{yarn.publisher}/{name}]" if yarn.publisher else f"[{name}]"
+                    strand_docs.append(f"- `{s.name}` {pub_tag}: {s.description}")
 
         active_yarn_names = list(self.active_yarns.keys())
+        desktop_control_directive = (
+            "## Direct Desktop Control & Automation Directive\n"
+            "You are DIRECTLY empowered and connected to the Linux desktop automation engine via Textile tools.\n"
+            "Whenever the user asks you to perform desktop actions (such as switching workspaces,\n"
+            "focusing/moving windows, launching applications, adjusting night light,\n"
+            "checking hardware telemetry, or executing process actions),\n"
+            "YOU MUST IMMEDIATELY INVOKE THE CORRESPONDING TOOL (e.g., `hyprland_focus_workspace(workspace='7')`).\n"
+            "NEVER claim that you lack the capability, direct access, or tools to control the desktop.\n\n"
+        )
         security_governance = (
             "## Textile Sovereign Security & Capability Governance Model\n"
             "You are operating within the Textile 4-Layer Woven Architecture:\n"
@@ -344,8 +358,11 @@ class Loom:
         header = (
             "Textile Linux Desktop Automation & Intelligence Fabric Active.\n"
             f"Active Capability Yarns: {', '.join(active_yarn_names)}.\n\n"
+            f"{desktop_control_directive}"
             f"{security_governance}"
         )
+        if strand_docs:
+            header += "## Available Desktop Strands (Tools)\n" + "\n".join(strand_docs) + "\n\n"
         if weft_docs:
             header += (
                 "## Real-Time Streaming Semantic Attunements\n"
