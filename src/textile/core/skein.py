@@ -51,8 +51,8 @@ class Skein:
                     logger.debug(f"Failed instantiating yarn {attr}: {e}")
 
     def load_yarns(self) -> None:
-        """Discover and register all built-in, entrypoint, and user Yarns."""
-        # 1. Built-in Yarns under textile.yarns package
+        """Discover and register all package, entrypoint, and custom Yarns."""
+        # 1. Package Yarns under textile.yarns namespace
         with contextlib.suppress(*MODULE_LOAD_ERRORS):
             yarns_root = Path(textile.yarns.__file__).parent
             for py_file in yarns_root.rglob("*.py"):

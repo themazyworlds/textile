@@ -27,7 +27,7 @@ The Textile automation subsystem operates on a layered, protocol-first fabric ma
 └─────────────────┴────────────────┴─────────────────┴─────────────┘
 ```
 
-1. **`Skein` (Lifecycle & Discovery)**: Recursively discovers built-in yarns in individual directories (`src/textile/yarns/<yarn_name>/`), PEP 621 entrypoints (`textile.yarns`), and user custom yarns (`~/.config/textile/yarns`). Manages configuration persistence, intent compilation, and runtime availability checks.
+1. **`Skein` (Lifecycle & Discovery)**: Discovers Yarns across package modules (`src/textile/yarns/<yarn_name>/`), PEP 621 entrypoints (`textile.yarns`), and custom yarn locations (`~/.config/textile/yarns`). Manages configuration persistence, intent compilation, and runtime availability checks.
 2. **`Loom` (Runtime Dispatcher)**: High-speed live execution engine resolving priority layer overrides (`150` ➔ `10`), origin token validation, and multi-process crash isolation.
 3. **`Twill` (Protocol Fabric)**: Standard Model Context Protocol (MCP) server dynamically aggregating all active Strands.
 4. **`Weave` (Voice Agent Engine)**: Full-duplex live audio, vision, and real-time conversation companion with semantic mood tag integration.

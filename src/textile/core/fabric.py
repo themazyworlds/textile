@@ -1,5 +1,5 @@
 """
-Textile Core Fabric - Built-in Native Core Strands & Engine Administration.
+Textile Core Fabric - Native Core Strands & Engine Administration.
 Provides baseline system inspection, task ledger management, integrity auditing, and test execution.
 Layer 0 (Core Fabric).
 """
