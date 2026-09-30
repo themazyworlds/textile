@@ -4,6 +4,7 @@ Layer 10 (Core POSIX / Utilities).
 """
 
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -37,30 +38,29 @@ def _get_active_timers_snapshot() -> list[dict[str, Any]]:
 
 
 async def _timer_worker(timer_id: str, label: str, duration_seconds: float, end_time: float) -> None:
-    try:
-        sleep_dur = max(0.0, end_time - time.time())
-        await asyncio.sleep(sleep_dur)
-        ACTIVE_TIMERS.pop(timer_id, None)
-        active_left = _get_active_timers_snapshot()
-        payload = {
-            "id": timer_id,
-            "label": label,
-            "duration_seconds": duration_seconds,
-            "expired_at": time.time(),
-        }
-        elastic.broadcast(
-            topic="timer.expired",
-            source="timer",
-            summary=f"Timer '{label}' (ID: {timer_id}) finished ({duration_seconds}s).",
-            urgency=EventUrgency.ALERT,
-            data=payload,
-            retained_slot="timers.active",
-            retained_value=active_left,
-        )
-    except asyncio.CancelledError:
-        pass
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.debug("Timer worker error on '%s': %s", timer_id, e)
+    with contextlib.suppress(asyncio.CancelledError):
+        try:
+            sleep_dur = max(0.0, end_time - time.time())
+            await asyncio.sleep(sleep_dur)
+            ACTIVE_TIMERS.pop(timer_id, None)
+            active_left = _get_active_timers_snapshot()
+            payload = {
+                "id": timer_id,
+                "label": label,
+                "duration_seconds": duration_seconds,
+                "expired_at": time.time(),
+            }
+            elastic.broadcast(
+                topic="timer.expired",
+                source="timer",
+                summary=f"Timer '{label}' (ID: {timer_id}) finished ({duration_seconds}s).",
+                urgency=EventUrgency.ALERT,
+                data=payload,
+                retained_slot="timers.active",
+                retained_value=active_left,
+            )
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.debug("Timer worker error on '%s': %s", timer_id, e)
 
 
 class Timer(Yarn):

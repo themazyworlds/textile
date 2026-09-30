@@ -49,12 +49,10 @@ class CanvasController:
             self._proc = None
         qml_file = self.get_qml_path()
         pgrep_bin = shutil.which("pgrep") or "/usr/bin/pgrep"
-        try:
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
             res = subprocess.run([pgrep_bin, "-f", qml_file], capture_output=True, timeout=0.2, check=False)
             if res.returncode == 0 and res.stdout.strip():
                 return True
-        except (OSError, subprocess.SubprocessError):
-            pass
         return bool(sensory_tapestry.get_slot("canvas.visible", False))
 
     def launch(self) -> str:
