@@ -58,7 +58,11 @@ async def entrypoint(ctx: JobContext):
     textile_env = dict(os.environ)
     textile_env["TEXTILE_CALLER"] = "weave"
     textile_cmd = shutil.which("textile") or sys.executable
-    textile_args = ["twill"] if shutil.which("textile") else ["-m", "textile.core.cli", "twill"]
+    textile_args = (
+        ["twill"]
+        if shutil.which("textile")
+        else ["-c", "from textile.core.cli import main; main()", "twill"]
+    )
 
     textile_toolset = mcp.MCPToolset(
         id="textile",
@@ -69,6 +73,7 @@ async def entrypoint(ctx: JobContext):
             client_session_timeout_seconds=60.0,
         ),
     )
+    await textile_toolset.setup()
 
     session = AgentSession(
         llm=realtime_model,

@@ -9,6 +9,7 @@ import inspect
 import json
 import logging
 import shutil
+import sys
 import threading
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -95,9 +96,11 @@ class Skein:
                 continue
             try:
                 rel_stem = py_file.relative_to(target_dir).with_suffix("").as_posix().replace("/", "_")
-                spec = importlib.util.spec_from_file_location(f"textile_yarn_{rel_stem}", py_file)
+                mod_name = f"textile_yarn_{rel_stem}"
+                spec = importlib.util.spec_from_file_location(mod_name, py_file)
                 if spec and spec.loader:
                     mod = importlib.util.module_from_spec(spec)
+                    sys.modules[mod_name] = mod
                     spec.loader.exec_module(mod)
                     self._register_module_yarns(mod)
             except MODULE_LOAD_ERRORS as e:

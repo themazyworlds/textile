@@ -2,6 +2,7 @@
 Textile Core Yarn Abstract Base Class & Execution Engine.
 """
 
+import contextlib
 import inspect
 import logging
 import sys
@@ -67,9 +68,14 @@ class Yarn(ABC):
             self.manifest = manifest
             return
 
-        if mod_file := getattr(
+        mod_file = getattr(
             sys.modules.get(self.__class__.__module__), "__file__", None
-        ):
+        )
+        if not mod_file:
+            with contextlib.suppress(TypeError, OSError):
+                mod_file = inspect.getfile(self.__class__)
+
+        if mod_file:
             p = Path(mod_file)
             toml_file = p.with_suffix(".toml")
             if not toml_file.exists():
@@ -156,16 +162,18 @@ class Yarn(ABC):
     def strands(self) -> list[Strand]:
         """Automatically discovers all @strand decorated methods on the class."""
         discovered = []
-        for attr_name in dir(self):
+        cls = type(self)
+        for attr_name in dir(cls):
             if attr_name.startswith("__"):
                 continue
             try:
-                attr = getattr(self, attr_name)
+                unbound = getattr(cls, attr_name, None)
             except (AttributeError, TypeError, ValueError, RuntimeError) as e:
                 logger.debug(f"Error inspecting attribute '{attr_name}' for strands: {e}")
                 continue
-            if callable(attr) and getattr(attr, "_is_strand", False):
-                discovered.append(self._method_to_strand(attr))
+            if callable(unbound) and getattr(unbound, "_is_strand", False):
+                bound = getattr(self, attr_name)
+                discovered.append(self._method_to_strand(bound))
         return discovered
 
     def get_strands(self) -> list[Strand]:
@@ -175,16 +183,18 @@ class Yarn(ABC):
     def wefts(self) -> list[Weft]:
         """Automatically discovers all @weft decorated methods on the class."""
         discovered = []
-        for attr_name in dir(self):
+        cls = type(self)
+        for attr_name in dir(cls):
             if attr_name.startswith("__"):
                 continue
             try:
-                attr = getattr(self, attr_name)
+                unbound = getattr(cls, attr_name, None)
             except (AttributeError, TypeError, ValueError, RuntimeError) as e:
                 logger.debug(f"Error inspecting attribute '{attr_name}' for wefts: {e}")
                 continue
-            if callable(attr) and getattr(attr, "_is_weft", False):
-                discovered.append(self._method_to_weft(attr))
+            if callable(unbound) and getattr(unbound, "_is_weft", False):
+                bound = getattr(self, attr_name)
+                discovered.append(self._method_to_weft(bound))
         return discovered
 
     def get_wefts(self) -> list[Weft]:
