@@ -89,13 +89,17 @@ class SystemAuditReport(BaseModel):
 class SeamOrchestrator:
     """Orchestrator monitoring yarn health, system dependencies, and runtime contract compliance."""
 
-    def __init__(self, loom_instance: Any | None = None):
+    def __init__(self, loom_instance: Any | None = None, skein_instance: Any | None = None):
         self._loom = loom_instance
+        self._skein = skein_instance
         self._failure_counts: dict[str, int] = {}
         self._max_consecutive_failures = 3
 
     def set_loom(self, loom_instance: Any) -> None:
         self._loom = loom_instance
+
+    def set_skein(self, skein_instance: Any) -> None:
+        self._skein = skein_instance
 
     def check_binary(self, binary_name: str, optional: bool = False) -> DependencyCheck:
         path = shutil.which(binary_name)
@@ -274,7 +278,9 @@ class SeamOrchestrator:
     def _resolve_skein(self, skein_inst: Any = None) -> Any:
         if skein_inst is not None:
             return skein_inst
-        return importlib.import_module("textile.core.orchestration.skein").skein
+        if self._skein is not None:
+            return self._skein
+        raise RuntimeError("Skein instance not configured for SeamOrchestrator")
 
     def audit_yarn(self, yarn: Any, skein_inst: Any = None, loom_inst: Any = None) -> YarnIntegrityReport:
         s_inst = self._resolve_skein(skein_inst)
