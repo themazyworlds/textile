@@ -16,6 +16,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from textile.core.errors import StrandNotFoundError, TextileError
+from textile.core.layers import get_layer_info
 from textile.core.loom import loom
 from textile.core.seams import seams
 from textile.core.skein import skein
@@ -23,24 +24,6 @@ from textile.core.tapestry import core_tapestry, sensory_tapestry
 from textile.core.twill import run_twill
 
 console = Console()
-
-LAYER_USER_OVERRIDE_THRESHOLD = 1000
-LAYER_SESSION_MANAGER_THRESHOLD = 150
-LAYER_COMPOSITOR_DE_THRESHOLD = 100
-LAYER_DESKTOP_PROTOCOL_THRESHOLD = 50
-
-
-def _layer_info(layer: int) -> dict[str, Any]:
-    if layer >= LAYER_USER_OVERRIDE_THRESHOLD:
-        return {"level": 5, "name": "User Override"}
-    elif layer >= LAYER_SESSION_MANAGER_THRESHOLD:
-        return {"level": 4, "name": "Session Manager"}
-    elif layer >= LAYER_COMPOSITOR_DE_THRESHOLD:
-        return {"level": 3, "name": "Compositor / DE"}
-    elif layer >= LAYER_DESKTOP_PROTOCOL_THRESHOLD:
-        return {"level": 2, "name": "Desktop Protocol"}
-    else:
-        return {"level": 1, "name": "Core POSIX"}
 
 
 class SeamsSummaryModel(BaseModel):
@@ -192,7 +175,8 @@ def cmd_skein(
         except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
             av_str = "[red]ERR[/red]"
 
-        table.add_row(yarn.name, str(yarn.layer), en_str, av_str, yarn.description or "")
+        layer_name = get_layer_info(yarn.layer).name
+        table.add_row(yarn.name, f"{yarn.layer} ({layer_name})", en_str, av_str, yarn.description or "")
 
     console.print(table)
 
