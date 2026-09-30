@@ -219,6 +219,43 @@ class BubblewrapBuilder:
         return self.args + target_cmd
 
 
+def _bind_user_config_and_share(builder: BubblewrapBuilder) -> None:
+    """Bind user configuration (~/.config/textile) and local share (~/.local) into sandbox."""
+    textile_config = Path.home() / ".config" / "textile"
+    if textile_config.exists():
+        builder.args.extend(["--ro-bind-try", str(textile_config), str(textile_config)])
+
+    local_share = Path.home() / ".local"
+    if local_share.exists():
+        builder.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
+
+
+def _bind_python_prefixes(builder: BubblewrapBuilder) -> None:
+    """Bind virtualenv and sys.prefix locations into sandbox if not standard system paths."""
+    for check_path in (sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)):
+        if check_path and os.path.exists(check_path):
+            p_resolved = str(Path(check_path).resolve())
+            if not any(p_resolved.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
+                builder.args.extend(["--ro-bind-try", p_resolved, p_resolved])
+
+
+def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) -> None:
+    """Bind target executable path and containing venv directory into sandbox."""
+    if not cmd or not cmd[0]:
+        return
+    exe_target = shutil.which(cmd[0]) or cmd[0]
+    if os.path.exists(exe_target):
+        raw_path = str(Path(exe_target).absolute())
+        resolved_path = str(Path(exe_target).resolve())
+        for p_str in (raw_path, resolved_path):
+            if ".venv" in p_str:
+                venv_root = p_str.split("/bin/")[0]
+                builder.args.extend(["--ro-bind-try", venv_root, venv_root])
+            elif not any(p_str.startswith(prefix) for prefix in ("/usr", "/bin", "/lib", "/opt", "/nix")):
+                parent_dir = str(Path(p_str).parent)
+                builder.args.extend(["--ro-bind-try", parent_dir, parent_dir])
+
+
 class BubblewrapSandbox:
     """
     Linux Bubblewrap (bwrap) unprivileged container isolation manager.
@@ -282,31 +319,8 @@ class BubblewrapSandbox:
             .set_env("PYTHONPATH", os.environ.get("PYTHONPATH"))
         )
 
-        textile_config = Path.home() / ".config" / "textile"
-        if textile_config.exists():
-            builder.args.extend(["--ro-bind-try", str(textile_config), str(textile_config)])
-
-        local_share = Path.home() / ".local"
-        if local_share.exists():
-            builder.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
-
-        for check_path in [sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)]:
-            if check_path and os.path.exists(check_path):
-                p_resolved = str(Path(check_path).resolve())
-                if not any(p_resolved.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
-                    builder.args.extend(["--ro-bind-try", p_resolved, p_resolved])
-
-        if cmd and cmd[0]:
-            exe_target = shutil.which(cmd[0]) or cmd[0]
-            if os.path.exists(exe_target):
-                raw_path = str(Path(exe_target).absolute())
-                resolved_path = str(Path(exe_target).resolve())
-                for p_str in (raw_path, resolved_path):
-                    if ".venv" in p_str:
-                        venv_root = p_str.split("/bin/")[0]
-                        builder.args.extend(["--ro-bind-try", venv_root, venv_root])
-                    elif not any(p_str.startswith(prefix) for prefix in ("/usr", "/bin", "/lib", "/opt", "/nix")):
-                        parent_dir = str(Path(p_str).parent)
-                        builder.args.extend(["--ro-bind-try", parent_dir, parent_dir])
+        _bind_user_config_and_share(builder)
+        _bind_python_prefixes(builder)
+        _bind_executable_dependencies(builder, cmd)
 
         return builder.build(cmd)

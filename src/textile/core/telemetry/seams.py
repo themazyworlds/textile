@@ -282,6 +282,22 @@ class SeamOrchestrator:
             return self._skein
         raise RuntimeError("Skein instance not configured for SeamOrchestrator")
 
+    def _determine_yarn_health_status(
+        self,
+        is_enabled: bool,
+        is_avail: bool,
+        errors: list[str],
+        warnings: list[str],
+    ) -> HealthStatus:
+        """Determine health status enum based on availability, errors, and warnings."""
+        if not is_enabled:
+            return HealthStatus.DISABLED
+        if not is_avail or errors:
+            return HealthStatus.CRITICAL if errors else HealthStatus.DEGRADED
+        if warnings:
+            return HealthStatus.DEGRADED
+        return HealthStatus.HEALTHY
+
     def audit_yarn(self, yarn: Any, skein_inst: Any = None, loom_inst: Any = None) -> YarnIntegrityReport:
         s_inst = self._resolve_skein(skein_inst)
         l_inst = self._resolve_loom(loom_inst)
@@ -310,13 +326,7 @@ class SeamOrchestrator:
         except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
             errors.append(f"get_strands() raised exception: {e}")
 
-        status = HealthStatus.HEALTHY
-        if not is_enabled:
-            status = HealthStatus.DISABLED
-        elif not is_avail or errors:
-            status = HealthStatus.CRITICAL if errors else HealthStatus.DEGRADED
-        elif warnings:
-            status = HealthStatus.DEGRADED
+        status = self._determine_yarn_health_status(is_enabled, is_avail, errors, warnings)
 
         return YarnIntegrityReport(
             yarn_name=yarn.name,

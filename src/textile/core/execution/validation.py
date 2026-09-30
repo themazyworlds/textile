@@ -60,6 +60,50 @@ def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> 
     return errors
 
 
+def _check_empty_required_args(
+    strand_name: str,
+    clean_args: dict[str, Any],
+    parameters: dict[str, Any] | None,
+    required: list[str] | None,
+) -> str | None:
+    """Check for required string parameters that are empty or whitespace only."""
+    if not required:
+        return None
+    for r in required:
+        if r in clean_args and isinstance(clean_args[r], str) and not clean_args[r].strip():
+            p_type = (parameters or {}).get(r, {}).get("type", "value")
+            return (
+                f"Validation Hint: Strand '{strand_name}' expected required parameter '{r}' "
+                f"(type: {p_type}), but it went missing in action!"
+            )
+    return None
+
+
+def _format_validation_error(
+    strand_name: str,
+    args: dict[str, Any],
+    parameters: dict[str, Any] | None,
+    err: Any,
+) -> str:
+    """Format Pydantic ValidationError into human-friendly Textile validation hint."""
+    loc = str(err["loc"][0]) if err.get("loc") else "parameter"
+    err_type = str(err.get("type", ""))
+    p_type = (parameters or {}).get(loc, {}).get("type", "value")
+
+    if "missing" in err_type:
+        return (
+            f"Validation Hint: Strand '{strand_name}' expected required parameter '{loc}' "
+            f"(type: {p_type}), but it went missing in action!"
+        )
+    if "literal" in err_type or "enum" in err_type:
+        expected = err.get("ctx", {}).get("expected", "")
+        return (
+            f"Validation Hint: Invalid action/option '{args.get(loc)}' for strand '{strand_name}'. "
+            f"Available options: [{expected}]"
+        )
+    return f"Validation Hint: Strand '{strand_name}' parameter '{loc}' validation failed: {err.get('msg')}."
+
+
 def validate_strand_arguments(
     strand_name: str,
     args: dict[str, Any],
@@ -78,37 +122,14 @@ def validate_strand_arguments(
             return None, args
 
     clean_args = dict(args or {})
-    if required:
-        for r in required:
-            if r in clean_args and isinstance(clean_args[r], str) and not clean_args[r].strip():
-                p_type = (parameters or {}).get(r, {}).get("type", "value")
-                return (
-                    f"Validation Hint: Strand '{strand_name}' expected required parameter '{r}' "
-                    f"(type: {p_type}), but it went missing in action!",
-                    args,
-                )
+    if empty_err := _check_empty_required_args(strand_name, clean_args, parameters, required):
+        return empty_err, args
 
     try:
         validated = model.model_validate(clean_args)
         return None, {k: v for k, v in validated.model_dump().items() if v is not None}
     except ValidationError as e:
-        err = e.errors()[0]
-        loc = str(err["loc"][0]) if err["loc"] else "parameter"
-        err_type = err["type"]
-        p_type = (parameters or {}).get(loc, {}).get("type", "value")
-        if "missing" in err_type:
-            msg = (
-                f"Validation Hint: Strand '{strand_name}' expected required parameter '{loc}' "
-                f"(type: {p_type}), but it went missing in action!"
-            )
-        elif "literal" in err_type or "enum" in err_type:
-            expected = err.get("ctx", {}).get("expected", "")
-            msg = (
-                f"Validation Hint: Invalid action/option '{args.get(loc)}' for strand '{strand_name}'. "
-                f"Available options: [{expected}]"
-            )
-        else:
-            msg = f"Validation Hint: Strand '{strand_name}' parameter '{loc}' validation failed: {err['msg']}."
+        msg = _format_validation_error(strand_name, args, parameters, e.errors()[0])
         return msg, args
 
 
