@@ -11,6 +11,7 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
+from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.loom import loom
 from textile.core.security.context import OriginToken
 
@@ -18,7 +19,7 @@ from textile.core.security.context import OriginToken
 def create_twill_server() -> Server:
     """Create and configure official Twill / MCP Server with yarn strand dispatchers."""
     loom.initialize()
-    instructions = loom.get_fabric_instructions()
+    instructions = fabric_instructions.build_instructions(loom.active_yarns)
     app = Server("textile", instructions=instructions)
 
     @app.list_prompts()
@@ -42,7 +43,7 @@ def create_twill_server() -> Server:
                         role="user",
                         content=types.TextContent(
                             type="text",
-                            text=loom.get_fabric_instructions(),
+                            text=fabric_instructions.build_instructions(loom.active_yarns),
                         ),
                     )
                 ],
@@ -52,7 +53,7 @@ def create_twill_server() -> Server:
     @app.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
         tools: list[types.Tool] = []
-        for strand_def in loom.get_mcp_definitions():
+        for strand_def in fabric_instructions.get_mcp_definitions(loom.get_all_strands()):
             tools.append(
                 types.Tool(
                     name=strand_def["name"],

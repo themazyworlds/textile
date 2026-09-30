@@ -262,13 +262,15 @@ class TestYarnArchitecture(unittest.TestCase):
 
         y = WeftTestYarn()
         wefts = y.get_wefts()
+        from textile.core.orchestration.stream import stream_engine
+
         self.assertEqual(len(wefts), 2)
         skein.register_yarn(y)
         loom._rebuild_active()
 
         # Process a stream containing both wefts
         raw_stream = "Tracking <target:alpha_1,42> in sector <coord:12.5,-8.75> immediately!"
-        clean_stream = loom.process_stream(raw_stream)
+        clean_stream = stream_engine.process_stream(raw_stream, loom.wefts)
 
         self.assertEqual(clean_stream, "Tracking  in sector  immediately!")
         self.assertEqual(len(events_received), 2)
@@ -281,6 +283,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         from textile.core.orchestration.loom import loom
         from textile.core.orchestration.skein import skein
+        from textile.core.orchestration.stream import stream_engine
         from textile.core.telemetry.tapestry import sensory_tapestry
         from textile.yarns.canvas.canvas import Canvas
 
@@ -291,7 +294,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         # Simulate Gemini returning speech text with inline semantic mood tags
         gemini_speech = "<mood:curious> Let me check that system log for you... <mood:thinking> analyzing now... <mood:happy> everything looks clean!"
-        clean_text = loom.process_stream(gemini_speech)
+        clean_text = stream_engine.process_stream(gemini_speech, loom.wefts)
         time.sleep(0.1)
 
         self.assertNotIn("<mood:", clean_text)

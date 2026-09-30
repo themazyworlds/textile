@@ -17,9 +17,7 @@ from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_
 from textile.core.execution.strands import Strand, Weft
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.fabric import core_fabric_yarn
-from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.skein import Skein, skein
-from textile.core.orchestration.stream import stream_engine
 from textile.core.security.context import OriginToken, TaintTracker, verify_security_policy
 from textile.core.telemetry.elastic import EventUrgency, elastic
 from textile.core.telemetry.seams import seams
@@ -135,10 +133,6 @@ class Loom:
     def get_strand(self, strand_name: str) -> Strand | None:
         self.initialize()
         return self.strands.get(strand_name)
-
-    def get_mcp_definitions(self) -> list[dict[str, Any]]:
-        self.initialize()
-        return fabric_instructions.get_mcp_definitions(self.get_all_strands())
 
     def _resolve_target_strand(self, strand_name: str) -> tuple[Strand, Yarn, Any] | None:
         """Resolve active strand object, providing yarn, and handler function."""
@@ -304,21 +298,6 @@ class Loom:
         """Return all active Weft attunements sorted by priority."""
         self.initialize()
         return list(self.wefts)
-
-    def process_stream(self, chunk: str) -> str:
-        """Process real-time streaming text chunk through active Weft attunements."""
-        self.initialize()
-        return stream_engine.process_stream(chunk, self.wefts)
-
-    async def process_stream_async(self, chunk: str) -> str:
-        """Asynchronous streaming text processor for active Wefts."""
-        self.initialize()
-        return await stream_engine.process_stream_async(chunk, self.wefts)
-
-    def get_fabric_instructions(self) -> str:
-        """Deliver active strand tools, weft stream attunements, and security governance to the MCP/Voice client."""
-        self.initialize()
-        return fabric_instructions.build_instructions(self.active_yarns)
 
 
 loom = Loom()

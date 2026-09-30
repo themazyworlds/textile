@@ -15,7 +15,9 @@ from livekit.agents import AgentServer, AutoSubscribe, JobContext, cli, mcp
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import google
 
+from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.loom import loom
+from textile.core.orchestration.stream import stream_engine
 from textile.core.telemetry.elastic import EventUrgency, elastic
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ class WeaveAgent(Agent):
     ) -> AsyncGenerator[str | Any]:
         async for delta in text:
             delta_text = getattr(delta, "text", None) or (delta if isinstance(delta, str) else str(delta))
-            clean_delta = loom.process_stream(delta_text)
+            clean_delta = stream_engine.process_stream(delta_text, loom.wefts)
             if clean_delta:
                 if hasattr(delta, "text"):
                     setattr(delta, "text", clean_delta)
@@ -115,7 +117,7 @@ async def entrypoint(ctx: JobContext):
         "Whenever the user asks to switch workspaces, focus windows, launch apps, or run desktop commands, "
         "YOU MUST CALL THE APPROPRIATE TOOL IMMEDIATELY (e.g., hyprland_focus_workspace(workspace='7')).\n"
         "Keep responses brief, conversational, and helpful.\n\n"
-        f"{loom.get_fabric_instructions()}"
+        f"{fabric_instructions.build_instructions(loom.active_yarns)}"
     )
 
     agent = WeaveAgent(
