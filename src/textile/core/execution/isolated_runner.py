@@ -3,12 +3,16 @@ Textile Isolated Strand Subprocess Runner.
 Invoked via `uv run --isolated` for ephemeral, dependency-isolated strand executions.
 """
 
+import contextlib
 import importlib
+import importlib.util
+import inspect
 import json
 import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from textile.core.execution.invoker import _format_handler_result
@@ -35,11 +39,19 @@ def execute_isolated_strand(
     cmd = [uv_bin, "run", "--no-project", "--no-sync", "--quiet"]
     for dep in yarn.get_python_dependencies():
         cmd.extend(["--with", str(dep)])
+
+    target_spec = yarn.__class__.__module__
+    with contextlib.suppress(TypeError, OSError):
+        file_path = inspect.getfile(yarn.__class__)
+        if file_path and os.path.exists(file_path):
+            target_spec = file_path
+
     cmd.extend(
         [
-            "-m",
-            "textile.core.execution.isolated_runner",
-            yarn.__class__.__module__,
+            "python",
+            "-c",
+            "from textile.core.execution.isolated_runner import main; main()",
+            target_spec,
             yarn.__class__.__name__,
             strand_name,
             json.dumps(args),
@@ -81,7 +93,7 @@ def main():
         print(json.dumps({"success": False, "error": "Invalid arguments to isolated_runner"}))
         sys.exit(1)
 
-    module_name = sys.argv[1]
+    target_spec = sys.argv[1]
     class_name = sys.argv[2]
     strand_name = sys.argv[3]
     args_json = sys.argv[4]
@@ -102,7 +114,17 @@ def main():
     tier_name = sys.argv[5].upper() if len(sys.argv) > MIN_ARG_COUNT else ""
 
     try:
-        mod = importlib.import_module(module_name)
+        if target_spec.endswith(".py") or os.path.exists(target_spec):
+            mod_name = f"isolated_yarn_{Path(target_spec).stem}"
+            spec = importlib.util.spec_from_file_location(mod_name, target_spec)
+            if not spec or not spec.loader:
+                raise ImportError(f"Cannot load module spec from file location: {target_spec}")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = mod
+            spec.loader.exec_module(mod)
+        else:
+            mod = importlib.import_module(target_spec)
+
         cls = getattr(mod, class_name)
         instance = cls()
 
@@ -130,3 +152,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

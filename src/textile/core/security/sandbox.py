@@ -282,6 +282,10 @@ class BubblewrapSandbox:
             .set_env("PYTHONPATH", os.environ.get("PYTHONPATH"))
         )
 
+        textile_config = Path.home() / ".config" / "textile"
+        if textile_config.exists():
+            builder.args.extend(["--ro-bind-try", str(textile_config), str(textile_config)])
+
         local_share = Path.home() / ".local"
         if local_share.exists():
             builder.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
