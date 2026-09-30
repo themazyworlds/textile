@@ -136,7 +136,7 @@ class TaintTracker:
         return _active_taint_var.get() is not None
 
 
-@dataclass
+@dataclass(slots=True)
 class SeatContext:
     """Verifies physical presence and local desktop ownership."""
 

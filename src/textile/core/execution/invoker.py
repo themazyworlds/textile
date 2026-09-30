@@ -63,7 +63,7 @@ def _build_args_model(
     return create_model(model_name, **fields) if fields else None
 
 
-@dataclass
+@dataclass(slots=True)
 class InvokerConfig:
     """Configuration options for synthesizing strand invokers."""
 

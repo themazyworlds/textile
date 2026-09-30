@@ -58,7 +58,7 @@ class EventUrgency(StrEnum):
         return EventUrgency.NOTICE
 
 
-@dataclass
+@dataclass(slots=True)
 class BroadcastOptions:
     source: str = "system"
     urgency: EventUrgency | str = EventUrgency.NOTICE

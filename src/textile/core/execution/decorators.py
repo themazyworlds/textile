@@ -26,7 +26,7 @@ def _parse_tier(raw_tier: Any, strand_name: str = "") -> CapabilityTier:
     )
 
 
-@dataclass
+@dataclass(slots=True)
 class StrandDecoratorOptions:
     name: str | None = None
     description: str | None = None
@@ -36,7 +36,7 @@ class StrandDecoratorOptions:
     timeout: float = 30.0
 
 
-@dataclass
+@dataclass(slots=True)
 class WeftDecoratorOptions:
     pattern: str | re.Pattern = ""
     name: str | None = None

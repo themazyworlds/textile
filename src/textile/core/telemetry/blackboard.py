@@ -18,7 +18,7 @@ from textile.core.telemetry.database import TapestryDatabase
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(slots=True)
 class ElasticEventSpec:
     event_id: str
     topic: str

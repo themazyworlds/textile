@@ -16,7 +16,7 @@ from textile.core.telemetry.database import TapestryDatabase
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(slots=True)
 class TaskOptions:
     args: dict[str, Any] | None = None
     tier: str | None = None

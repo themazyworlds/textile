@@ -8,6 +8,7 @@ import sys
 from abc import ABC
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,7 @@ from textile.core.telemetry.tapestry import sensory_tapestry
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(slots=True)
 class StrandConfig:
     args_schema: type[BaseModel] | None = None
     parameters: dict[str, Any] | None = None
@@ -47,7 +48,7 @@ class StrandConfig:
     resources: list[str] | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class EventOptions:
     data: Any = None
     summary: str = ""
@@ -151,7 +152,8 @@ class Yarn(ABC):
         """Check if runtime dependencies and environment are met. Defaults to True."""
         return True
 
-    def get_strands(self) -> list[Strand]:
+    @cached_property
+    def strands(self) -> list[Strand]:
         """Automatically discovers all @strand decorated methods on the class."""
         discovered = []
         for attr_name in dir(self):
@@ -166,7 +168,11 @@ class Yarn(ABC):
                 discovered.append(self._method_to_strand(attr))
         return discovered
 
-    def get_wefts(self) -> list[Weft]:
+    def get_strands(self) -> list[Strand]:
+        return self.strands
+
+    @cached_property
+    def wefts(self) -> list[Weft]:
         """Automatically discovers all @weft decorated methods on the class."""
         discovered = []
         for attr_name in dir(self):
@@ -180,6 +186,9 @@ class Yarn(ABC):
             if callable(attr) and getattr(attr, "_is_weft", False):
                 discovered.append(self._method_to_weft(attr))
         return discovered
+
+    def get_wefts(self) -> list[Weft]:
+        return self.wefts
 
     def _method_to_weft(self, method: Callable) -> Weft:
         """Convert a @weft decorated method into a Weft instance."""
