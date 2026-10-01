@@ -15,6 +15,7 @@ from textile.core.telemetry.ledger import (
     CoreTapestry,
     core_tapestry,
 )
+from textile.core.telemetry.log import configure_logging, get_logger
 from textile.core.telemetry.seams import SeamOrchestrator, seams
 from textile.core.telemetry.transaction import Transaction, transaction_stack
 
@@ -28,8 +29,10 @@ __all__ = [
     "TapestryDB",
     "TapestryDatabase",
     "Transaction",
+    "configure_logging",
     "core_tapestry",
     "elastic",
+    "get_logger",
     "seams",
     "sensory_tapestry",
     "transaction_stack",

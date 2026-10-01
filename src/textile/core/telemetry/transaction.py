@@ -3,7 +3,6 @@ Textile Core Layer 4 - Reversible Transactional Execution & Undo Engine.
 Maintains execution history stack and handles state rollbacks for undoable strands.
 """
 
-import logging
 import threading
 import uuid
 from collections.abc import Callable
@@ -12,8 +11,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from textile.core.execution.invoker import STRAND_EXEC_ERRORS
+from textile.core.telemetry.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Transaction(BaseModel):
@@ -57,7 +57,12 @@ class TransactionStack:
                 self._stack.pop()
                 return True, f"Successfully rolled back transaction for strand '{tx.strand_name}'."
             except STRAND_EXEC_ERRORS as e:
-                logger.error(f"Rollback failed for transaction '{tx.transaction_id}': {e}")
+                logger.error(
+                    "transaction.rollback_failed",
+                    transaction_id=tx.transaction_id,
+                    strand=tx.strand_name,
+                    error=str(e),
+                )
                 return False, f"Rollback failed for strand '{tx.strand_name}': {e}"
 
     def clear(self) -> None:

@@ -7,7 +7,6 @@ import importlib
 import importlib.util
 import inspect
 import json
-import logging
 import shutil
 import sys
 import threading
@@ -21,10 +20,11 @@ from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
 from textile.core.security.context import PolicyViolationError, verify_security_policy
+from textile.core.telemetry.log import get_logger
 from textile.core.telemetry.seams import seams
 from textile.core.telemetry.transaction import Transaction, transaction_stack
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = ["PolicyViolationError", "Skein", "skein"]
 
@@ -53,7 +53,7 @@ class Skein:
                     with self._lock:
                         self.all_yarns[instance.name] = instance
                 except MODULE_LOAD_ERRORS as e:
-                    logger.debug(f"Failed instantiating yarn {attr}: {e}")
+                    logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
     def ensure_preinstalled_yarns_seeded(self) -> None:
         """Seed pre-installed Yarns to ~/.config/textile/yarns/ if not present."""
@@ -104,7 +104,7 @@ class Skein:
                     spec.loader.exec_module(mod)
                     self._register_module_yarns(mod)
             except MODULE_LOAD_ERRORS as e:
-                logger.debug(f"Failed loading yarn from {py_file}: {e}")
+                logger.debug("skein.user_yarn_load_failed", path=str(py_file), error=str(e))
 
     def initialize(self) -> None:
         with self._lock:
@@ -148,7 +148,7 @@ class Skein:
                         if yarn.is_available():
                             active[name] = yarn
                     except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                        logger.debug(f"Yarn '{name}' availability check failed: {e}")
+                        logger.debug("skein.yarn_availability_check_failed", yarn=name, error=str(e))
             return active
 
     def get_strand_by_name(self, strand_name: str) -> tuple[Yarn, Strand] | None:
@@ -198,7 +198,7 @@ class Skein:
             if self._config_file.exists():
                 self._disabled_yarns = set(json.loads(self._config_file.read_text()).get("disabled_yarns", []))
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
-            logger.debug(f"Could not load skein config: {e}")
+            logger.debug("skein.config_load_failed", path=str(self._config_file), error=str(e))
 
     def get_static_manifests(self) -> dict[str, YarnManifest]:
         """Statically inspect all TOML manifests without importing Python modules."""
@@ -220,7 +220,7 @@ class Skein:
             self._config_file.parent.mkdir(parents=True, exist_ok=True)
             self._config_file.write_text(json.dumps({"disabled_yarns": list(self._disabled_yarns)}, indent=2))
         except (OSError, TypeError) as e:
-            logger.warning(f"Could not save skein config: {e}")
+            logger.warning("skein.config_save_failed", path=str(self._config_file), error=str(e))
 
 
 skein = Skein()

@@ -6,7 +6,6 @@ import asyncio
 import concurrent.futures
 import contextlib
 import inspect
-import logging
 import os
 import time
 import uuid
@@ -20,10 +19,11 @@ from textile.core.orchestration.fabric import core_fabric_yarn
 from textile.core.orchestration.skein import Skein, skein
 from textile.core.security.context import OriginToken, TaintTracker, verify_security_policy
 from textile.core.telemetry.elastic import EventUrgency, elastic
+from textile.core.telemetry.log import get_logger
 from textile.core.telemetry.seams import seams
 from textile.core.telemetry.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -105,7 +105,7 @@ class Loom:
             try:
                 self._register_yarn_strands_and_wefts(yarn, new_strands, new_strand_map, new_cap_map, new_wefts)
             except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                logger.error(f"Error loading strands/wefts from yarn {yarn.name}: {e}")
+                logger.error("loom.yarn_load_failed", yarn=yarn.name, error=str(e))
 
         new_wefts.sort(key=lambda w: w.priority, reverse=True)
         self._notify_yarn_lifecycle_events(set(self.active_yarns.keys()), set(new_active.keys()), new_active)

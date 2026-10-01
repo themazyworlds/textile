@@ -4,7 +4,6 @@ Converts @strand and @weft decorated methods on Yarn instances into Strand and W
 """
 
 import inspect
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -26,8 +25,9 @@ from textile.core.execution.validation import (
     schema_to_model,
     validate_strand_arguments,
 )
+from textile.core.telemetry.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -151,7 +151,7 @@ def reflect_strands(yarn: Any) -> list[Strand]:
         try:
             unbound = getattr(cls, attr_name, None)
         except (AttributeError, TypeError, ValueError, RuntimeError) as e:
-            logger.debug(f"Error inspecting attribute '{attr_name}' for strands: {e}")
+            logger.debug("strand.reflection_attribute_error", attribute=attr_name, error=str(e))
             continue
         if callable(unbound) and getattr(unbound, "_is_strand", False):
             bound = getattr(yarn, attr_name)
@@ -169,7 +169,7 @@ def reflect_wefts(yarn: Any) -> list[Weft]:
         try:
             unbound = getattr(cls, attr_name, None)
         except (AttributeError, TypeError, ValueError, RuntimeError) as e:
-            logger.debug(f"Error inspecting attribute '{attr_name}' for wefts: {e}")
+            logger.debug("weft.reflection_attribute_error", attribute=attr_name, error=str(e))
             continue
         if callable(unbound) and getattr(unbound, "_is_weft", False):
             bound = getattr(yarn, attr_name)

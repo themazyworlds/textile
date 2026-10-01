@@ -6,12 +6,12 @@ Provides real-time regex attunement matching, argument coercion, and token strip
 import asyncio
 import contextlib
 import inspect
-import logging
 from typing import Any
 
 from textile.core.execution.strands import Weft
+from textile.core.telemetry.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = ["StreamEngine", "stream_engine"]
 
@@ -52,7 +52,7 @@ class StreamEngine:
                     if not inspect.iscoroutinefunction(res):
                         asyncio.run(res)
             except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                logger.error(f"Error executing weft '{weft.name}': {e}")
+                logger.error("stream.weft_execution_failed", weft=weft.name, error=str(e))
 
         return self._strip_weft_tokens(chunk, wefts)
 
@@ -67,7 +67,7 @@ class StreamEngine:
                 if inspect.iscoroutine(res):
                     await res
             except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
-                logger.error(f"Error executing weft '{weft.name}': {e}")
+                logger.error("stream.weft_execution_failed", weft=weft.name, error=str(e))
 
         return self._strip_weft_tokens(chunk, wefts)
 

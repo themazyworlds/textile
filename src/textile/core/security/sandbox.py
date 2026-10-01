@@ -4,7 +4,6 @@ Provides Bubblewrap (bwrap) unprivileged container isolation and Landlock kernel
 """
 
 import ctypes
-import logging
 import os
 import shutil
 import subprocess
@@ -12,7 +11,9 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from textile.core.telemetry.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def _resolve_display_bind() -> list[str]:
@@ -120,7 +121,7 @@ class LandlockSandbox:
     def apply_read_only(cls, allowed_read_path: str = "/") -> bool:
         """Confine the current process to read-only filesystem access."""
         if not cls.is_supported():
-            logger.debug("Landlock is not supported on this platform/kernel.")
+            logger.debug("sandbox.landlock_unsupported")
             return False
 
         try:
@@ -149,7 +150,7 @@ class LandlockSandbox:
             os.close(ruleset_fd)
             return ret_restrict == 0
         except (OSError, AttributeError, RuntimeError) as e:
-            logger.debug("Error applying Landlock sandbox: %s", e)
+            logger.debug("sandbox.landlock_apply_failed", error=str(e))
             return False
 
 
@@ -202,7 +203,7 @@ class BubblewrapBuilder:
                 if clean_res in KNOWN_RESOURCES:
                     self.args.extend(KNOWN_RESOURCES[clean_res]())
                 else:
-                    logger.warning("Unrecognized sandbox resource request '%s' ignored.", res_name)
+                    logger.warning("sandbox.unrecognized_resource_requested", resource=res_name)
         return self
 
     def bind_workspace(self, workspace: Path, writable: bool) -> BubblewrapBuilder:

@@ -3,7 +3,6 @@ Textile Seams - Integrity, diagnostics, dependency resolution, and health engine
 """
 
 import importlib
-import logging
 import os
 import shutil
 import subprocess
@@ -14,8 +13,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from textile.core.execution.validation import validate_strand_schema
+from textile.core.telemetry.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DependencyType(StrEnum):
@@ -189,7 +189,7 @@ class SeamOrchestrator:
                     is_optional=optional,
                 )
             except (subprocess.SubprocessError, OSError, ValueError) as e:
-                logger.debug(f"uv dependency compile error: {e}")
+                logger.debug("seams.uv_dependency_compile_error", error=str(e))
 
         base_pkg = req
         for sep in ("==", ">=", "<=", "~="):
@@ -381,10 +381,21 @@ class SeamOrchestrator:
 
         cnt = self._failure_counts.get(strand_name, 0) + 1
         self._failure_counts[strand_name] = cnt
-        logger.warning(f"Strand '{strand_name}' failed ({cnt}/{self._max_consecutive_failures}): {error}")
+        logger.warning(
+            "seams.strand_failed",
+            strand=strand_name,
+            failures=cnt,
+            max_failures=self._max_consecutive_failures,
+            error=error,
+        )
 
         if cnt >= self._max_consecutive_failures:
-            logger.error(f"Strand '{strand_name}' exceeded max consecutive failures. Tripping circuit breaker.")
+            logger.error(
+                "seams.circuit_breaker_tripped",
+                strand=strand_name,
+                failures=cnt,
+                max_failures=self._max_consecutive_failures,
+            )
 
 
 seams = SeamOrchestrator()

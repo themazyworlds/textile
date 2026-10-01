@@ -8,7 +8,6 @@ import asyncio
 import contextlib
 import fnmatch
 import inspect
-import logging
 import os
 import sqlite3
 import threading
@@ -21,9 +20,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from textile.core.telemetry.log import get_logger
 from textile.core.telemetry.tapestry import NoticeLevel, sensory_tapestry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EventUrgency(StrEnum):
@@ -130,7 +130,7 @@ class ElasticEngine:
                 )
                 self._ipc_thread.start()
             except (sqlite3.Error, OSError, RuntimeError) as e:
-                logger.debug("Could not start Elastic IPC worker: %s", e)
+                logger.debug("elastic.ipc_worker_start_failed", error=str(e))
 
     def _ipc_worker(self) -> None:
         """Background thread polling SQLite event log for events from other processes."""
@@ -157,7 +157,7 @@ class ElasticEngine:
                     )
                     self._deliver_local(frame)
             except (sqlite3.Error, OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
-                logger.debug("Elastic IPC poller notice: %s", e)
+                logger.debug("elastic.ipc_poll_notice", error=str(e))
 
             time.sleep(0.05)
 
@@ -233,7 +233,7 @@ class ElasticEngine:
                 retained_value=opts.retained_value,
             )
         except (sqlite3.Error, OSError, RuntimeError, ValueError) as e:
-            logger.debug("Failed to record cross-process Elastic event: %s", e)
+            logger.debug("elastic.record_event_failed", error=str(e))
 
         # 4. Deliver in-process immediately
         self._deliver_local(frame)
@@ -276,7 +276,7 @@ class ElasticEngine:
                     except RuntimeError:
                         asyncio.run(res)
         except (TypeError, ValueError, AttributeError, RuntimeError, KeyError, IndexError, OSError) as e:
-            logger.warning("Error in Elastic subscriber callback for topic '%s': %s", frame.topic, e)
+            logger.warning("elastic.subscriber_callback_error", topic=frame.topic, error=str(e))
 
     def subscribe(
         self,
