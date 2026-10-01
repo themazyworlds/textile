@@ -4,6 +4,7 @@ Provides sensory blackboard & task ledger (Tapestry), cross-process event bus (E
 integrity auditing (Seams), and undo stack (Transaction).
 """
 
+from textile.core.telemetry.auditor import audit_all, audit_strand, audit_yarn
 from textile.core.telemetry.blackboard import (
     SensoryTapestry,
     sensory_tapestry,
@@ -29,6 +30,9 @@ __all__ = [
     "TapestryDB",
     "TapestryDatabase",
     "Transaction",
+    "audit_all",
+    "audit_strand",
+    "audit_yarn",
     "configure_logging",
     "core_tapestry",
     "elastic",

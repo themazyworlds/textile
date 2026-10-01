@@ -18,7 +18,7 @@ from textile.core.cli.app import (
 from textile.core.definitions.layers import get_layer_info
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
-from textile.core.telemetry.seams import seams
+from textile.core.telemetry.auditor import audit_all
 from textile.core.telemetry.tapestry import core_tapestry, sensory_tapestry
 
 
@@ -129,7 +129,7 @@ def cmd_seams(
 ):
     """Run comprehensive yarn integrity and health diagnostics."""
     loom.initialize()
-    report_dict = seams.audit_all()
+    report_dict = audit_all(loom, skein).model_dump()
 
     summary_data = report_dict.get("summary", {})
     summary_model = SeamsSummaryModel(

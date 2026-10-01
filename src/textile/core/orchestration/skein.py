@@ -21,7 +21,6 @@ from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
 from textile.core.security.context import PolicyViolationError, verify_security_policy
 from textile.core.telemetry.log import get_logger
-from textile.core.telemetry.seams import seams
 from textile.core.telemetry.transaction import Transaction, transaction_stack
 
 logger = get_logger(__name__)
@@ -224,4 +223,3 @@ class Skein:
 
 
 skein = Skein()
-seams.set_skein(skein)
