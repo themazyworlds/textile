@@ -10,18 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from textile.core.definitions.manifest import YarnManifest
-from textile.core.execution.isolated_runner import execute_isolated_strand
 from textile.core.execution.reflector import (
     StrandConfig,
     build_dynamic_strand,
-    determine_isolation,
-    execute_direct,
-    method_to_strand,
-    method_to_weft,
     reflect_strands,
     reflect_wefts,
 )
-from textile.core.execution.strands import CapabilityTier, Strand, Weft
+from textile.core.execution.strands import Strand, Weft
 from textile.core.telemetry.elastic import EventUrgency, elastic
 from textile.core.telemetry.tapestry import sensory_tapestry
 
@@ -127,7 +122,7 @@ class Yarn(ABC):
 
     def get_slot(self, key: str, default: Any = None) -> Any:
         """Get a retained domain state slot from Elastic."""
-        return self.elastic.get_seat(key, default)
+        return self.elastic.get_slot(key, default)
 
     def get_dependencies(self) -> list[dict[str, Any]]:
         """Return system dependency manifests declared for this yarn."""
@@ -153,15 +148,6 @@ class Yarn(ABC):
     def get_wefts(self) -> list[Weft]:
         return self.wefts
 
-    def _method_to_weft(self, method: Callable[..., Any]) -> Weft:
-        return method_to_weft(self, method)
-
-    def _determine_isolation(self, explicit_isolated: bool | None, tier_val: CapabilityTier) -> bool:
-        return determine_isolation(self, explicit_isolated, tier_val)
-
-    def _method_to_strand(self, method: Callable[..., Any]) -> Strand:
-        return method_to_strand(self, method)
-
     def build_strand(
         self,
         name: str,
@@ -172,20 +158,6 @@ class Yarn(ABC):
     ) -> Strand:
         """Helper to build a Strand dynamically."""
         return build_dynamic_strand(self, name, description, handler, config, **kwargs)
-
-    def _run_isolated(
-        self,
-        strand_name: str,
-        args: dict[str, Any],
-        timeout: float = 30.0,
-        tier: CapabilityTier | str = CapabilityTier.INTERACT,
-    ) -> str:
-        """Run strand in an isolated ephemeral subprocess using `uv`."""
-        return execute_isolated_strand(self, strand_name, args, timeout=timeout, tier=tier)
-
-    def _execute_direct(self, strand_name: str, args: dict[str, Any]) -> str:
-        """Execute strand raw handler or bound handler directly without validation or isolation wrapper."""
-        return execute_direct(self, strand_name, args)
 
     def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
         """Execute strand synchronously by matching name in discovered strands."""

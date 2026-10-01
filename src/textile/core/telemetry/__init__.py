@@ -10,7 +10,6 @@ from textile.core.telemetry.blackboard import (
     sensory_tapestry,
 )
 from textile.core.telemetry.database import TapestryDatabase
-from textile.core.telemetry.database import TapestryDatabase as TapestryDB
 from textile.core.telemetry.elastic import ElasticEngine, EventFrame, EventUrgency, elastic
 from textile.core.telemetry.ledger import (
     CoreTapestry,
@@ -27,7 +26,6 @@ __all__ = [
     "EventUrgency",
     "SeamOrchestrator",
     "SensoryTapestry",
-    "TapestryDB",
     "TapestryDatabase",
     "Transaction",
     "audit_all",

@@ -371,11 +371,6 @@ class ElasticEngine:
         """Read a retained seat / slot from the Tapestry blackboard."""
         return sensory_tapestry.get_slot(slot, default)
 
-    # Aliases for developer convenience
-    request_seat = occupy_seat
-    set_slot = occupy_seat
-    get_seat = get_slot
-
     def get_state(self) -> dict[str, Any]:
         """Get full snapshot of the Tapestry blackboard state (slots and recent notices)."""
         return sensory_tapestry.get_state()

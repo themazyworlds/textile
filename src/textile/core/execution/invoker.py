@@ -81,6 +81,7 @@ def _create_invoker(
     method: Callable,
     strand_name: str,
     config: InvokerConfig,
+    isolated_runner: Callable[..., str] | None = None,
 ) -> Callable[[dict[str, Any]], Any]:
     """Create unified sync or async execution invoker for a strand."""
 
@@ -107,8 +108,8 @@ def _create_invoker(
         val_err, coerced = _validate_and_coerce(args)
         if val_err:
             return val_err
-        if config.isolated:
-            return yarn._run_isolated(strand_name, coerced, timeout=config.timeout, tier=config.tier)
+        if config.isolated and isolated_runner is not None:
+            return isolated_runner(yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier)
         try:
             res = method(**coerced)
             return _format_handler_result(res)
@@ -116,3 +117,27 @@ def _create_invoker(
             return f"Error executing strand '{strand_name}': {e}"
 
     return _sync_invoker
+
+
+def execute_direct(yarn: Any, strand_name: str, args: dict[str, Any]) -> str:
+    """Execute raw handler or bound handler directly without validation or isolation wrapper."""
+    strands = getattr(yarn, "get_strands", lambda: [])()
+    strand = next((s for s in strands if s.name == strand_name), None)
+    if strand is None:
+        yarn_name = getattr(yarn, "name", yarn.__class__.__name__)
+        return f"Error: Strand '{strand_name}' not implemented in yarn '{yarn_name}'."
+
+    if strand.raw_handler is not None:
+        raw_h: Any = strand.raw_handler
+        sig = inspect.signature(raw_h)
+        try:
+            bound = sig.bind(**args)
+            res = raw_h(*bound.args, **bound.kwargs)
+        except TypeError:
+            res = raw_h(args)
+    elif strand.handler is not None:
+        res = strand.handler(args)
+    else:
+        return "ok"
+
+    return _format_handler_result(res)

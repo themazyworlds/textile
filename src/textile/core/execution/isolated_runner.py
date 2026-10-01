@@ -16,11 +16,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from textile.core.execution.invoker import _format_handler_result
+from textile.core.execution.invoker import execute_direct
 from textile.core.execution.strands import CapabilityTier
 from textile.core.security.sandbox import BubblewrapSandbox, LandlockSandbox
 
 MIN_ARG_COUNT = 5
+
+
+def _format_handler_result(res: Any) -> str:
+    """Format handler execution output into string or formatted JSON."""
+    if isinstance(res, (dict, list)):
+        return json.dumps(res, indent=2)
+    return str(res) if res is not None else "ok"
 
 
 @dataclass(slots=True)
@@ -185,7 +192,7 @@ def main():
             )
             sys.exit(1)
 
-        res = instance._execute_direct(strand_name, args)
+        res = execute_direct(instance, strand_name, args)
         print(json.dumps({"success": True, "result": res}))
         sys.exit(0)
     except (ImportError, AttributeError, TypeError, ValueError, RuntimeError, KeyError, OSError) as e:
