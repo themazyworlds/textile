@@ -4,12 +4,9 @@ Textile Core Capability Guardrails & Ambient Security Boundaries.
 Provides zero-blacklist, mathematically bounded sandboxes:
 1. ScopedPath / Root Anchor Jail: Guaranteed confinement via Path.is_relative_to().
 2. SessionProcessGuard: POSIX session tree confinement via getsid().
-3. SafeExec: Direct argument vector execution bypassing /bin/sh.
 """
 
 import os
-import shlex
-import subprocess
 from pathlib import Path
 
 
@@ -87,33 +84,3 @@ class SessionProcessGuard:
             )
 
         return target_pid
-
-
-class SafeExec:
-    """
-    Direct argument vector subprocess invoker.
-    Strictly disallows shell=True to prevent subshell command injections.
-    """
-
-    @staticmethod
-    def run_vector(
-        cmd: list[str] | str,
-        timeout: float = 15.0,
-        env: dict[str, str] | None = None,
-        cwd: str | Path | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        argv = shlex.split(cmd) if isinstance(cmd, str) else [str(x) for x in cmd]
-
-        if not argv:
-            raise ValueError("No command specified.")
-
-        return subprocess.run(
-            argv,
-            shell=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env=env,
-            cwd=cwd,
-        )

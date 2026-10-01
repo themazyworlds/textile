@@ -5,18 +5,19 @@ Textile Loom - High-Performance Strand Execution, Capability Resolution, and Dis
 import asyncio
 import concurrent.futures
 import contextlib
-import inspect
+import json
 import os
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
 from textile.core.execution.strands import Strand, Weft
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.skein import Skein, skein
-from textile.core.security.context import OriginToken, TaintTracker, verify_security_policy
+from textile.core.security.context import verify_security_policy
 from textile.core.telemetry.elastic import EventUrgency, elastic
 from textile.core.telemetry.log import get_logger
 from textile.core.telemetry.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
@@ -30,8 +31,6 @@ class _ExecutionTelemetryContext:
     strand_name: str
     args: dict[str, Any]
     tier_val: str
-    trust_val: str
-    token: OriginToken
     caller: str
 
 
@@ -79,10 +78,10 @@ class Loom:
         """Trigger on_unload and on_load hooks for deactivated and activated yarns."""
         for name in old_yarns - new_yarns:
             if name in self._skein.all_yarns:
-                with contextlib.suppress(AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
+                with contextlib.suppress(*SAFE_EXCEPTIONS):
                     self._skein.all_yarns[name].on_unload()
         for name in new_yarns - old_yarns:
-            with contextlib.suppress(AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
+            with contextlib.suppress(*SAFE_EXCEPTIONS):
                 new_active[name].on_load()
 
     def _rebuild_active(self) -> None:
@@ -97,7 +96,7 @@ class Loom:
         for yarn in sorted_yarns:
             try:
                 self._register_yarn_strands_and_wefts(yarn, new_strands, new_strand_map, new_cap_map, new_wefts)
-            except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+            except SAFE_EXCEPTIONS as e:
                 logger.error("loom.yarn_load_failed", yarn=yarn.name, error=str(e))
 
         new_wefts.sort(key=lambda w: w.priority, reverse=True)
@@ -143,21 +142,6 @@ class Loom:
 
         return strand, yarn, handler
 
-    def _resolve_origin_token(self, origin_token: OriginToken | None) -> OriginToken:
-        """Resolve and taint-track OriginToken for Layer 1/3 policy check."""
-        if origin_token is not None:
-            token = origin_token
-        else:
-            try:
-                token = OriginToken.create_local_seat()
-            except PermissionError:
-                token = OriginToken.create_external_untrusted("unauthenticated_caller")
-
-        if TaintTracker.is_tainted() and not token.tainted:
-            token = token.taint(TaintTracker.get_taint() or "ambient_untrusted_data")
-
-        return token
-
     def _record_execution_start(self, ctx: _ExecutionTelemetryContext) -> None:
         """Record task start telemetry in CoreTapestry and Elastic."""
         core_tapestry.record_task_start(
@@ -165,8 +149,6 @@ class Loom:
             ctx.strand_name,
             args=ctx.args,
             tier=ctx.tier_val,
-            trust_level=ctx.trust_val,
-            tainted=ctx.token.tainted,
         )
         elastic.broadcast(
             topic="loom.tool_start",
@@ -198,8 +180,6 @@ class Loom:
                 "caller": ctx.caller,
                 "args": ctx.args,
                 "tier": ctx.tier_val,
-                "trust_level": ctx.trust_val,
-                "tainted": ctx.token.tainted,
             },
         )
         elastic.broadcast(
@@ -223,30 +203,27 @@ class Loom:
         args: dict[str, Any],
         *,
         caller: str | None = None,
-        origin_token: OriginToken | None = None,
+        otp: str | None = None,
     ) -> str:
-        """Native asynchronous strand execution with Layer 1/3 security policy enforcement."""
+        """Native asynchronous strand execution with Visual OTP security policy enforcement."""
         self.initialize()
         resolved = self._resolve_target_strand(strand_name)
         if not resolved:
             return f"Error: Strand '{strand_name}' not found or no provider yarn is enabled."
 
         strand, _, handler = resolved
-        token = self._resolve_origin_token(origin_token)
-        verify_security_policy(token, strand.tier, strand.name)
+        args_json = json.dumps(args, sort_keys=True)
+        verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=otp)
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
         tier_val = strand.tier.value if hasattr(strand.tier, "value") else str(strand.tier)
-        trust_val = token.trust_level.value if hasattr(token.trust_level, "value") else str(token.trust_level)
 
         ctx = _ExecutionTelemetryContext(
             task_id=task_id,
             strand_name=strand_name,
             args=args,
             tier_val=tier_val,
-            trust_val=trust_val,
-            token=token,
             caller=effective_caller,
         )
         self._record_execution_start(ctx)
@@ -255,9 +232,7 @@ class Loom:
         success = True
         err = None
         try:
-            if inspect.iscoroutinefunction(handler):
-                return await handler(args)
-            return await asyncio.to_thread(handler, args)
+            return await handler(args)
         except Exception as e:
             success = False
             err = str(e)
@@ -272,7 +247,7 @@ class Loom:
         args: dict[str, Any],
         *,
         caller: str | None = None,
-        origin_token: OriginToken | None = None,
+        otp: str | None = None,
     ) -> str:
         """Synchronous bridge for CLI and non-async environments."""
         try:
@@ -283,9 +258,9 @@ class Loom:
         if loop and loop.is_running():
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(
-                    asyncio.run, self.execute(strand_name, args, caller=caller, origin_token=origin_token)
+                    asyncio.run, self.execute(strand_name, args, caller=caller, otp=otp)
                 ).result()
-        return asyncio.run(self.execute(strand_name, args, caller=caller, origin_token=origin_token))
+        return asyncio.run(self.execute(strand_name, args, caller=caller, otp=otp))
 
     def get_all_wefts(self) -> list[Weft]:
         """Return all active Weft attunements sorted by priority."""

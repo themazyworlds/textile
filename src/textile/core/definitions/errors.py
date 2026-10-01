@@ -5,6 +5,8 @@ Provides structured, diagnostic domain exceptions across Textile core & yarns.
 
 from typing import Any
 
+SAFE_EXCEPTIONS = (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError)
+
 
 class TextileError(Exception):
     """Base domain exception for Textile engine operations."""
@@ -75,4 +77,3 @@ class YarnNotFoundError(TextileError):
             code="ERR_YARN_NOT_FOUND",
             details={"yarn": yarn_name},
         )
-

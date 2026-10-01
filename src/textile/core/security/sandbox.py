@@ -130,7 +130,11 @@ class LandlockSandbox:
             attr.handled_access_fs = ALL_HANDLED_ACCESS
             ruleset_fd = libc.syscall(SYS_landlock_create_ruleset, ctypes.byref(attr), ctypes.sizeof(attr), 0)
             if ruleset_fd < 0:
-                return False
+                # Fallback handled access without TRUNCATE for Linux kernels < 6.2 (Landlock ABI v1/v2)
+                attr.handled_access_fs = ALL_HANDLED_ACCESS & ~LANDLOCK_ACCESS_FS_TRUNCATE
+                ruleset_fd = libc.syscall(SYS_landlock_create_ruleset, ctypes.byref(attr), ctypes.sizeof(attr), 0)
+                if ruleset_fd < 0:
+                    return False
 
             root_fd = os.open(allowed_read_path, os.O_PATH | os.O_CLOEXEC)
             try:

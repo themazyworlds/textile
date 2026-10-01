@@ -20,8 +20,8 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 - **Autonomous Voice Companion (`Weave`)**: Full-duplex conversational voice interface using LiveKit and Gemini Realtime with streaming semantic attunements.
 - **Event & Sensory Fabric (`Elastic`)**: Unified cross-process event bus with urgency tiers, retained slot management, and SQLite WAL IPC synchronization.
 - **Capability Plugins (`Yarns`, `@strand` & `@weft`)**: Decorate Python methods with `@strand` for tools and `@weft` for real-time streaming token interception with Pydantic v2 validation.
-- **Layered Dispatch (`Loom`)**: Prioritized layer dispatch (10 to 150) allowing specialized compositors/session managers to override lower OS fallbacks cleanly.
-- **Subprocess & Desk Isolation**: Sandboxed execution and reversible transaction undo stack for high-impact mutations.
+- **Layered Dispatch (`Loom`)**: Prioritized layer dispatch (0 to 1000) allowing specialized compositors, session managers, and user overrides to override lower OS fallbacks cleanly.
+- **Subprocess & Visual OTP Security**: Single-use 4-digit Visual OTP confirmation for state-mutating and privileged operations.
 - **Canvas UI**: Quickshell Wayland overlay for dynamic emotive expressions, mood animations, and visual presence.
 
 ---
@@ -113,7 +113,7 @@ name = "media_control"           # Unique identifier for the capability yarn
 publisher = "community"          # Author or organization
 version = "1.0.0"                # Semantic version
 manifest_version = 1
-layer = 50                       # Priority layer: 10 (POSIX), 50 (Protocol), 100 (Compositor), 150 (Session Manager)
+layer = 50                       # Priority layer: 0 (Core), 10 (POSIX), 50 (Protocol), 100 (Compositor), 150 (Session), 1000 (User)
 description = "Media player control integration"
 resources = ["dbus-session"]     # Optional sandbox permissions: "display", "dbus-session", "dbus-system", "sound"
 
@@ -125,55 +125,12 @@ system = ["playerctl"]           # System packages/binaries required on the host
 ### 2. `media_control.py` (Implementation)
 ```python
 from textile import Yarn, strand, weft
-from textile.core.elastic import EventUrgency, elastic
+from textile.core.telemetry.elastic import EventUrgency, elastic
 
 
-class CustomMediaYarn(Yarn):
-    @strand(tier="interact")
-    def toggle_playback(self, player: str | None = None) -> str:
-        """Toggle media playback.
-
-        :param player: Optional player identifier.
-        """
-        return f"Toggled playback on {player or 'default'}"
-
-    @strand(tier="interact")
-    def set_volume(self, level: int) -> str:
-        """Set volume percentage.
-
-        :param level: Volume level between 0 and 100.
-        """
-        elastic.occupy_seat("media.volume", level, source="media_control")
-        return f"Volume set to {level}%"
-
-    @weft(
-        pattern=r"<volume:(?P<level>\d+)>",
-        description="Stream attunement to set audio volume inline while speaking (e.g. <volume:80>).",
-    )
-    def on_stream_volume(self, level: int) -> None:
-        """Real-time streaming token interceptor with automatic Pydantic coercion."""
-        self.set_volume(level)
+class MediaControlYarn(Yarn):
+    @strand(description="Play or pause media playback", tier="interact")
+    async def media_play_pause(self, args: dict) -> str:
+        # Implementation...
+        return "Toggled media play/pause"
 ```
-
----
-
-## Architecture Overview
-
-| Concept | Role | Description |
-|---|---|---|
-| **Loom** | Dispatch Engine | Resolves capability priority, routes tool calls, and manages subprocess isolation. |
-| **Skein** | Plugin Registry | Discovers entrypoints, loads dynamic plugins, and manages lifecycle states. |
-| **Yarn** | Capability Module | Base class grouping related system capabilities and protocol implementations. |
-| **Strand** | Tool Definition | Callable function with Pydantic v2 argument validation and capability tiering. |
-| **Weft** | Stream Interceptor | Real-time token pattern matcher with Pydantic argument coercion for streaming conversational output. |
-| **Elastic** | Event Fabric | Universal cross-process event bus and sensory blackboard with SQLite WAL sync and urgency tiers. |
-| **Tapestry** | State Store | Persistent SQLite ledger for sensory notices, blackboard slots, and audit history. |
-| **Twill** | MCP Server | Standard Model Context Protocol (stdio) interface for AI assistants. |
-| **Seams** | Health Diagnostics | Pydantic-powered dependency resolution, conflict detection, and diagnostic audit engine. |
-| **Weave** | Voice Companion | Full-duplex conversational agent powered by LiveKit and Gemini Realtime with real-time stream attunements. |
-
----
-
-## License
-
-Textile is open-source software licensed under the [Apache License 2.0](LICENSE).

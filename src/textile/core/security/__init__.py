@@ -1,42 +1,31 @@
 """
 Textile Security Functional Domain Package.
-Provides security policy gatekeeping (Context), kernel process sandboxing (Sandbox),
-sandbox desks (Desks), and resource guardrails (Guardrails).
+Provides security policy gatekeeping (Context), visual OTP verification,
+kernel process sandboxing (Sandbox), and resource guardrails (Guardrails).
 """
 
 from textile.core.security.context import (
-    OriginToken,
+    OTPChallengeRequiredError,
+    OTPManager,
+    PendingOTP,
     PolicyViolationError,
-    TrustLevel,
+    global_otp_manager,
     verify_security_policy,
-)
-from textile.core.security.desks import (
-    InteractDesk,
-    MutateDesk,
-    ObserverDesk,
-    PrivilegedDesk,
 )
 from textile.core.security.guardrails import (
     AccessBoundaryError,
-    SafeExec,
     ScopedPath,
     SessionProcessGuard,
 )
-from textile.core.security.sandbox import BubblewrapSandbox, LandlockSandbox
 
 __all__ = [
     "AccessBoundaryError",
-    "BubblewrapSandbox",
-    "InteractDesk",
-    "LandlockSandbox",
-    "MutateDesk",
-    "ObserverDesk",
-    "OriginToken",
+    "OTPChallengeRequiredError",
+    "OTPManager",
+    "PendingOTP",
     "PolicyViolationError",
-    "PrivilegedDesk",
-    "SafeExec",
     "ScopedPath",
     "SessionProcessGuard",
-    "TrustLevel",
+    "global_otp_manager",
     "verify_security_policy",
 ]

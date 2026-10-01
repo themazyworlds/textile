@@ -1,182 +1,121 @@
 """
-Textile Core Layer 1 - Context & Biometric Seat Engine.
-Defines origin token authentication, trust levels, and local seat verification.
+Textile Core Layer 1 - Context & OTP Security Engine.
+Defines dynamic Visual OTP security policy and single-use challenge verification.
 """
 
-import contextvars
-import os
+import hashlib
+import secrets
 import time
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import Any, Self
-
-from pydantic import BaseModel, ConfigDict, Field
-
-_active_taint_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("active_taint", default=None)
-
-
-class OriginType(StrEnum):
-    """Classification of intent input origin."""
-
-    LOCAL_VOICE = "local_voice"  # Local microphone audio voice stream (High Trust)
-    LOCAL_SEAT = "local_seat"  # Local keyboard/UI shortcut or terminal (High Trust)
-    SYSTEM_INTERNAL = "system_internal"  # Native Textile system event or Elastic bus (Medium Trust)
-    EXTERNAL_UNTRUSTED = "external_untrusted"  # Web scraping, external files, email, network payloads (Zero Trust)
-
-
-class TrustLevel(StrEnum):
-    """Calculated trust tier of an intent origin."""
-
-    HIGH = "high"  # Full autonomous execution of observe, interact, and mutate strands
-    MEDIUM = "medium"  # Execution of observe and interact strands
-    LOW = "low"  # Observe-only strands
-    NONE = "none"  # Zero execution power (rejection of all strands including observe)
-
-
-class OriginToken(BaseModel):
-    """Cryptographic/session token representing the source and trust of an intent.
-
-    Frozen: trust_level and origin_type cannot be mutated after creation.
-    An attacker must never be able to escalate their own trust in memory.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    origin_id: str
-    origin_type: OriginType
-    trust_level: TrustLevel = TrustLevel.HIGH
-    timestamp: float = Field(default_factory=time.time)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    tainted: bool = False
-    taint_source: str | None = None
-
-    def taint(self, source: str) -> Self:
-        """Derive an untrusted child token from tainted external data.
-
-        Prevents Confused Deputy and indirect prompt injection attacks by
-        downgrading trust_level to NONE whenever external data influences the intent.
-        """
-        return self.__class__(
-            origin_id=f"{self.origin_id}::tainted({source})",
-            origin_type=OriginType.EXTERNAL_UNTRUSTED,
-            trust_level=TrustLevel.NONE,
-            timestamp=time.time(),
-            metadata={**self.metadata, "tainted": True, "taint_source": source},
-            tainted=True,
-            taint_source=source,
-        )
-
-    @classmethod
-    def create_local_voice(cls, session_id: str = "local_voice") -> Self:
-        return cls(
-            origin_id=session_id,
-            origin_type=OriginType.LOCAL_VOICE,
-            trust_level=TrustLevel.HIGH,
-            metadata={"uid": os.getuid()},
-        )
-
-    @classmethod
-    def create_local_seat(cls, seat_id: str = "local_seat") -> Self:
-        seat = SeatContext()
-        if not seat.is_authenticated_local_user():
-            raise PermissionError(
-                f"Cannot create LOCAL_SEAT origin token: no authenticated local display session detected "
-                f"(uid={seat.uid}, display={seat.display})."
-            )
-        return cls(
-            origin_id=seat_id,
-            origin_type=OriginType.LOCAL_SEAT,
-            trust_level=TrustLevel.HIGH,
-            metadata={"uid": seat.uid, "display": seat.display},
-        )
-
-    @classmethod
-    def create_mcp_client(cls, client_id: str = "mcp_client") -> Self:
-        """Create an origin token for an external MCP client (IDE agent, stdio transport).
-
-        MCP clients default to TrustLevel.MEDIUM (observe & interact tiers allowed;
-        mutate/privileged system changes require elevated seat tokens).
-        """
-        return cls(
-            origin_id=client_id,
-            origin_type=OriginType.SYSTEM_INTERNAL,
-            trust_level=TrustLevel.MEDIUM,
-            metadata={"uid": os.getuid()},
-        )
-
-    @classmethod
-    def create_external_untrusted(cls, source_uri: str) -> Self:
-        return cls(
-            origin_id=source_uri,
-            origin_type=OriginType.EXTERNAL_UNTRUSTED,
-            trust_level=TrustLevel.NONE,
-            metadata={"uri": source_uri},
-            tainted=True,
-            taint_source=source_uri,
-        )
-
-
-class TaintTracker:
-    """Async contextvars-scoped data flow taint tracker across LLM reasoning loops."""
-
-    @classmethod
-    def set_taint(cls, source: str) -> None:
-        _active_taint_var.set(source)
-
-    @classmethod
-    def clear_taint(cls) -> None:
-        _active_taint_var.set(None)
-
-    @classmethod
-    def get_taint(cls) -> str | None:
-        return _active_taint_var.get()
-
-    @classmethod
-    def is_tainted(cls) -> bool:
-        return _active_taint_var.get() is not None
+from typing import Any
 
 
 @dataclass(slots=True)
-class SeatContext:
-    """Verifies physical presence and local desktop ownership."""
+class PendingOTP:
+    """A single-use 4-digit challenge OTP bound to an exact strand execution."""
 
-    uid: int = field(default_factory=os.getuid)
-    display: str | None = field(default_factory=lambda: os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
+    otp: str
+    strand_name: str
+    args_hash: str
+    created_at: float = field(default_factory=time.time)
+    ttl_seconds: float = 30.0
+    consumed: bool = False
 
-    def is_authenticated_local_user(self) -> bool:
-        return self.uid == os.getuid() and self.display is not None
+    def is_valid(self) -> bool:
+        return not self.consumed and (time.time() - self.created_at) <= self.ttl_seconds
+
+
+class OTPManager:
+    """Manages cryptographically random single-use visual challenge OTPs."""
+
+    def __init__(self) -> None:
+        self._pending: dict[str, PendingOTP] = {}
+
+    def create_challenge(self, strand_name: str, args_hash: str) -> str:
+        """Generates a 4-digit OTP bound to a specific strand call and args hash."""
+        # Clean expired/consumed challenges
+        now = time.time()
+        self._pending = {k: v for k, v in self._pending.items() if v.is_valid()}
+
+        # Check if an active challenge already exists for this exact call
+        for challenge in self._pending.values():
+            if challenge.strand_name == strand_name and challenge.args_hash == args_hash:
+                return challenge.otp
+
+        # Generate a new 4-digit OTP using hardware entropy
+        otp = f"{secrets.randbelow(10000):04d}"
+        self._pending[otp] = PendingOTP(
+            otp=otp,
+            strand_name=strand_name,
+            args_hash=args_hash,
+            created_at=now,
+        )
+        return otp
+
+    def verify_and_consume(self, otp: str, strand_name: str, args_hash: str) -> bool:
+        """Validates and INSTANTLY consumes the OTP so it can never be reused."""
+        challenge = self._pending.get(otp)
+        if not challenge or not challenge.is_valid():
+            return False
+
+        if challenge.strand_name == strand_name and challenge.args_hash == args_hash:
+            challenge.consumed = True
+            del self._pending[otp]
+            return True
+
+        return False
+
+    def clear(self) -> None:
+        self._pending.clear()
+
+
+global_otp_manager = OTPManager()
 
 
 class PolicyViolationError(PermissionError):
-    """Raised when an operation violates Layer 1/3 security policy matrix."""
+    """Raised when an operation violates security policy (e.g. invalid/expired OTP)."""
 
     pass
 
 
-ALLOWED_TIERS: dict[TrustLevel, set[str]] = {
-    TrustLevel.HIGH: {"observe", "interact", "mutate", "privileged", "system_exec"},
-    TrustLevel.MEDIUM: {"observe", "interact"},
-    TrustLevel.LOW: {"observe"},
-    TrustLevel.NONE: set(),
-}
+class OTPChallengeRequiredError(PermissionError):
+    """Raised when a MUTATE, PRIVILEGED, or SYSTEM_EXEC strand requires visual OTP confirmation."""
+
+    def __init__(self, otp: str, strand_name: str, args_hash: str) -> None:
+        self.otp = otp
+        self.strand_name = strand_name
+        self.args_hash = args_hash
+        super().__init__(
+            f"OTP Confirmation Required for '{strand_name}'. "
+            f"Display OTP on screen: [{otp}]. Confirm by passing otp='{otp}'."
+        )
 
 
 def verify_security_policy(
-    token: OriginToken,
     tier: Any,
     strand_name: str,
+    args_json: str = "",
+    otp: str | None = None,
 ) -> None:
-    """Canonical single-source-of-truth security policy gate.
+    """Canonical security policy gate.
 
-    Verifies caller's OriginToken trust level against the strand's capability tier.
-    Raises PolicyViolationError if execution is denied.
+    - OBSERVE and INTERACT strands execute freely.
+    - MUTATE, PRIVILEGED, and SYSTEM_EXEC strands require a single-use 4-digit OTP.
+    - If OTP is missing/invalid, generates an OTP and raises OTPChallengeRequiredError.
     """
-    trust = token.trust_level
     tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
 
-    allowed_tiers = ALLOWED_TIERS.get(trust, set())
-    if tier_val not in allowed_tiers:
-        raise PolicyViolationError(
-            f"Security Policy Violation: Origin '{token.origin_id}' (trust={trust}) "
-            f"is denied execution of '{tier_val}' strand '{strand_name}'."
-        )
+    if tier_val in ("observe", "interact"):
+        return
+
+    # Calculate deterministic hash of call arguments
+    args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
+
+    if otp:
+        if global_otp_manager.verify_and_consume(otp, strand_name, args_hash):
+            return
+        raise PolicyViolationError(f"Security Policy Violation: Invalid or expired OTP code for strand '{strand_name}'.")
+
+    # No OTP provided: generate/fetch OTP challenge
+    challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)
+    raise OTPChallengeRequiredError(otp=challenge_code, strand_name=strand_name, args_hash=args_hash)

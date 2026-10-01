@@ -13,7 +13,6 @@ from mcp.server.stdio import stdio_server
 
 from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.loom import loom
-from textile.core.security.context import OriginToken
 
 
 def create_twill_server() -> Server:
@@ -28,7 +27,7 @@ def create_twill_server() -> Server:
             types.Prompt(
                 name="textile_system_instructions",
                 description=(
-                    "Textile Desktop Fabric security governance, capability tiers, and real-time streaming attunements."
+                    "Textile Desktop Fabric security governance, capability tiers, and visual OTP confirmation."
                 ),
             )
         ]
@@ -66,11 +65,12 @@ def create_twill_server() -> Server:
     @app.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
         try:
-            token = OriginToken.create_mcp_client(client_id="twill_mcp_client")
+            args_dict = dict(arguments) if arguments else {}
+            otp_val = args_dict.pop("otp", None)
             effective_caller = os.getenv("TEXTILE_CALLER", "twill_mcp")
-            res_text = await loom.execute(name, arguments or {}, caller=effective_caller, origin_token=token)
+            res_text = await loom.execute(name, args_dict, caller=effective_caller, otp=otp_val)
             return [types.TextContent(type="text", text=str(res_text))]
-        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, TimeoutError) as e:
+        except Exception as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
 
     return app

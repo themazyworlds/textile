@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 class TaskOptions:
     args: dict[str, Any] | None = None
     tier: str | None = None
-    trust_level: str | None = None
-    tainted: bool = False
 
 
 class TaskRecord(BaseModel):
@@ -35,8 +33,6 @@ class TaskRecord(BaseModel):
     success: bool | None = None
     error: str | None = None
     tier: str | None = None
-    trust_level: str | None = None
-    tainted: bool = False
 
 
 class CoreTapestry:
@@ -64,14 +60,12 @@ class CoreTapestry:
             start_time=datetime.now(UTC).isoformat(),
             args=opts.args or {},
             tier=opts.tier,
-            trust_level=opts.trust_level,
-            tainted=opts.tainted,
         )
         with self._database._lock, self._database.get_connection() as connection:
             query = """
                 INSERT OR REPLACE INTO active_tasks
-                (task_id, strand_name, start_time, args_json, tier, trust_level, tainted)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (task_id, strand_name, start_time, args_json, tier)
+                VALUES (?, ?, ?, ?, ?)
             """
             connection.execute(
                 query,
@@ -81,8 +75,6 @@ class CoreTapestry:
                     record.start_time,
                     json.dumps(record.args),
                     record.tier,
-                    record.trust_level,
-                    1 if record.tainted else 0,
                 ),
             )
         return record
@@ -97,7 +89,7 @@ class CoreTapestry:
         with self._database._lock, self._database.get_connection() as connection:
             cursor = connection.cursor()
             query = """
-                SELECT strand_name, start_time, args_json, tier, trust_level, tainted
+                SELECT strand_name, start_time, args_json, tier
                 FROM active_tasks WHERE task_id = ?
             """
             cursor.execute(query, (task_id,))
@@ -111,8 +103,6 @@ class CoreTapestry:
                 start_time=row[1],
                 args=json.loads(row[2]) if row[2] else {},
                 tier=row[3],
-                trust_level=row[4],
-                tainted=bool(row[5]),
                 success=success,
                 duration_ms=duration_ms,
                 error=error,
@@ -121,9 +111,8 @@ class CoreTapestry:
             connection.execute("DELETE FROM active_tasks WHERE task_id = ?", (task_id,))
             insert_query = """
                 INSERT INTO task_history
-                (task_id, strand_name, start_time, duration_ms, success, error,
-                 tier, trust_level, tainted, args_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (task_id, strand_name, start_time, duration_ms, success, error, tier, args_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """
             connection.execute(
                 insert_query,
@@ -135,8 +124,6 @@ class CoreTapestry:
                     1 if record.success else 0,
                     record.error,
                     record.tier,
-                    record.trust_level,
-                    1 if record.tainted else 0,
                     json.dumps(record.args),
                 ),
             )
@@ -165,7 +152,7 @@ class CoreTapestry:
         with self._database._lock, self._database.get_connection() as connection:
             cursor = connection.cursor()
             query = """
-                SELECT task_id, strand_name, start_time, args_json, tier, trust_level, tainted
+                SELECT task_id, strand_name, start_time, args_json, tier
                 FROM active_tasks
             """
             cursor.execute(query)
@@ -176,8 +163,6 @@ class CoreTapestry:
                     start_time=r[2],
                     args=json.loads(r[3]) if r[3] else {},
                     tier=r[4],
-                    trust_level=r[5],
-                    tainted=bool(r[6]),
                 ).model_dump()
                 for r in cursor.fetchall()
             ]
@@ -186,8 +171,7 @@ class CoreTapestry:
         with self._database._lock, self._database.get_connection() as connection:
             cursor = connection.cursor()
             query = """
-                SELECT task_id, strand_name, start_time, duration_ms, success, error,
-                       tier, trust_level, tainted, args_json
+                SELECT task_id, strand_name, start_time, duration_ms, success, error, tier, args_json
                 FROM task_history ORDER BY id DESC LIMIT ?
             """
             cursor.execute(query, (limit,))
@@ -200,9 +184,7 @@ class CoreTapestry:
                     success=bool(r[4]),
                     error=r[5],
                     tier=r[6],
-                    trust_level=r[7],
-                    tainted=bool(r[8]),
-                    args=json.loads(r[9]) if r[9] else {},
+                    args=json.loads(r[7]) if r[7] else {},
                 ).model_dump()
                 for r in reversed(cursor.fetchall())
             ]

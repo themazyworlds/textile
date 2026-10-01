@@ -3,6 +3,7 @@ Textile Strand & Weft Reflection, Factory, and Execution Directives.
 Converts @strand and @weft decorated methods on Yarn instances into Strand and Weft objects.
 """
 
+import asyncio
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -106,7 +107,6 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     isolated = determine_isolation(yarn, explicit_isolated, tier_val)
 
     timeout = getattr(method, "_strand_timeout", 30.0)
-    is_async = inspect.iscoroutinefunction(method)
 
     args_model = _build_args_model(method, f"{strand_name}_Args", param_docs)
     schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
@@ -121,7 +121,6 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
             params=params,
             req_list=req_list,
             isolated=isolated,
-            is_async=is_async,
             timeout=timeout,
             tier=tier_val,
         ),
@@ -203,16 +202,19 @@ def build_dynamic_strand(
     manifest_res = getattr(getattr(yarn, "manifest", None), "resources", [])
     res_list = cfg.resources or manifest_res
 
-    def _safe_handler(args: dict[str, Any]) -> str:
+    async def _safe_handler(args: dict[str, Any]) -> str:
         val_err, coerced = validate_strand_arguments(
             name, args, schema_model=schema_model, parameters=params, required=req_list
         )
         if val_err:
             return val_err
         if is_isolated:
-            return execute_isolated_strand(yarn, name, coerced, timeout=cfg.timeout, tier=tier_val)
+            return await asyncio.to_thread(execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val)
         try:
-            res = handler(coerced)
+            if inspect.iscoroutinefunction(handler):
+                res = await handler(coerced)
+            else:
+                res = await asyncio.to_thread(handler, coerced)
             return _format_handler_result(res)
         except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
             return f"Error executing strand '{name}': {e}"

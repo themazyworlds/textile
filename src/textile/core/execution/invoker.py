@@ -2,6 +2,7 @@
 Textile Core Strand Invoker & Argument Synthesis Factory.
 """
 
+import asyncio
 import inspect
 import json
 import logging
@@ -71,7 +72,6 @@ class InvokerConfig:
     params: dict[str, Any]
     req_list: list[str]
     isolated: bool
-    is_async: bool
     timeout: float
     tier: CapabilityTier = CapabilityTier.INTERACT
 
@@ -83,40 +83,33 @@ def _create_invoker(
     config: InvokerConfig,
     isolated_runner: Callable[..., str] | None = None,
 ) -> Callable[[dict[str, Any]], Any]:
-    """Create unified sync or async execution invoker for a strand."""
+    """Create unified asynchronous execution invoker for a strand."""
 
     def _validate_and_coerce(args: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
         return validate_strand_arguments(
             strand_name, args, schema_model=config.args_model, parameters=config.params, required=config.req_list
         )
 
-    if config.is_async:
+    is_coro = inspect.iscoroutinefunction(method)
 
-        async def _async_invoker(args: dict[str, Any]) -> str:
-            val_err, coerced = _validate_and_coerce(args)
-            if val_err:
-                return val_err
-            try:
-                res = await method(**coerced)
-                return _format_handler_result(res)
-            except STRAND_EXEC_ERRORS as e:
-                return f"Error executing strand '{strand_name}': {e}"
-
-        return _async_invoker
-
-    def _sync_invoker(args: dict[str, Any]) -> str:
+    async def _invoker(args: dict[str, Any]) -> str:
         val_err, coerced = _validate_and_coerce(args)
         if val_err:
             return val_err
         if config.isolated and isolated_runner is not None:
-            return isolated_runner(yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier)
+            return await asyncio.to_thread(
+                isolated_runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier
+            )
         try:
-            res = method(**coerced)
+            if is_coro:
+                res = await method(**coerced)
+            else:
+                res = await asyncio.to_thread(method, **coerced)
             return _format_handler_result(res)
         except STRAND_EXEC_ERRORS as e:
             return f"Error executing strand '{strand_name}': {e}"
 
-    return _sync_invoker
+    return _invoker
 
 
 def execute_direct(yarn: Any, strand_name: str, args: dict[str, Any]) -> str:

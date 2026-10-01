@@ -54,9 +54,7 @@ class TapestryDatabase:
                     strand_name TEXT NOT NULL,
                     start_time TEXT NOT NULL,
                     args_json TEXT,
-                    tier TEXT,
-                    trust_level TEXT,
-                    tainted INTEGER DEFAULT 0
+                    tier TEXT
                 );
                 CREATE TABLE IF NOT EXISTS task_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,8 +65,6 @@ class TapestryDatabase:
                     success INTEGER,
                     error TEXT,
                     tier TEXT,
-                    trust_level TEXT,
-                    tainted INTEGER DEFAULT 0,
                     args_json TEXT
                 );
                 CREATE TABLE IF NOT EXISTS slots (

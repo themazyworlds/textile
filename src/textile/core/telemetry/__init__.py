@@ -1,7 +1,7 @@
 """
 Textile Telemetry Functional Domain Package.
 Provides sensory blackboard & task ledger (Tapestry), cross-process event bus (Elastic),
-integrity auditing (Seams), and undo stack (Transaction).
+and integrity auditing (Seams).
 """
 
 from textile.core.telemetry.auditor import audit_all, audit_strand, audit_yarn
@@ -17,7 +17,6 @@ from textile.core.telemetry.ledger import (
 )
 from textile.core.telemetry.log import configure_logging, get_logger
 from textile.core.telemetry.seams import SeamOrchestrator, seams
-from textile.core.telemetry.transaction import Transaction, transaction_stack
 
 __all__ = [
     "CoreTapestry",
@@ -27,7 +26,6 @@ __all__ = [
     "SeamOrchestrator",
     "SensoryTapestry",
     "TapestryDatabase",
-    "Transaction",
     "audit_all",
     "audit_strand",
     "audit_yarn",
@@ -37,5 +35,4 @@ __all__ = [
     "get_logger",
     "seams",
     "sensory_tapestry",
-    "transaction_stack",
 ]

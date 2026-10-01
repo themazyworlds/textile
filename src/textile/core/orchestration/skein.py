@@ -15,20 +15,17 @@ from pathlib import Path
 from typing import Any
 
 import textile.yarns
+from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.definitions.intent import IntentNode, IntentValidationError
 from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
-from textile.core.security.context import PolicyViolationError, verify_security_policy
+from textile.core.security.context import PolicyViolationError
 from textile.core.telemetry.log import get_logger
-from textile.core.telemetry.transaction import Transaction, transaction_stack
 
 logger = get_logger(__name__)
 
 __all__ = ["PolicyViolationError", "Skein", "skein"]
-
-
-MODULE_LOAD_ERRORS = (ImportError, AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError)
 
 
 class Skein:
@@ -51,12 +48,12 @@ class Skein:
                     instance = attr()
                     with self._lock:
                         self.all_yarns[instance.name] = instance
-                except MODULE_LOAD_ERRORS as e:
+                except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
     def ensure_preinstalled_yarns_seeded(self) -> None:
-        """Seed pre-installed Yarns to ~/.config/textile/yarns/ if not present."""
-        with contextlib.suppress(*MODULE_LOAD_ERRORS):
+        """Seed and sync pre-installed Yarns to ~/.config/textile/yarns/."""
+        with contextlib.suppress(*SAFE_EXCEPTIONS):
             if not self._user_yarns_dir.exists():
                 self._user_yarns_dir.mkdir(parents=True, exist_ok=True)
             yarns_seed_root = Path(textile.yarns.__file__).parent
@@ -65,8 +62,9 @@ class Skein:
             for yarn_dir in yarns_seed_root.iterdir():
                 if yarn_dir.is_dir() and not yarn_dir.name.startswith("_"):
                     dest = self._user_yarns_dir / yarn_dir.name
-                    if not dest.exists():
-                        shutil.copytree(yarn_dir, dest)
+                    if dest.exists():
+                        shutil.rmtree(dest)
+                    shutil.copytree(yarn_dir, dest)
 
     def load_yarns(self) -> None:
         """Discover and register all pre-installed, entrypoint, and custom Yarns from ~/.config/textile/yarns."""
@@ -76,9 +74,9 @@ class Skein:
         self.load_user_yarns()
 
         # 2. PEP 621 Entry Point Yarns
-        with contextlib.suppress(*MODULE_LOAD_ERRORS):
+        with contextlib.suppress(*SAFE_EXCEPTIONS):
             for ep in entry_points(group="textile.yarns"):
-                with contextlib.suppress(*MODULE_LOAD_ERRORS):
+                with contextlib.suppress(*SAFE_EXCEPTIONS):
                     yarn_cls = ep.load()
                     if issubclass(yarn_cls, Yarn) and yarn_cls is not Yarn:
                         instance = yarn_cls()
@@ -102,7 +100,7 @@ class Skein:
                     sys.modules[mod_name] = mod
                     spec.loader.exec_module(mod)
                     self._register_module_yarns(mod)
-            except MODULE_LOAD_ERRORS as e:
+            except SAFE_EXCEPTIONS as e:
                 logger.debug("skein.user_yarn_load_failed", path=str(py_file), error=str(e))
 
     def initialize(self) -> None:
@@ -146,7 +144,7 @@ class Skein:
                     try:
                         if yarn.is_available():
                             active[name] = yarn
-                    except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+                    except SAFE_EXCEPTIONS as e:
                         logger.debug("skein.yarn_availability_check_failed", yarn=name, error=str(e))
             return active
 
@@ -160,37 +158,10 @@ class Skein:
         return None
 
     def compile_and_execute_intent(self, intent: IntentNode) -> str:
-        """Layer 3: Validate grammar, verify origin security policy, compile intent, and execute."""
-        # 1. Grammar & Injection Sanitization
+        """Layer 3: Validate grammar and execute intent via central Loom dispatcher."""
         intent.validate_grammar()
-
-        # 2. Resolve Strand
-        target = self.get_strand_by_name(intent.strand_name)
-        if not target:
-            raise IntentValidationError(f"Strand '{intent.strand_name}' is not registered or active.")
-
-        _, target_strand = target
-
-        # 3. Layer 3 Policy Verification — canonical single-source-of-truth gate.
-        verify_security_policy(intent.origin_token, target_strand.tier, target_strand.name)
-
-        # 4. Execution
-        if target_strand.handler is None:
-            raise IntentValidationError(f"Strand '{target_strand.name}' has no registered handler.")
-
-        res = target_strand.handler(intent.parameters)
-
-        # 5. Layer 4: Register state-mutating transactions on the undo stack
-        if target_strand.tier in ("mutate", "privileged", "system_exec"):
-            transaction_stack.push(
-                Transaction(
-                    strand_name=target_strand.name,
-                    parameters=intent.parameters,
-                    result_data=res,
-                )
-            )
-
-        return str(res) if res is not None else "ok"
+        from textile.core.orchestration.loom import loom
+        return loom.execute_sync(intent.strand_name, intent.parameters, otp=intent.otp)
 
     def _load_config(self) -> None:
         try:
@@ -208,7 +179,7 @@ class Skein:
 
         for target_dir in dirs:
             for toml_file in target_dir.rglob("*.toml"):
-                with contextlib.suppress(OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError):
+                with contextlib.suppress(*SAFE_EXCEPTIONS):
                     m = YarnManifest.from_toml(toml_file)
                     if m.name:
                         manifests[m.name] = m

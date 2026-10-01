@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import contextlib
 import inspect
 import logging
@@ -63,22 +65,29 @@ class Yarn(ABC):
             "(<name>.toml or yarn.toml)."
         )
 
-    def __getattr__(self, name: str) -> Any:
-        manifest = self.__dict__.get("manifest")
-        if manifest is not None and hasattr(manifest, name):
-            return getattr(manifest, name)
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    @property
+    def name(self) -> str:
+        return self.manifest.name
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        manifest = self.__dict__.get("manifest")
-        if name != "manifest" and manifest is not None and hasattr(manifest, name):
-            setattr(manifest, name, value)
-        else:
-            super().__setattr__(name, value)
+    @property
+    def description(self) -> str:
+        return self.manifest.description
+
+    @property
+    def layer(self) -> int:
+        return self.manifest.layer
+
+    @property
+    def publisher(self) -> str:
+        return self.manifest.publisher
+
+    @property
+    def python_dependencies(self) -> list[str]:
+        return list(self.manifest.python_dependencies)
 
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""
-        return list(self.python_dependencies)
+        return list(self.manifest.python_dependencies)
 
     @property
     def elastic(self):
@@ -134,7 +143,7 @@ class Yarn(ABC):
 
     @cached_property
     def strands(self) -> list[Strand]:
-        """Automatically discovers all @strand decorated methods on the class."""
+        """Automatically discovers all @strand decorated methods on the class once."""
         return reflect_strands(self)
 
     def get_strands(self) -> list[Strand]:
@@ -142,7 +151,7 @@ class Yarn(ABC):
 
     @cached_property
     def wefts(self) -> list[Weft]:
-        """Automatically discovers all @weft decorated methods on the class."""
+        """Automatically discovers all @weft decorated methods on the class once."""
         return reflect_wefts(self)
 
     def get_wefts(self) -> list[Weft]:
@@ -161,18 +170,22 @@ class Yarn(ABC):
 
     def execute_sync(self, strand_name: str, args: dict[str, Any]) -> str:
         """Execute strand synchronously by matching name in discovered strands."""
-        return next(
-            (
-                s.handler(args)
-                for s in self.get_strands()
-                if s.name == strand_name and s.handler is not None
-            ),
-            f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'.",
-        )
+        strand = next((s for s in self.get_strands() if s.name == strand_name and s.handler is not None), None)
+        if not strand or not strand.handler:
+            return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, strand.handler(args)).result()
+        return asyncio.run(strand.handler(args))
 
     def on_load(self) -> None:
         """Lifecycle hook invoked when the yarn is initialized and loaded into Loom."""
 
     def on_unload(self) -> None:
         """Lifecycle hook invoked when the yarn is unloaded from Loom."""
-

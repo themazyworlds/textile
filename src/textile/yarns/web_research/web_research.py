@@ -13,7 +13,6 @@ import urllib.parse
 import urllib.request
 
 from textile import Yarn, strand
-from textile.core.security.context import TaintTracker
 
 MAX_WEBPAGE_BODY_CHARS = 12000
 
@@ -38,45 +37,44 @@ def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, s
     pattern = re.compile(
         r"<a[^>]+href=[\'\"](?P<url>[^\'\"]+)[\'\"][^>]*class=[\'\"]result-link[\'\"][^>]*>(?P<title>.*?)</a>"
         r".*?"
-        r"<td[^>]+class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>",
-        re.DOTALL,
-    )
-    pattern_alt = re.compile(
-        r"<a[^>]+class=[\'\"]result-link[\'\"][^>]*href=[\'\"](?P<url>[^\'\"]+)[\'\"][^>]*>(?P<title>.*?)</a>"
-        r".*?"
-        r"<td[^>]+class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>",
-        re.DOTALL,
+        r"<td[^>]*class=[\'\"]result-snippet[\'\"][^>]*>(?P<snippet>.*?)</td>",
+        re.DOTALL | re.IGNORECASE,
     )
 
-    matches = list(pattern.finditer(content)) or list(pattern_alt.finditer(content))
-    results = []
-    for m in matches[:max_results]:
-        href = m.group("url")
-        title = html.unescape(re.sub(r"<[^>]+>", "", m.group("title"))).strip()
-        snip = html.unescape(re.sub(r"<[^>]+>", "", m.group("snippet"))).strip()
-        if "uddg=" in href:
-            href = urllib.parse.unquote(href.split("uddg=")[-1].split("&")[0])
-        if title and href:
-            results.append((title, href, snip))
+    results: list[tuple[str, str, str]] = []
+    for match in pattern.finditer(content):
+        href = match.group("url").strip()
+        title = html.unescape(re.sub(r"<[^>]+>", "", match.group("title"))).strip()
+        snippet = html.unescape(re.sub(r"<[^>]+>", "", match.group("snippet"))).strip()
+        if href and title:
+            results.append((title, href, snippet))
+        if len(results) >= max_results:
+            break
     return results
 
 
-def _search_ddg_instant_and_wiki(query: str) -> list[tuple[str, str, str]]:
-    """Fallback search using DuckDuckGo Instant Answer API and Wikipedia Full-Text Search API."""
-    results = []
+def search_web(query: str) -> str:
+    """Execute a web search and return formatted text results."""
+    clean_query = query.strip()
+    if not clean_query:
+        return "Error: Empty search query provided."
+
+    results: list[tuple[str, str, str]] = []
+
     # 1. DuckDuckGo Instant Answer API
     with contextlib.suppress(urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
-        api_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_html=1&skip_disambig=1"
-        req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0 (Linux)"})
+        ddg_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(clean_query)}&format=json&no_html=1&skip_disambig=1"
+        req = urllib.request.Request(ddg_url, headers={"User-Agent": "TextileAgent/1.0 (Universal Linux Desktop)"})
         with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
-            abstract = data.get("AbstractText")
-            source_url = data.get("AbstractURL")
-            heading = data.get("Heading", query)
-            if abstract and source_url:
-                results.append((heading, source_url, abstract))
+            abstract = data.get("AbstractText", "")
+            heading = data.get("Heading", "")
+            abstract_url = data.get("AbstractURL", "")
+            if abstract and heading:
+                results.append((f"Abstract: {heading}", abstract_url, abstract))
+
             for topic in data.get("RelatedTopics", [])[:3]:
-                if isinstance(topic, dict) and topic.get("Text") and topic.get("FirstURL"):
+                if isinstance(topic, dict) and "FirstURL" in topic and "Text" in topic:
                     results.append((topic["Text"][:60] + "...", topic["FirstURL"], topic["Text"]))
 
     # 2. Wikipedia Full-Text Search API
@@ -93,37 +91,28 @@ def _search_ddg_instant_and_wiki(query: str) -> list[tuple[str, str, str]]:
                 if title and page_url:
                     results.append((title, page_url, snippet))
 
-    return results
-
-
-def search_web(query: str) -> str:
-    """Execute a web search and return formatted text results."""
-    query_clean = query.strip()
-    if not query_clean:
-        return "Error: Empty search query."
-
-    items: list[tuple[str, str, str]] = []
-    with contextlib.suppress(urllib.error.URLError, OSError, ValueError):
-        items = _search_ddg_lite(query_clean, max_results=8)
-
-    if not items:
+    # 3. DuckDuckGo Lite Fallback HTML scraper if API returned fewer than 2 results
+    if len(results) < 2:
         with contextlib.suppress(urllib.error.URLError, OSError, ValueError):
-            items = _search_ddg_instant_and_wiki(query_clean)
+            ddg_lite_items = _search_ddg_lite(clean_query)
+            for title, url, snippet in ddg_lite_items:
+                if not any(r[1] == url for r in results):
+                    results.append((title, url, snippet))
 
-    if not items:
-        return f"No web search results found for '{query_clean}'."
+    if not results:
+        return f"No search results found for query '{clean_query}'."
 
-    formatted = []
-    for title, url, snippet in items:
-        formatted.append(f"### [{title}]({url})\n{snippet}\n")
+    output_lines = [f"## Web Search Results for '{clean_query}':\n"]
+    for i, (title, url, snippet) in enumerate(results[:8], 1):
+        output_lines.append(f"{i}. **{title}**\n   URL: {url}\n   Snippet: {snippet}\n")
 
-    return f"## Web Search Results for '{query_clean}':\n\n" + "\n".join(formatted)
+    return "\n".join(output_lines)
 
 
 def fetch_webpage(url: str) -> str:
-    """Fetch and return text content from a target URL."""
+    """Fetch and extract readable plain text content from a web page URL."""
     url_clean = url.strip()
-    if not url_clean.startswith("http://") and not url_clean.startswith("https://"):
+    if not url_clean.startswith(("http://", "https://")):
         url_clean = "https://" + url_clean
 
     try:
@@ -166,10 +155,7 @@ class WebResearch(Yarn):
 
         :param query: Search query terms.
         """
-        res = search_web(query)
-        if res and not res.startswith("Error"):
-            TaintTracker.set_taint("web_research")
-        return res
+        return search_web(query)
 
     @strand(tier="observe")
     def fetch_webpage(self, url: str) -> str:
@@ -177,7 +163,4 @@ class WebResearch(Yarn):
 
         :param url: Complete URL of the web page to read.
         """
-        res = fetch_webpage(url)
-        if res and not res.startswith("Error"):
-            TaintTracker.set_taint("web_research")
-        return res
+        return fetch_webpage(url)
