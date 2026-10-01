@@ -39,14 +39,15 @@ class Skein:
         self._disabled_yarns: set[str] = set()
         self._initialized: bool = False
 
-    def _register_module_yarns(self, mod: Any) -> None:
+    def _register_module_yarns(self, mod: Any, override: bool = True) -> None:
         """Inspect a Python module and register all non-base Yarn subclasses."""
         for _, attr in inspect.getmembers(mod, inspect.isclass):
             if issubclass(attr, Yarn) and attr is not Yarn:
                 try:
                     instance = attr()
                     with self._lock:
-                        self.all_yarns[instance.name] = instance
+                        if override or instance.name not in self.all_yarns:
+                            self.all_yarns[instance.name] = instance
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
@@ -63,7 +64,7 @@ class Skein:
                     rel_stem = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
                     mod_name = f"textile.yarns.{rel_stem}"
                     mod = importlib.import_module(mod_name)
-                    self._register_module_yarns(mod)
+                    self._register_module_yarns(mod, override=True)
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.bundled_yarn_load_failed", path=str(py_file), error=str(e))
 
@@ -82,7 +83,7 @@ class Skein:
                         with self._lock:
                             self.all_yarns[instance.name] = instance
 
-        # 3. Load custom user Yarns from ~/.config/textile/yarns/ directory without wiping user changes
+        # 3. Load custom user Yarns from ~/.config/textile/yarns/ directory (without overwriting core bundled yarns)
         self.load_user_yarns()
 
     def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
@@ -101,7 +102,7 @@ class Skein:
                     mod = importlib.util.module_from_spec(spec)
                     sys.modules[mod_name] = mod
                     spec.loader.exec_module(mod)
-                    self._register_module_yarns(mod)
+                    self._register_module_yarns(mod, override=False)
             except SAFE_EXCEPTIONS as e:
                 logger.debug("skein.user_yarn_load_failed", path=str(py_file), error=str(e))
 

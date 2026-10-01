@@ -74,27 +74,85 @@ class UWSM(Yarn):
 
     @strand(tier="observe")
     def uwsm_status(self, unit: str | None = None) -> str:
-        """Check UWSM session status and systemd user unit hierarchy.
+        """Check UWSM Wayland session status and systemd user unit hierarchy.
 
-        :param unit: Optional systemd unit name to query status.
+        :param unit: Optional systemd unit name to query status (e.g. 'wayland-session.target').
+                     Omit to check overall UWSM session status.
         """
-        return self._run_uwsm("status", unit or "")
+        if unit and str(unit).strip():
+            target_unit = str(unit).strip()
+            try:
+                res = subprocess.run(
+                    ["systemctl", "--user", "status", target_unit],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                return res.stdout.strip()
+            except (OSError, subprocess.SubprocessError) as e:
+                return f"Error querying status for unit '{target_unit}': {e}"
+
+        try:
+            is_active_res = subprocess.run(
+                ["uwsm", "check", "is-active"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            active_str = (
+                "Active Wayland compositor session is running under UWSM."
+                if is_active_res.returncode == 0
+                else "No active UWSM Wayland session detected."
+            )
+            units_res = subprocess.run(
+                ["systemctl", "--user", "list-units", "*uwsm*", "--no-pager"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            units_out = units_res.stdout.strip() or "No active UWSM systemd user units."
+            return f"{active_str}\n\nUWSM Systemd User Units:\n{units_out}"
+        except (OSError, subprocess.SubprocessError) as e:
+            return f"Error checking UWSM status: {e}"
 
     @strand(tier="observe")
     def uwsm_check(self, target: str | None = None) -> str:
-        """Check UWSM environment compatibility and systemd support.
+        """Check UWSM environment compatibility and compositor readiness.
 
-        :param target: Optional environment or capability target.
+        :param target: Check target ('is-active' or 'may-start'). Defaults to 'is-active'.
         """
-        return self._run_uwsm("check", target or "")
+        checker = (target or "is-active").strip().lower()
+        if checker not in ("is-active", "may-start"):
+            checker = "is-active"
+        return self._run_uwsm("check", checker)
 
     @strand(tier="privileged")
     def uwsm_stop(self, unit: str | None = None) -> str:
-        """Stop a UWSM systemd user unit or active session.
+        """Stop active UWSM Wayland desktop session or a specific systemd user unit.
 
-        :param unit: Systemd unit name or scope to stop.
+        :param unit: Optional systemd unit or scope name to stop. Omit parameter to stop current Wayland session.
         """
-        return self._run_uwsm("stop", unit or "")
+        if unit and str(unit).strip():
+            target_unit = str(unit).strip()
+            try:
+                res = subprocess.run(
+                    ["systemctl", "--user", "stop", target_unit],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                return res.stdout.strip() or f"Successfully stopped unit '{target_unit}'."
+            except (OSError, subprocess.SubprocessError) as e:
+                return f"Error stopping unit '{target_unit}': {e}"
+        return self._run_uwsm("stop")
 
     @strand(tier="privileged")
     def uwsm_finalize(self, target: str | None = None) -> str:
