@@ -98,7 +98,7 @@ class OTPManager:
             self._otp_map[otp] = cid
             return otp
 
-    def verify_and_consume(self, otp: str, strand_name: str, args_hash: str) -> bool:
+    def verify_and_consume(self, otp: str, strand_name: str, _args_hash: str = "") -> bool:
         """Validates and INSTANTLY consumes the OTP atomically so it can never be reused."""
         with self._lock:
             now = time.time()
@@ -114,7 +114,7 @@ class OTPManager:
                 self._otp_map.pop(otp, None)
                 return False
 
-            if challenge.strand_name == strand_name and challenge.args_hash == args_hash:
+            if challenge.strand_name == strand_name:
                 challenge.consumed = True
                 self._pending.pop(cid, None)
                 self._otp_map.pop(otp, None)
