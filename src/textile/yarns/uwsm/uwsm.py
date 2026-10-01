@@ -15,12 +15,20 @@ from textile import (
 )
 
 
+def _get_bin(name: str) -> str:
+    resolved = shutil.which(name)
+    if resolved and (resolved == name or resolved.endswith(f"/{name}")):
+        return resolved
+    return name
+
+
 class UWSM(Yarn):
     def is_available(self) -> bool:
         return shutil.which("uwsm") is not None
 
     def _run_uwsm(self, action: str, target: str = "") -> str:
-        cmd = ["uwsm", action]
+        uwsm_bin = _get_bin("uwsm")
+        cmd = [uwsm_bin, action]
         if target:
             cmd.append(target)
         try:
@@ -56,12 +64,13 @@ class UWSM(Yarn):
             cmd_args = [cmd_args]
 
         extra_args = [str(a) for a in cmd_args]
+        uwsm_bin = _get_bin("uwsm")
 
         if is_tui:
             term = detect_terminal()
-            full_cmd = ["uwsm", "app", "--", term, "-e", *parsed_cmd, *extra_args]
+            full_cmd = [uwsm_bin, "app", "--", term, "-e", *parsed_cmd, *extra_args]
         else:
-            full_cmd = ["uwsm", "app", "--", *parsed_cmd, *extra_args]
+            full_cmd = [uwsm_bin, "app", "--", *parsed_cmd, *extra_args]
 
         try:
             proc = subprocess.Popen(
@@ -79,11 +88,13 @@ class UWSM(Yarn):
         :param unit: Optional systemd unit name to query status (e.g. 'wayland-session.target').
                      Omit to check overall UWSM session status.
         """
+        systemctl_bin = _get_bin("systemctl")
+        uwsm_bin = _get_bin("uwsm")
         if unit and str(unit).strip():
             target_unit = str(unit).strip()
             try:
                 res = subprocess.run(
-                    ["systemctl", "--user", "status", target_unit],
+                    [systemctl_bin, "--user", "status", target_unit],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
@@ -96,7 +107,7 @@ class UWSM(Yarn):
 
         try:
             is_active_res = subprocess.run(
-                ["uwsm", "check", "is-active"],
+                [uwsm_bin, "check", "is-active"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -109,7 +120,7 @@ class UWSM(Yarn):
                 else "No active UWSM Wayland session detected."
             )
             units_res = subprocess.run(
-                ["systemctl", "--user", "list-units", "*uwsm*", "--no-pager"],
+                [systemctl_bin, "--user", "list-units", "*uwsm*", "--no-pager"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -140,9 +151,10 @@ class UWSM(Yarn):
         """
         if unit and str(unit).strip():
             target_unit = str(unit).strip()
+            systemctl_bin = _get_bin("systemctl")
             try:
                 res = subprocess.run(
-                    ["systemctl", "--user", "stop", target_unit],
+                    [systemctl_bin, "--user", "stop", target_unit],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
