@@ -87,8 +87,8 @@ select = [
     "PIE",    # flake8-pie
     "C901",   # mccabe cyclomatic complexity
     "N",      # pep8-naming
+    "A",      # flake8-builtins (prevents shadowing built-in names)
 ]
-extend-select = ["A"]
 ignore = ["S603", "S606", "S607"]
 
 [tool.ruff.lint.mccabe]
