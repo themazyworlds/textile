@@ -31,7 +31,7 @@ class Strand(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any] = Field(default_factory=dict)
-    handler: Callable[[dict[str, Any]], str] | None = None
+    handler: Callable[[dict[str, Any]], Any] | None = None
     required: list[str] = Field(default_factory=list)
     raw_handler: Callable[[dict[str, Any]], Any] | None = None
     capability: str | None = None

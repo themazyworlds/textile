@@ -114,7 +114,9 @@ def verify_security_policy(
     if otp:
         if global_otp_manager.verify_and_consume(otp, strand_name, args_hash):
             return
-        raise PolicyViolationError(f"Security Policy Violation: Invalid or expired OTP code for strand '{strand_name}'.")
+        raise PolicyViolationError(
+            f"Security Policy Violation: Invalid or expired OTP code for strand '{strand_name}'."
+        )
 
     # No OTP provided: generate/fetch OTP challenge
     challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)

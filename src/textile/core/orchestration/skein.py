@@ -16,7 +16,7 @@ from typing import Any
 
 import textile.yarns
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
-from textile.core.definitions.intent import IntentNode, IntentValidationError
+from textile.core.definitions.intent import IntentNode
 from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
@@ -160,7 +160,8 @@ class Skein:
     def compile_and_execute_intent(self, intent: IntentNode) -> str:
         """Layer 3: Validate grammar and execute intent via central Loom dispatcher."""
         intent.validate_grammar()
-        from textile.core.orchestration.loom import loom
+        from textile.core.orchestration.loom import loom  # noqa: PLC0415
+
         return loom.execute_sync(intent.strand_name, intent.parameters, otp=intent.otp)
 
     def _load_config(self) -> None:

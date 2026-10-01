@@ -15,6 +15,7 @@ import urllib.request
 from textile import Yarn, strand
 
 MAX_WEBPAGE_BODY_CHARS = 12000
+MIN_FALLBACK_RESULTS = 2
 
 
 def _search_ddg_lite(query: str, max_results: int = 8) -> list[tuple[str, str, str]]:
@@ -92,7 +93,7 @@ def search_web(query: str) -> str:
                     results.append((title, page_url, snippet))
 
     # 3. DuckDuckGo Lite Fallback HTML scraper if API returned fewer than 2 results
-    if len(results) < 2:
+    if len(results) < MIN_FALLBACK_RESULTS:
         with contextlib.suppress(urllib.error.URLError, OSError, ValueError):
             ddg_lite_items = _search_ddg_lite(clean_query)
             for title, url, snippet in ddg_lite_items:

@@ -11,6 +11,7 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
+from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.loom import loom
 
@@ -70,7 +71,7 @@ def create_twill_server() -> Server:
             effective_caller = os.getenv("TEXTILE_CALLER", "twill_mcp")
             res_text = await loom.execute(name, args_dict, caller=effective_caller, otp=otp_val)
             return [types.TextContent(type="text", text=str(res_text))]
-        except Exception as e:
+        except SAFE_EXCEPTIONS as e:
             return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
 
     return app

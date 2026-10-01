@@ -174,15 +174,18 @@ class Yarn(ABC):
         if not strand or not strand.handler:
             return f"Error: Strand '{strand_name}' not implemented in yarn '{self.name}'."
 
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
+        res = strand.handler(args)
+        if inspect.isawaitable(res):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
 
-        if loop and loop.is_running():
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, strand.handler(args)).result()
-        return asyncio.run(strand.handler(args))
+            if loop and loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return str(pool.submit(asyncio.run, res).result())
+            return str(asyncio.run(res))
+        return str(res)
 
     def on_load(self) -> None:
         """Lifecycle hook invoked when the yarn is initialized and loaded into Loom."""

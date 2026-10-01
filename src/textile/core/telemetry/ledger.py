@@ -38,7 +38,7 @@ class TaskRecord(BaseModel):
 class CoreTapestry:
     """Core Task Ledger: Strictly manages engine execution, active tasks, and history via SQLite."""
 
-    def __init__(self, max_history: int = 50, persist: bool = False):
+    def __init__(self, persist: bool = False):
         self._database = TapestryDatabase(persist=persist)
 
     def record_task_start(

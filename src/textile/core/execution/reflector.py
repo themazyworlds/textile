@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.execution.decorators import _parse_tier
 from textile.core.execution.invoker import (
     InvokerConfig,
@@ -151,7 +152,7 @@ def reflect_strands(yarn: Any) -> list[Strand]:
             continue
         try:
             unbound = getattr(cls, attr_name, None)
-        except (AttributeError, TypeError, ValueError, RuntimeError) as e:
+        except SAFE_EXCEPTIONS as e:
             logger.debug("strand.reflection_attribute_error", attribute=attr_name, error=str(e))
             continue
         if callable(unbound) and getattr(unbound, "_is_strand", False):
@@ -169,7 +170,7 @@ def reflect_wefts(yarn: Any) -> list[Weft]:
             continue
         try:
             unbound = getattr(cls, attr_name, None)
-        except (AttributeError, TypeError, ValueError, RuntimeError) as e:
+        except SAFE_EXCEPTIONS as e:
             logger.debug("weft.reflection_attribute_error", attribute=attr_name, error=str(e))
             continue
         if callable(unbound) and getattr(unbound, "_is_weft", False):
@@ -209,14 +210,16 @@ def build_dynamic_strand(
         if val_err:
             return val_err
         if is_isolated:
-            return await asyncio.to_thread(execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val)
+            return await asyncio.to_thread(
+                execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val
+            )
         try:
             if inspect.iscoroutinefunction(handler):
                 res = await handler(coerced)
             else:
                 res = await asyncio.to_thread(handler, coerced)
             return _format_handler_result(res)
-        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError) as e:
+        except SAFE_EXCEPTIONS as e:
             return f"Error executing strand '{name}': {e}"
 
     return Strand(
