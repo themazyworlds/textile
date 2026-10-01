@@ -52,8 +52,7 @@ def check_binary(binary_name: str, optional: bool = False) -> DependencyCheck:
 
 def check_device_node(device_path: str, write_access: bool = False, optional: bool = False) -> DependencyCheck:
     """Check if a Linux device node exists and has required permissions."""
-    path = Path(device_path)
-    exists = path.exists()
+    exists = Path(device_path).exists()
     writable = os.access(device_path, os.W_OK) if exists else False
     satisfied = exists and (not write_access or writable)
     details = f"Device exists (writable: {writable})" if exists else f"Device node '{device_path}' does not exist"

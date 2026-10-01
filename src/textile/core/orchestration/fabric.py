@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from textile.core.definitions.manifest import YarnManifest
@@ -72,7 +73,7 @@ class CoreFabricYarn(Yarn):
         """Run the full Textile system diagnostic unit, integration, and E2E test suite."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         test_script = os.path.join(project_root, "tests", "run_all_tests.py")
-        if not os.path.exists(test_script):
+        if not Path(test_script).exists():
             return "Error: test script tests/run_all_tests.py not found."
 
         try:

@@ -222,7 +222,7 @@ class Loom:
             return f"Error: Strand '{strand_name}' not found or no provider yarn is enabled."
 
         strand, _, handler = resolved
-        clean_args = dict(args)
+        clean_args = args.copy()
         effective_otp = otp or clean_args.pop("otp", None)
         if isinstance(effective_otp, str):
             effective_otp = effective_otp.strip()
@@ -280,7 +280,7 @@ class Loom:
     def get_all_wefts(self) -> list[Weft]:
         """Return all active Weft attunements sorted by priority."""
         self.initialize()
-        return list(self.wefts)
+        return self.wefts.copy()
 
 
 loom = Loom()

@@ -52,16 +52,14 @@ def create_twill_server() -> Server:
 
     @app.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
-        tools: list[types.Tool] = []
-        for strand_def in fabric_instructions.get_mcp_definitions(loom.get_all_strands()):
-            tools.append(
-                types.Tool(
-                    name=strand_def["name"],
-                    description=strand_def.get("description", ""),
-                    inputSchema=strand_def.get("inputSchema", {"type": "object", "properties": {}}),
-                )
+        return [
+            types.Tool(
+                name=strand_def["name"],
+                description=strand_def.get("description", ""),
+                inputSchema=strand_def.get("inputSchema", {"type": "object", "properties": {}}),
             )
-        return tools
+            for strand_def in fabric_instructions.get_mcp_definitions(loom.get_all_strands())
+        ]
 
     @app.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:

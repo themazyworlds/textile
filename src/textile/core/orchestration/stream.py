@@ -6,6 +6,7 @@ Provides real-time regex attunement matching, argument coercion, and token strip
 import asyncio
 import contextlib
 import inspect
+import operator
 from typing import Any
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
@@ -30,7 +31,7 @@ class StreamEngine:
             all_matches.extend(
                 (m.start(), -weft.priority, weft, m) for m in weft.pattern.finditer(text)
             )
-        all_matches.sort(key=lambda x: (x[0], x[1]))
+        all_matches.sort(key=operator.itemgetter(0, 1))
         return all_matches
 
     def _strip_weft_tokens(self, text: str, wefts: list[Weft]) -> str:
@@ -46,11 +47,11 @@ class StreamEngine:
         if not chunk and not self._buffer:
             return ""
         if not wefts:
-            res = self._buffer + (chunk or "")
+            res = self._buffer + chunk
             self._buffer = ""
             return res
 
-        self._buffer += chunk or ""
+        self._buffer += chunk
         text_to_process = self._buffer
 
         for _, _, weft, match in self._collect_weft_matches(text_to_process, wefts):
@@ -79,11 +80,11 @@ class StreamEngine:
         if not chunk and not self._buffer:
             return ""
         if not wefts:
-            res = self._buffer + (chunk or "")
+            res = self._buffer + chunk
             self._buffer = ""
             return res
 
-        self._buffer += chunk or ""
+        self._buffer += chunk
         text_to_process = self._buffer
 
         for _, _, weft, match in self._collect_weft_matches(text_to_process, wefts):

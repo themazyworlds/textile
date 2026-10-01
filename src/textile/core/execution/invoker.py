@@ -126,7 +126,7 @@ def _create_invoker(
 
 def execute_direct(yarn: Any, strand_name: str, args: dict[str, Any]) -> str:
     """Execute raw or bound strand handler directly with unified validation and async resolution."""
-    strands = getattr(yarn, "get_strands", lambda: [])()
+    strands = getattr(yarn, "get_strands", list)()
     strand = next((s for s in strands if s.name == strand_name), None)
     if strand is None:
         yarn_name = getattr(yarn, "name", yarn.__class__.__name__)

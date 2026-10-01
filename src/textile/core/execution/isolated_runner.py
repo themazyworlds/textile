@@ -46,7 +46,7 @@ def _resolve_target_spec(yarn: Any) -> str:
     target_spec = yarn.__class__.__module__
     with contextlib.suppress(TypeError, OSError):
         file_path = inspect.getfile(yarn.__class__)
-        if file_path and os.path.exists(file_path):
+        if file_path and Path(file_path).exists():
             target_spec = file_path
     return target_spec
 
@@ -109,7 +109,7 @@ def execute_isolated_strand(
         return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
 
     tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
-    cwd = os.getcwd()
+    cwd = str(Path.cwd())
     spec = _WorkerExecutionSpec(
         uv_bin=uv_bin,
         yarn=yarn,
@@ -118,7 +118,7 @@ def execute_isolated_strand(
         tier_str=tier_str,
         cwd=cwd,
     )
-    env = dict(os.environ)
+    env = os.environ.copy()
     python_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
 
@@ -136,7 +136,7 @@ def execute_isolated_strand(
 
 def _load_target_module(target_spec: str) -> Any:
     """Load module dynamically from file location or package import."""
-    if target_spec.endswith(".py") or os.path.exists(target_spec):
+    if target_spec.endswith(".py") or Path(target_spec).exists():
         mod_name = f"isolated_yarn_{Path(target_spec).stem}"
         spec = importlib.util.spec_from_file_location(mod_name, target_spec)
         if not spec or not spec.loader:
@@ -150,12 +150,12 @@ def _load_target_module(target_spec: str) -> Any:
 
 def _setup_worker_sys_path() -> None:
     """Ensure working directory and tests directory exist in sys.path."""
-    cwd = os.getcwd()
+    cwd = str(Path.cwd())
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
-    tests_dir = os.path.join(cwd, "tests")
-    if os.path.exists(tests_dir) and tests_dir not in sys.path:
-        sys.path.insert(0, tests_dir)
+    tests_dir = Path(cwd) / "tests"
+    if tests_dir.exists() and str(tests_dir) not in sys.path:
+        sys.path.insert(0, str(tests_dir))
 
 
 def main():

@@ -4,6 +4,7 @@ Textile Core Strand & Weft Decorators.
 
 import re
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -15,10 +16,8 @@ def _parse_tier(raw_tier: Any, strand_name: str = "") -> CapabilityTier:
     if isinstance(raw_tier, CapabilityTier):
         return raw_tier
     if isinstance(raw_tier, str):
-        try:
+        with suppress(ValueError):
             return CapabilityTier(raw_tier.lower())
-        except ValueError:
-            pass
     raise ValueError(
         f"Strand '{strand_name or 'unknown'}' must explicitly specify a valid CapabilityTier "
         "(e.g., tier=CapabilityTier.OBSERVE, CapabilityTier.INTERACT, "

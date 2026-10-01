@@ -31,12 +31,12 @@ def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list
     """Dynamically synthesize a Pydantic BaseModel from JSON schema parameters."""
     fields: dict[str, Any] = {}
     type_map = {"string": str, "integer": int, "number": float, "boolean": bool, "array": list, "object": dict}
-    for p_name, p_spec in (parameters or {}).items():
+    for p_name, p_spec in parameters.items():
         desc = p_spec.get("description", "")
         enum_vals = p_spec.get("enum")
         t_str = str(p_spec.get("type", "string")).lower()
         field_type: Any = Literal[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)  # type: ignore
-        if p_name in (required or []):
+        if p_name in required:
             fields[p_name] = (field_type, Field(..., description=desc))
         else:
             fields[p_name] = (field_type | None, Field(default=None, description=desc))
@@ -121,7 +121,7 @@ def validate_strand_arguments(
         except (AttributeError, TypeError, ValueError, KeyError, ValidationError):
             return None, args
 
-    clean_args = dict(args or {})
+    clean_args = args.copy()
     if empty_err := _check_empty_required_args(strand_name, clean_args, parameters, required):
         return empty_err, args
 

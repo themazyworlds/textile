@@ -51,7 +51,7 @@ class YarnManifest(BaseModel):
 
     @classmethod
     def from_toml(cls, path: Path) -> YarnManifest:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             raw_data = tomllib.load(f)
         try:
             yarn_data = raw_data.get("yarn", {})

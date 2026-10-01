@@ -38,7 +38,7 @@ def _parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:
         else:
             positional_vals.append(_parse_cli_arg_val(arg))
 
-    parsed_kwargs = dict(named_kwargs)
+    parsed_kwargs = named_kwargs.copy()
     pos_idx = 0
     for p_name in param_names:
         if pos_idx >= len(positional_vals):

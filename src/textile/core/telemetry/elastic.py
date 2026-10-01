@@ -182,7 +182,7 @@ class ElasticEngine:
         else:
             opts = BroadcastOptions(**kwargs)
         clean_topic = topic.strip()
-        clean_source = str(opts.source).strip()
+        clean_source = opts.source.strip()
         parsed_urgency = EventUrgency.from_value(opts.urgency)
         payload_data = dict(opts.data or {})
 
@@ -215,7 +215,7 @@ class ElasticEngine:
             level=notice_level,
             source=clean_source,
             message=frame.summary,
-            data={"topic": clean_topic, "urgency": parsed_urgency.value, **payload_data},
+            data={"topic": clean_topic, "urgency": parsed_urgency.value} | payload_data,
         )
 
         # 3. Record to shared SQLite cross-process event stream
@@ -244,7 +244,7 @@ class ElasticEngine:
         """Deliver EventFrame to local in-process subscribers and async queues."""
         with self._lock:
             subs = list(self._subscriptions.values())
-            queues = list(self._async_queues)
+            queues = self._async_queues.copy()
 
         for sub in subs:
             if sub.matches(frame):

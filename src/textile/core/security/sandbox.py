@@ -24,7 +24,7 @@ def _resolve_display_bind() -> list[str]:
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if wayland_display and runtime:
         wl_sock = os.path.join(runtime, wayland_display)
-        if os.path.exists(wl_sock):
+        if Path(wl_sock).exists():
             args.extend(
                 [
                     "--ro-bind",
@@ -41,7 +41,7 @@ def _resolve_display_bind() -> list[str]:
     if x11_display := os.environ.get("DISPLAY"):
         args.extend(["--setenv", "DISPLAY", x11_display])
         x11_sock = os.path.join("/", "tmp", ".X11-unix")
-        if os.path.exists(x11_sock):
+        if Path(x11_sock).exists():
             args.extend(["--ro-bind", x11_sock, x11_sock])
     return args
 
@@ -52,7 +52,7 @@ def _resolve_sound_bind() -> list[str]:
     if runtime := os.environ.get("XDG_RUNTIME_DIR"):
         for sock_name in ("pipewire-0", "pulse"):
             p = os.path.join(runtime, sock_name)
-            if os.path.exists(p):
+            if Path(p).exists():
                 args.extend(["--ro-bind", p, p])
     return args
 
@@ -167,7 +167,7 @@ class BubblewrapBuilder:
 
     def bind_system_base(self) -> BubblewrapBuilder:
         self.args.extend(["--ro-bind", "/usr", "/usr"])
-        lib64_target = "usr/lib64" if os.path.exists("/usr/lib64") else "usr/lib"
+        lib64_target = "usr/lib64" if Path("/usr/lib64").exists() else "usr/lib"
         self.args.extend(
             [
                 "--symlink",
@@ -204,7 +204,7 @@ class BubblewrapBuilder:
     def bind_resources(self, resources: list[str] | None) -> BubblewrapBuilder:
         if resources:
             for res_name in resources:
-                clean_res = str(res_name).strip().lower()
+                clean_res = res_name.strip().lower()
                 if clean_res in KNOWN_RESOURCES:
                     self.args.extend(KNOWN_RESOURCES[clean_res]())
                 else:
@@ -239,7 +239,7 @@ def _bind_user_config_and_share(builder: BubblewrapBuilder) -> None:
 def _bind_python_prefixes(builder: BubblewrapBuilder) -> None:
     """Bind virtualenv and sys.prefix locations into sandbox if not standard system paths."""
     for check_path in (sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)):
-        if check_path and os.path.exists(check_path):
+        if check_path and Path(check_path).exists():
             p_resolved = str(Path(check_path).resolve())
             if not any(p_resolved.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
                 builder.args.extend(["--ro-bind-try", p_resolved, p_resolved])
@@ -250,7 +250,7 @@ def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) ->
     if not cmd or not cmd[0]:
         return
     exe_target = shutil.which(cmd[0]) or cmd[0]
-    if os.path.exists(exe_target):
+    if Path(exe_target).exists():
         raw_path = str(Path(exe_target).absolute())
         resolved_path = str(Path(exe_target).resolve())
         for p_str in (raw_path, resolved_path):
@@ -308,7 +308,7 @@ class BubblewrapSandbox:
             raise SandboxUnavailableError("bwrap binary not found in system PATH.")
 
         is_writable = "MUTATE" in tier_upper
-        ws = Path(workspace_root or os.getcwd()).resolve()
+        ws = Path(workspace_root or Path.cwd()).resolve()
         container_tmp = os.path.join("/", "tmp")
         container_home = os.path.join("/", "home")
         uv_cache = os.path.join(container_tmp, "uv_cache")

@@ -184,11 +184,11 @@ class SensoryTapestry:
             cursor = connection.execute(
                 query,
                 (
-                    str(s.event_id),
-                    str(s.topic),
-                    str(s.source),
-                    str(s.urgency),
-                    str(s.summary),
+                    s.event_id,
+                    s.topic,
+                    s.source,
+                    s.urgency,
+                    s.summary,
                     json.dumps(s.data) if s.data else "{}",
                     float(s.timestamp or 0.0),
                     int(s.process_id or 0),

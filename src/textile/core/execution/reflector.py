@@ -61,7 +61,7 @@ def determine_isolation(yarn: Any, explicit_isolated: bool | None, tier_val: Cap
     """Determine whether a strand requires process isolation based on explicit config or system tier."""
     if explicit_isolated is not None:
         return bool(explicit_isolated)
-    deps = getattr(yarn, "get_python_dependencies", lambda: [])()
+    deps = getattr(yarn, "get_python_dependencies", list)()
     return bool(
         deps
         or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
