@@ -45,11 +45,12 @@ class PendingOTP:
     failed_attempts: int = 0
     max_attempts: int = 3
 
-    def is_valid(self) -> bool:
+    def is_valid(self, now: float | None = None) -> bool:
+        current_time = now if now is not None else time.time()
         return (
             not self.consumed
             and self.failed_attempts < self.max_attempts
-            and (time.time() - self.created_at) <= self.ttl_seconds
+            and (current_time - self.created_at) <= self.ttl_seconds
         )
 
 
@@ -62,7 +63,7 @@ class OTPManager:
         self._otp_map: dict[str, str] = {}
 
     def _purge_expired_locked(self, now: float) -> None:
-        expired_ids = [cid for cid, ch in self._pending.items() if not ch.is_valid()]
+        expired_ids = [cid for cid, ch in self._pending.items() if not ch.is_valid(now)]
         for cid in expired_ids:
             ch = self._pending.pop(cid, None)
             if ch and self._otp_map.get(ch.otp) == cid:
@@ -137,7 +138,6 @@ global_otp_manager = OTPManager()
 class PolicyViolationError(PermissionError):
     """Raised when an operation violates security policy (e.g. invalid/expired OTP)."""
 
-    pass
 
 
 class OTPChallengeRequiredError(PermissionError):

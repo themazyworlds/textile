@@ -59,16 +59,12 @@ source-include = ["tests/**", "AGENTS.md"]
 
 [dependency-groups]
 dev = [
-    "bandit>=1.9.4",
+    "pip-audit>=2.9.0",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
-    "radon>=6.0.1",
     "refurb>=2.3.1",
     "ruff>=0.16.8",
-    "semgrep>=1.79.0",
-    "sourcery>=1.46.0",
-    "vulture>=2.16",
 ]
 
 [tool.ruff]
@@ -76,15 +72,44 @@ line-length = 120
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "BLE", "S", "PL", "SIM"]
-extend-select = ["A", "N"]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes (unused imports & undefined names)
+    "I",      # isort
+    "UP",     # pyupgrade (modern Python syntax)
+    "BLE",    # blind-except
+    "S",      # flake8-bandit (security checks)
+    "PL",     # Pylint
+    "SIM",    # flake8-simplify
+    "ERA",    # eradicate (commented-out dead code)
+    "ARG",    # flake8-unused-arguments
+    "PIE",    # flake8-pie
+    "C901",   # mccabe cyclomatic complexity
+    "N",      # pep8-naming
+]
+extend-select = ["A"]
 ignore = ["S603", "S606", "S607"]
 
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S108", "PLC0415", "PLR2004", "PLR0913", "PLR0915", "E501"]
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.pylint]
+max-branches = 12
+max-statements = 50
 max-returns = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",
+    "S108",
+    "ARG",
+    "PLC0415",
+    "PLR2004",
+    "PLR0913",
+    "PLR0915",
+    "E501",
+]
 
 [tool.pyright]
 venvPath = "."
@@ -93,43 +118,3 @@ typeCheckingMode = "standard"
 include = ["src"]
 pythonVersion = "3.14"
 pythonPlatform = "Linux"
-
-[tool.vulture]
-min_confidence = 80
-paths = ["src/textile"]
-exclude = ["tests/"]
-
-[tool.bandit]
-skips = ["B404", "B603"]
-targets = ["src/textile"]
-ignore_decorators = [
-    "@mcp.*",
-    "@app.*",
-    "@server.*",
-    "@property",
-    "@*.setter",
-    "@strand*",
-    "@weft*",
-]
-ignore_names = [
-    "model_config",
-    "handle_*",
-    "on_*",
-    "cmd_*",
-    "hyprland_*",
-    "caelestia_*",
-    "canvas_*",
-    "packagekit_*",
-    "process_*",
-    "sensors_*",
-    "timer_*",
-    "uwsm_*",
-    "file_*",
-    "inotify_*",
-    "polkit_*",
-    "dbus_*",
-    "journal_*",
-    "storage_*",
-    "clipboard_*",
-    "model_settings",
-]

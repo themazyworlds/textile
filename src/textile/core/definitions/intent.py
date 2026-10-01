@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 class IntentValidationError(Exception):
     """Raised when an intent node violates grammar rules."""
 
-    pass
 
 
 class IntentNode(BaseModel):

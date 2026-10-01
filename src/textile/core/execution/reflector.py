@@ -69,7 +69,7 @@ def determine_isolation(yarn: Any, explicit_isolated: bool | None, tier_val: Cap
     )
 
 
-def method_to_weft(yarn: Any, method: Callable[..., Any]) -> Weft:
+def method_to_weft(_yarn: Any, method: Callable[..., Any]) -> Weft:
     """Convert a @weft decorated method into a Weft instance."""
     sig = inspect.signature(method)
     weft_name = getattr(method, "_weft_name", method.__name__)

@@ -13,7 +13,6 @@ from pathlib import Path
 class AccessBoundaryError(PermissionError):
     """Raised when an operation attempts to escape its ambient capability boundary."""
 
-    pass
 
 
 class ScopedPath:

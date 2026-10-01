@@ -34,7 +34,7 @@ def create_twill_server() -> Server:
         ]
 
     @app.get_prompt()
-    async def handle_get_prompt(name: str, arguments: dict | None = None) -> types.GetPromptResult:
+    async def handle_get_prompt(name: str, _arguments: dict | None = None) -> types.GetPromptResult:
         if name in {"textile_system_instructions", "textile_system_contract"}:
             return types.GetPromptResult(
                 description="Textile Desktop Fabric Active System Instructions",
