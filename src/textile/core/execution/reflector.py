@@ -79,7 +79,7 @@ def method_to_weft(yarn: Any, method: Callable[..., Any]) -> Weft:
     weft_priority = getattr(method, "_weft_priority", 100)
 
     param_names = [p_name for p_name in sig.parameters if p_name not in ("self", "cls")]
-    args_model = _build_args_model(method, f"{weft_name}_WeftArgs")
+    args_model = _build_args_model(method, f"{weft_name}_WeftArgs", is_strand=False)
 
     return Weft(
         name=weft_name,

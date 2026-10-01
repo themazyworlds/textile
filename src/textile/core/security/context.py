@@ -1,14 +1,34 @@
-"""
-Textile Core Layer 1 - Context & OTP Security Engine.
-Defines dynamic Visual OTP security policy and single-use challenge verification.
-"""
-
+import contextlib
 import hashlib
 import secrets
+import shutil
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def _display_visual_otp_osd(otp: str, strand_name: str) -> None:
+    """Display single-use Visual OTP code on screen for human verification."""
+    notify_bin = shutil.which("notify-send")
+    if notify_bin:
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.Popen(
+                [
+                    notify_bin,
+                    "-u",
+                    "critical",
+                    "-t",
+                    "30000",
+                    "-a",
+                    "Textile Security",
+                    f"Textile Security OTP: {otp}",
+                    f"Strand: '{strand_name}'\n4-Digit Code: [{otp}]",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
 
 @dataclass(slots=True)
@@ -127,9 +147,11 @@ class OTPChallengeRequiredError(PermissionError):
         self.otp = otp
         self.strand_name = strand_name
         self.args_hash = args_hash
+        # CRITICAL: Do NOT leak self.otp in string representation returned to LLM tool context!
         super().__init__(
             f"OTP Confirmation Required for '{strand_name}'. "
-            f"Display OTP on screen: [{otp}]. Confirm by passing otp='{otp}'."
+            f"A single-use 4-digit verification code has been displayed on the user's screen. "
+            f"Ask the user to read the 4-digit code off their screen and confirm by passing otp='<code_from_user>'."
         )
 
 
@@ -143,7 +165,8 @@ def verify_security_policy(
 
     - OBSERVE and INTERACT strands execute freely.
     - MUTATE, PRIVILEGED, and SYSTEM_EXEC strands require a single-use 4-digit OTP.
-    - If OTP is missing/invalid, generates an OTP and raises OTPChallengeRequiredError.
+    - If OTP is missing/invalid, generates an OTP, displays on-screen OSD notification,
+      and raises OTPChallengeRequiredError.
     """
     tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
 
@@ -160,6 +183,8 @@ def verify_security_policy(
             f"Security Policy Violation: Invalid or expired OTP code for strand '{strand_name}'."
         )
 
-    # No OTP provided: generate/fetch OTP challenge
+    # No OTP provided: generate/fetch OTP challenge and display visually on desktop screen
     challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)
+    _display_visual_otp_osd(challenge_code, strand_name)
     raise OTPChallengeRequiredError(otp=challenge_code, strand_name=strand_name, args_hash=args_hash)
+

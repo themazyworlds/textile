@@ -222,8 +222,13 @@ class Loom:
             return f"Error: Strand '{strand_name}' not found or no provider yarn is enabled."
 
         strand, _, handler = resolved
-        args_json = json.dumps(args, sort_keys=True)
-        verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=otp)
+        clean_args = dict(args)
+        effective_otp = otp or clean_args.pop("otp", None)
+        if isinstance(effective_otp, str):
+            effective_otp = effective_otp.strip()
+
+        args_json = json.dumps(clean_args, sort_keys=True)
+        verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=effective_otp)
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]

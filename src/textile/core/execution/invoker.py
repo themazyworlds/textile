@@ -42,6 +42,7 @@ def _build_args_model(
     method: Callable,
     model_name: str,
     param_docs: dict[str, str] | None = None,
+    is_strand: bool = True,
 ) -> type[BaseModel] | None:
     """Helper to synthesize Pydantic BaseModel for method parameters."""
     sig = inspect.signature(method)
@@ -61,6 +62,15 @@ def _build_args_model(
             fields[p_name] = (p_type, Field(..., description=p_desc))
         else:
             fields[p_name] = (p_type, Field(default=param.default, description=p_desc))
+
+    if is_strand:
+        fields["otp"] = (
+            str | None,
+            Field(
+                default=None,
+                description="Optional single-use 4-digit Visual OTP confirmation code displayed on user screen",
+            ),
+        )
 
     return create_model(model_name, **fields) if fields else None
 
@@ -97,6 +107,7 @@ def _create_invoker(
         val_err, coerced = _validate_and_coerce(args)
         if val_err:
             return val_err
+        coerced.pop("otp", None)
         if config.isolated and isolated_runner is not None:
             return await asyncio.to_thread(
                 isolated_runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier
@@ -130,6 +141,8 @@ def execute_direct(yarn: Any, strand_name: str, args: dict[str, Any]) -> str:
     )
     if val_err:
         return val_err
+
+    coerced.pop("otp", None)
 
     target_func = strand.raw_handler or strand.handler
     if target_func is None:

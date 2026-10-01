@@ -93,6 +93,16 @@ class TestArchitectureHardening(unittest.TestCase):
         with self.assertRaises(StrandCollisionError):
             test_loom.initialize()
 
+    def test_otp_code_hidden_from_llm_string_output(self):
+        from textile.core.security.context import OTPChallengeRequiredError
+
+        err = OTPChallengeRequiredError(otp="3599", strand_name="hyprland_exit_session", args_hash="hash123")
+        err_str = str(err)
+
+        # Ensure the OTP code '3599' is NOT leaked in the error text returned to the LLM
+        self.assertNotIn("3599", err_str)
+        self.assertIn("A single-use 4-digit verification code has been displayed on the user's screen", err_str)
+
 
 if __name__ == "__main__":
     unittest.main()
