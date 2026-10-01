@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS
+from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
 from textile.core.execution.strands import Strand, Weft
 from textile.core.execution.yarn import Yarn
@@ -63,6 +63,16 @@ class Loom:
     ) -> None:
         """Register a single yarn's strands and wefts into Loom lookup maps."""
         for strand in yarn.get_strands():
+            if strand.name in new_strands and not strand.capability:
+                existing_yarn = new_strand_map[strand.name]
+                if existing_yarn.name != yarn.name:
+                    logger.warning(
+                        "loom.strand_collision",
+                        strand=strand.name,
+                        existing_yarn=existing_yarn.name,
+                        new_yarn=yarn.name,
+                    )
+                    raise StrandCollisionError(strand.name, existing_yarn.name, yarn.name)
             new_strands[strand.name] = strand
             new_strand_map[strand.name] = yarn
             if strand.capability:

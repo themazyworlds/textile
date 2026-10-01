@@ -11,6 +11,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
@@ -299,12 +300,12 @@ class BubblewrapSandbox:
     ) -> list[str]:
         """Wrap command in a bwrap sandbox container tailored to the capability tier."""
         bwrap_path = shutil.which("bwrap")
-        if not bwrap_path:
-            return cmd
-
         tier_upper = tier.upper()
         if "PRIVILEGED" in tier_upper:
             return cmd
+
+        if not bwrap_path:
+            raise SandboxUnavailableError("bwrap binary not found in system PATH.")
 
         is_writable = "MUTATE" in tier_upper
         ws = Path(workspace_root or os.getcwd()).resolve()

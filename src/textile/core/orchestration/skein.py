@@ -7,7 +7,6 @@ import importlib
 import importlib.util
 import inspect
 import json
-import shutil
 import sys
 import threading
 from importlib.metadata import entry_points
@@ -51,27 +50,27 @@ class Skein:
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
-    def ensure_preinstalled_yarns_seeded(self) -> None:
-        """Seed and sync pre-installed Yarns to ~/.config/textile/yarns/."""
+    def load_bundled_yarns(self) -> None:
+        """Discover and load pre-installed Yarns directly from the textile.yarns package."""
         with contextlib.suppress(*SAFE_EXCEPTIONS):
-            if not self._user_yarns_dir.exists():
-                self._user_yarns_dir.mkdir(parents=True, exist_ok=True)
-            yarns_seed_root = Path(textile.yarns.__file__).parent
-            if not yarns_seed_root.exists():
+            yarns_root = Path(textile.yarns.__file__).parent
+            if not yarns_root.exists():
                 return
-            for yarn_dir in yarns_seed_root.iterdir():
-                if yarn_dir.is_dir() and not yarn_dir.name.startswith("_"):
-                    dest = self._user_yarns_dir / yarn_dir.name
-                    if dest.exists():
-                        shutil.rmtree(dest)
-                    shutil.copytree(yarn_dir, dest)
+            for py_file in yarns_root.rglob("*.py"):
+                if py_file.name.startswith("_"):
+                    continue
+                try:
+                    rel_stem = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
+                    mod_name = f"textile.yarns.{rel_stem}"
+                    mod = importlib.import_module(mod_name)
+                    self._register_module_yarns(mod)
+                except SAFE_EXCEPTIONS as e:
+                    logger.debug("skein.bundled_yarn_load_failed", path=str(py_file), error=str(e))
 
     def load_yarns(self) -> None:
-        """Discover and register all pre-installed, entrypoint, and custom Yarns from ~/.config/textile/yarns."""
-        self.ensure_preinstalled_yarns_seeded()
-
-        # 1. Load all Yarns from ~/.config/textile/yarns/ directory
-        self.load_user_yarns()
+        """Discover and register all pre-installed, entrypoint, and custom Yarns."""
+        # 1. Load bundled core Yarns directly from package directory
+        self.load_bundled_yarns()
 
         # 2. PEP 621 Entry Point Yarns
         with contextlib.suppress(*SAFE_EXCEPTIONS):
@@ -83,8 +82,11 @@ class Skein:
                         with self._lock:
                             self.all_yarns[instance.name] = instance
 
+        # 3. Load custom user Yarns from ~/.config/textile/yarns/ directory without wiping user changes
+        self.load_user_yarns()
+
     def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
-        """Discover and register Yarns from local directory."""
+        """Discover and register Yarns from local user directory."""
         target_dir = yarn_dir or self._user_yarns_dir
         if not target_dir.exists():
             return
@@ -189,7 +191,9 @@ class Skein:
     def _save_config(self) -> None:
         try:
             self._config_file.parent.mkdir(parents=True, exist_ok=True)
-            self._config_file.write_text(json.dumps({"disabled_yarns": list(self._disabled_yarns)}, indent=2))
+            tmp_file = self._config_file.with_suffix(".tmp")
+            tmp_file.write_text(json.dumps({"disabled_yarns": list(self._disabled_yarns)}, indent=2))
+            tmp_file.replace(self._config_file)
         except (OSError, TypeError) as e:
             logger.warning("skein.config_save_failed", path=str(self._config_file), error=str(e))
 

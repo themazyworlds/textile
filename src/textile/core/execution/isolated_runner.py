@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.execution.invoker import execute_direct
 from textile.core.execution.strands import CapabilityTier
 from textile.core.security.sandbox import BubblewrapSandbox, LandlockSandbox
@@ -117,17 +118,18 @@ def execute_isolated_strand(
         tier_str=tier_str,
         cwd=cwd,
     )
-    cmd = _build_worker_command(spec)
-
     env = dict(os.environ)
     python_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
 
     try:
+        cmd = _build_worker_command(spec)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False, env=env)
         return _parse_worker_output(res, strand_name)
     except subprocess.TimeoutExpired:
         return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
+    except SandboxUnavailableError as e:
+        return f"Error executing isolated strand '{strand_name}': {e.message}"
     except (subprocess.SubprocessError, OSError, ValueError) as e:
         return f"Error executing isolated strand '{strand_name}': {e}"
 

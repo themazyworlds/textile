@@ -77,3 +77,31 @@ class YarnNotFoundError(TextileError):
             code="ERR_YARN_NOT_FOUND",
             details={"yarn": yarn_name},
         )
+
+
+class SandboxUnavailableError(TextileError):
+    """Raised when process isolation is requested or required, but sandbox tools (bwrap) are unavailable."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            message=f"Sandbox isolation unavailable: {reason}",
+            hint="Install 'bubblewrap' (bwrap) or run in an environment with container namespace support.",
+            code="ERR_SANDBOX_UNAVAILABLE",
+        )
+
+
+class StrandCollisionError(TextileError):
+    """Raised when two Yarns register identical strand names without a capability contract."""
+
+    def __init__(self, strand_name: str, existing_yarn: str, new_yarn: str):
+        msg = (
+            f"Strand collision detected: '{strand_name}' registered by both "
+            f"'{existing_yarn}' and '{new_yarn}' without a capability contract."
+        )
+        super().__init__(
+            message=msg,
+            hint="Declare explicit 'capability' on both strands to allow layer-based overrides.",
+            code="ERR_STRAND_COLLISION",
+            details={"strand": strand_name, "existing_yarn": existing_yarn, "new_yarn": new_yarn},
+        )
+

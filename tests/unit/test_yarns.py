@@ -150,8 +150,13 @@ class TestYarnArchitecture(unittest.TestCase):
         # Execution of overridden low_app strand should route to high_cap_yarn
         res = loom.execute_sync("low_app", {})
         self.assertEqual(res, "high_out")
+        skein.unregister_yarn("low_cap_yarn")
+        skein.unregister_yarn("high_cap_yarn")
+        loom._rebuild_active()
 
     def test_name_collision_without_capability_not_overridden(self):
+        from textile.core.definitions.errors import StrandCollisionError
+
         class YarnNoCapA(Yarn):
             def __init__(self):
                 super().__init__(manifest=YarnManifest(name="nocap_a", layer=10))
@@ -176,11 +181,14 @@ class TestYarnArchitecture(unittest.TestCase):
         pb = YarnNoCapB()
         skein.register_yarn(pa)
         skein.register_yarn(pb)
-        loom._rebuild_active()
 
-        strand_a = pa.get_strands()[0]
-        is_over_a, _, _ = loom.get_strand_override_status(strand_a, pa)
-        self.assertFalse(is_over_a, "Strands without capability contracts must never be flagged as overridden.")
+        try:
+            with self.assertRaises(StrandCollisionError):
+                loom._rebuild_active()
+        finally:
+            skein.unregister_yarn("nocap_a")
+            skein.unregister_yarn("nocap_b")
+            loom._rebuild_active()
 
     def test_canvas_yarn_and_mood(self):
         from textile.yarns.canvas.canvas import Canvas

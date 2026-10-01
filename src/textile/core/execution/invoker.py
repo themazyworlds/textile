@@ -3,6 +3,7 @@ Textile Core Strand Invoker & Argument Synthesis Factory.
 """
 
 import asyncio
+import concurrent.futures
 import inspect
 import json
 import logging
@@ -113,24 +114,55 @@ def _create_invoker(
 
 
 def execute_direct(yarn: Any, strand_name: str, args: dict[str, Any]) -> str:
-    """Execute raw handler or bound handler directly without validation or isolation wrapper."""
+    """Execute raw or bound strand handler directly with unified validation and async resolution."""
     strands = getattr(yarn, "get_strands", lambda: [])()
     strand = next((s for s in strands if s.name == strand_name), None)
     if strand is None:
         yarn_name = getattr(yarn, "name", yarn.__class__.__name__)
         return f"Error: Strand '{strand_name}' not implemented in yarn '{yarn_name}'."
 
-    if strand.raw_handler is not None:
-        raw_h: Any = strand.raw_handler
-        sig = inspect.signature(raw_h)
-        try:
-            bound = sig.bind(**args)
-            res = raw_h(*bound.args, **bound.kwargs)
-        except TypeError:
-            res = raw_h(args)
-    elif strand.handler is not None:
-        res = strand.handler(args)
-    else:
+    val_err, coerced = validate_strand_arguments(
+        strand_name,
+        args,
+        schema_model=strand.args_schema,
+        parameters=strand.parameters,
+        required=strand.required,
+    )
+    if val_err:
+        return val_err
+
+    target_func = strand.raw_handler or strand.handler
+    if target_func is None:
         return "ok"
 
-    return _format_handler_result(res)
+    try:
+        is_coro_func = inspect.iscoroutinefunction(target_func)
+        if strand.raw_handler is not None:
+            raw_h: Any = strand.raw_handler
+            sig = inspect.signature(raw_h)
+            try:
+                bound = sig.bind(**coerced)
+                res = raw_h(*bound.args, **bound.kwargs)
+            except TypeError:
+                res = raw_h(coerced)
+        else:
+            res = strand.handler(coerced)
+
+        if inspect.iscoroutine(res) or is_coro_func:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    res = pool.submit(
+                        asyncio.run, res if inspect.iscoroutine(res) else target_func(**coerced)
+                    ).result()
+            else:
+                res = asyncio.run(res if inspect.iscoroutine(res) else target_func(**coerced))
+
+        return _format_handler_result(res)
+    except STRAND_EXEC_ERRORS as e:
+        return f"Error executing strand '{strand_name}': {e}"
+
