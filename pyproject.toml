@@ -59,6 +59,7 @@ source-include = ["tests/**", "AGENTS.md"]
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
@@ -97,6 +98,10 @@ pythonPlatform = "Linux"
 min_confidence = 80
 paths = ["src/textile"]
 exclude = ["tests/"]
+
+[tool.bandit]
+skips = ["B404", "B603", "B607"]
+targets = ["src/textile"]
 ignore_decorators = [
     "@mcp.*",
     "@app.*",
