@@ -51,9 +51,13 @@ class FabricInstructions:
             "  * MUTATE: State-mutating file operations and process modifications (requires Visual OTP).\n"
             "  * PRIVILEGED: High-impact system operations (pkexec, package installations) (requires Visual OTP).\n"
             "  * SYSTEM_EXEC: Lifecycle session operations (UWSM stop, system reboot) (requires Visual OTP).\n"
-            "- Visual OTP Confirmation:\n"
-            "  * State-mutating actions display a single-use 4-digit OTP code on the user's screen.\n"
-            "  * Confirm by providing the 4-digit code in the execution call.\n\n"
+            "- Visual OTP Confirmation Protocol:\n"
+            "  * ALWAYS call the target tool FIRST without asking the user for a code.\n"
+            "  * Invoking a sensitive tool automatically generates and displays a single-use 4-digit OTP code "
+            "on the user's desktop screen.\n"
+            "  * ONLY AFTER the tool call returns an OTP challenge error should you ask the user for "
+            "the code shown on their screen.\n"
+            "  * Once the user states the code, re-call the tool passing `otp='<code>'`.\n\n"
         )
         header = (
             "Textile Linux Desktop Automation & Intelligence Fabric Active.\n"
