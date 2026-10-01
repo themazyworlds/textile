@@ -24,7 +24,7 @@ def _display_visual_otp_osd(otp: str, strand_name: str) -> None:
                     "-a",
                     "Textile Security",
                     f"Textile Security OTP: {otp}",
-                    f"Strand: '{strand_name}'\n4-Digit Code: [{otp}]",
+                    f"Strand: '{strand_name}'\nCode: {otp}",
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
