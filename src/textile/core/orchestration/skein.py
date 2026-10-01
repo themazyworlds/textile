@@ -7,6 +7,7 @@ import importlib
 import importlib.util
 import inspect
 import json
+import re
 import sys
 import threading
 from importlib.metadata import entry_points
@@ -61,10 +62,24 @@ class Skein:
                 if py_file.name.startswith("_"):
                     continue
                 try:
+                    resolved_file = py_file.resolve()
+                    resolved_root = yarns_root.resolve()
+                    if not resolved_file.is_relative_to(resolved_root):
+                        logger.warning("skein.yarn_path_traversal_blocked", path=str(py_file))
+                        continue
+
                     rel_stem = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
+                    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$", rel_stem):
+                        logger.warning("skein.invalid_module_name_blocked", name=rel_stem)
+                        continue
+
                     mod_name = f"textile.yarns.{rel_stem}"
-                    mod = importlib.import_module(mod_name)
-                    self._register_module_yarns(mod, override=True)
+                    spec = importlib.util.spec_from_file_location(mod_name, py_file)
+                    if spec and spec.loader:
+                        mod = importlib.util.module_from_spec(spec)
+                        sys.modules[mod_name] = mod
+                        spec.loader.exec_module(mod)
+                        self._register_module_yarns(mod, override=True)
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.bundled_yarn_load_failed", path=str(py_file), error=str(e))
 

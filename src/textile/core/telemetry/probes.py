@@ -4,7 +4,9 @@ Provides low-level OS requirement checking for binaries, device nodes, sockets, 
 """
 
 import importlib
+import importlib.util
 import os
+import re
 import shutil
 import subprocess
 from enum import StrEnum
@@ -81,16 +83,25 @@ def check_socket(socket_path: str, optional: bool = False) -> DependencyCheck:
 
 def check_python_module(module_name: str, optional: bool = False) -> DependencyCheck:
     """Check if a Python module can be imported in current environment."""
-    try:
-        importlib.import_module(module_name)
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$", module_name):
         return DependencyCheck(
             dep_type=DependencyType.PYTHON_MODULE,
             target=module_name,
-            is_satisfied=True,
-            details=f"Python module '{module_name}' imported successfully",
+            is_satisfied=False,
+            details=f"Invalid Python module name format: '{module_name}'",
             is_optional=optional,
         )
-    except ImportError as e:
+    try:
+        spec = importlib.util.find_spec(module_name)
+        satisfied = spec is not None and spec.loader is not None
+        return DependencyCheck(
+            dep_type=DependencyType.PYTHON_MODULE,
+            target=module_name,
+            is_satisfied=satisfied,
+            details=f"Python module '{module_name}' " + ("imported successfully" if satisfied else "not found"),
+            is_optional=optional,
+        )
+    except (ImportError, ValueError, AttributeError) as e:
         return DependencyCheck(
             dep_type=DependencyType.PYTHON_MODULE,
             target=module_name,

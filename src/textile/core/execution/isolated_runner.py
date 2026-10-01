@@ -9,6 +9,7 @@ import importlib.util
 import inspect
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -145,7 +146,15 @@ def _load_target_module(target_spec: str) -> Any:
         sys.modules[mod_name] = mod
         spec.loader.exec_module(mod)
         return mod
-    return importlib.import_module(target_spec)
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$", target_spec):
+        raise ValueError(f"Invalid target module specification: {target_spec}")
+    spec = importlib.util.find_spec(target_spec)
+    if not spec or not spec.loader:
+        raise ImportError(f"Cannot find module spec for: {target_spec}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[target_spec] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _setup_worker_sys_path() -> None:
