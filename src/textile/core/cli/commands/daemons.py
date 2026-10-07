@@ -1,6 +1,8 @@
 import contextlib
+import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -15,6 +17,25 @@ from textile.core.orchestration.twill import run_twill
 def cmd_twill():
     """Launch official Twill / MCP stdio server."""
     run_twill()
+
+
+def _resolve_yarn_venv(agent_dir: Path) -> Path | None:
+    """Locate the nearest or sibling virtualenv for a yarn agent."""
+    curr = agent_dir
+    while curr != curr.parent:
+        if (curr / ".venv").exists():
+            return curr / ".venv"
+        curr = curr.parent
+
+    candidates = (
+        agent_dir / ".venv",
+        Path.home() / "Projects" / "textile-yarns" / ".venv",
+        Path.home() / ".config" / "textile" / "yarns" / ".venv",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 @app.command("weave")
@@ -39,8 +60,16 @@ def cmd_weave(
                 cmd.append("--text")
             cmd.append("agent.py")
 
+            env = dict(os.environ)
+            yarn_venv = _resolve_yarn_venv(agent_file.parent)
+            if yarn_venv:
+                env["VIRTUAL_ENV"] = str(yarn_venv)
+                env["PATH"] = f"{yarn_venv / 'bin'}:{env.get('PATH', '')}"
+            else:
+                env.pop("VIRTUAL_ENV", None)
+
             with contextlib.suppress(KeyboardInterrupt):
-                subprocess.run(cmd, cwd=str(agent_file.parent), check=False)
+                subprocess.run(cmd, cwd=str(agent_file.parent), env=env, check=False)
             return
 
     console.print("  [bold red]Error:[/bold red] Weave voice companion is not installed or available.")
