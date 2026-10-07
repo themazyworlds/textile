@@ -94,6 +94,38 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
     return f"Error: Strand '{strand_name}' isolated worker process crashed ({err_msg}). Host process preserved."
 
 
+def _build_isolated_pythonpath(yarn: Any, cwd: str, existing_pythonpath: str = "") -> str:
+    """Build unified PYTHONPATH containing textile root, yarn paths, and site-packages."""
+    import textile  # noqa: PLC0415
+
+    textile_pkg_dir = str(Path(textile.__file__).resolve().parent.parent)
+    paths_to_add = [textile_pkg_dir, cwd]
+    for p in sys.path:
+        if p and "site-packages" in p and p not in paths_to_add:
+            paths_to_add.append(p)
+
+    with contextlib.suppress(Exception):
+        file_path = inspect.getfile(yarn.__class__)
+        if file_path:
+            p = Path(file_path).resolve()
+            paths_to_add.extend([str(p.parent), str(p.parent.parent)])
+            curr = p.parent
+            while curr != curr.parent:
+                venv_sp = curr / ".venv" / "lib"
+                if venv_sp.exists():
+                    for sp in venv_sp.glob("python*/site-packages"):
+                        paths_to_add.append(str(sp))
+                    break
+                curr = curr.parent
+
+    all_paths = [p for p in paths_to_add if p]
+    if existing_pythonpath:
+        for p in existing_pythonpath.split(":"):
+            if p and p not in all_paths:
+                all_paths.append(p)
+    return ":".join(all_paths)
+
+
 def execute_isolated_strand(
     yarn: Any,
     strand_name: str,
@@ -115,36 +147,7 @@ def execute_isolated_strand(
         cwd=cwd,
     )
     env = os.environ.copy()
-    import textile  # noqa: PLC0415
-
-    textile_pkg_dir = str(Path(textile.__file__).resolve().parent.parent)
-    paths_to_add = [textile_pkg_dir, cwd]
-    for p in sys.path:
-        if p and "site-packages" in p and p not in paths_to_add:
-            paths_to_add.append(p)
-
-    with contextlib.suppress(Exception):
-        file_path = inspect.getfile(yarn.__class__)
-        if file_path:
-            p = Path(file_path).resolve()
-            paths_to_add.append(str(p.parent))
-            paths_to_add.append(str(p.parent.parent))
-            curr = p.parent
-            while curr != curr.parent:
-                venv_sp = curr / ".venv" / "lib"
-                if venv_sp.exists():
-                    for sp in venv_sp.glob("python*/site-packages"):
-                        paths_to_add.append(str(sp))
-                    break
-                curr = curr.parent
-
-    existing_pythonpath = env.get("PYTHONPATH", "")
-    all_paths = [p for p in paths_to_add if p]
-    if existing_pythonpath:
-        for p in existing_pythonpath.split(":"):
-            if p and p not in all_paths:
-                all_paths.append(p)
-    env["PYTHONPATH"] = ":".join(all_paths)
+    env["PYTHONPATH"] = _build_isolated_pythonpath(yarn, cwd, env.get("PYTHONPATH", ""))
 
     try:
         cmd = _build_worker_command(spec, env=env)

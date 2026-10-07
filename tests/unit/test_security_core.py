@@ -5,6 +5,7 @@ Verifies single-use OTP generation, consumption, action-binding, and policy enfo
 
 import hashlib
 import json
+from typing import Any
 
 import pytest
 
@@ -91,15 +92,39 @@ class TestSecurityPolicyGate:
 
     @pytest.mark.asyncio
     async def test_loom_unmasked_error_propagation(self):
+        from textile import Strand, Yarn, YarnManifest
         from textile.core.orchestration.loom import loom
+        from textile.core.orchestration.skein import skein
 
+        class MockElevatedYarn(Yarn):
+            def __init__(self):
+                manifest = YarnManifest(name="mock_elevated", layer=10, description="Mock Yarn")
+                super().__init__(manifest=manifest)
+
+            def get_strands(self):
+                async def _dummy_install(args: Any):
+                    pkg = args.get("packages") if isinstance(args, dict) else args
+                    return f"Error: Package '{pkg}' failed to install."
+
+                return [
+                    Strand(
+                        name="mock_privileged_install",
+                        description="Mock install",
+                        tier=CapabilityTier.PRIVILEGED,
+                        handler=_dummy_install,
+                    )
+                ]
+
+        mock_yarn = MockElevatedYarn()
+        skein.register_yarn(mock_yarn)
         loom.initialize()
-        # Mock an elevated strand returning an error string after valid OTP verification
+        loom._rebuild_active()
+
         args_json = json.dumps({"packages": "invalid_pkg_123"})
         args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
-        otp = global_otp_manager.create_challenge("packagekit_install", args_hash)
+        otp = global_otp_manager.create_challenge("mock_privileged_install", args_hash)
 
-        res = await loom.execute("packagekit_install", {"packages": "invalid_pkg_123"}, otp=otp)
+        res = await loom.execute("mock_privileged_install", {"packages": "invalid_pkg_123"}, otp=otp)
         assert "[OTP Code Verified & Accepted]" in res
-        assert "Error" in res or "not" in res
+        assert "Package 'invalid_pkg_123' failed to install." in res
 

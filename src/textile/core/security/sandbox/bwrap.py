@@ -137,15 +137,13 @@ class BubblewrapSandbox:
         except (OSError, subprocess.SubprocessError):
             return False
 
-    @classmethod
+    @staticmethod
     def wrap_command(
-        cls,
         cmd: list[str],
         tier: str,
         *,
         env: dict[str, str] | None = None,
         workspace_root: str | Path | None = None,
-        allow_network: bool = False,
         resources: list[str] | None = None,
     ) -> list[str]:
         """Wrap command in a bwrap sandbox container tailored to the capability tier."""
@@ -164,6 +162,7 @@ class BubblewrapSandbox:
         container_home = os.path.join("/", "home")
         uv_cache = os.path.join(container_tmp, "uv_cache")
 
+        allow_network = bool(resources and any("net" in str(r).lower() for r in resources))
         builder = (
             BubblewrapBuilder(bwrap_path)
             .bind_system_base()
