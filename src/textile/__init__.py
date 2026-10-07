@@ -3,6 +3,11 @@ Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 """
 
 
+import contextlib
+
+with contextlib.suppress(Exception):
+    import textile.core.definitions.shims  # noqa: F401, PLC0415
+
 from textile.core.definitions.errors import (
     SandboxUnavailableError,
     StrandCollisionError,
