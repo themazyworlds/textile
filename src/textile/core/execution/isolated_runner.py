@@ -52,30 +52,26 @@ def _resolve_target_spec(yarn: Any) -> str:
     return target_spec
 
 
-def _build_worker_command(spec: _WorkerExecutionSpec) -> list[str]:
-    """Construct uv run subprocess command with sandbox wrapping if applicable."""
-    cmd = [spec.uv_bin, "run", "--no-project", "--no-sync", "--quiet"]
-    for dep in spec.yarn.get_python_dependencies():
-        cmd.extend(["--with", str(dep)])
-
+def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None = None) -> list[str]:
+    """Construct isolated subprocess command with sandbox wrapping if applicable."""
     target_spec = _resolve_target_spec(spec.yarn)
-    cmd.extend(
-        [
-            "python",
-            "-c",
-            "from textile.core.execution.isolated_runner import main; main()",
-            target_spec,
-            spec.yarn.__class__.__name__,
-            spec.strand_name,
-            json.dumps(spec.args),
-            spec.tier_str,
-        ]
-    )
+    cmd = [
+        sys.executable,
+        "-c",
+        "from textile.core.execution.isolated_runner import main; main()",
+        target_spec,
+        spec.yarn.__class__.__name__,
+        spec.strand_name,
+        json.dumps(spec.args),
+        spec.tier_str,
+    ]
 
     if BubblewrapSandbox.is_available() and spec.tier_str.upper() != "PRIVILEGED":
         matching_strand = next((s for s in spec.yarn.get_strands() if s.name == spec.strand_name), None)
         res_list = matching_strand.resources if matching_strand else getattr(spec.yarn.manifest, "resources", [])
-        cmd = BubblewrapSandbox.wrap_command(cmd, tier=spec.tier_str, workspace_root=spec.cwd, resources=res_list)
+        cmd = BubblewrapSandbox.wrap_command(
+            cmd, tier=spec.tier_str, env=env, workspace_root=spec.cwd, resources=res_list
+        )
 
     return cmd
 
@@ -84,16 +80,17 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
     """Parse JSON stdout response from isolated worker process."""
     out = res.stdout.strip()
     err = res.stderr.strip()
-    if res.returncode == 0 and out:
+    if out:
         try:
             payload = json.loads(out)
             if payload.get("success"):
                 return _format_handler_result(payload.get("result"))
             return f"Error: {payload.get('error', 'Execution failed')}"
         except (json.JSONDecodeError, ValueError, TypeError):
-            return out
+            if res.returncode == 0:
+                return out
 
-    err_msg = err or f"Exit code {res.returncode}"
+    err_msg = err or out or f"Exit code {res.returncode}"
     return f"Error: Strand '{strand_name}' isolated worker process crashed ({err_msg}). Host process preserved."
 
 
@@ -104,10 +101,8 @@ def execute_isolated_strand(
     timeout: float | None = 300.0,
     tier: CapabilityTier | str = CapabilityTier.INTERACT,
 ) -> str:
-    """Run a strand in an isolated ephemeral subprocess using `uv`."""
-    uv_bin = shutil.which("uv")
-    if not uv_bin:
-        return f"Error: `uv` binary required for isolated strand '{strand_name}' execution."
+    """Run a strand in an isolated ephemeral subprocess with sandbox confinement."""
+    uv_bin = shutil.which("uv") or sys.executable
 
     tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
     cwd = str(Path.cwd())
@@ -120,11 +115,39 @@ def execute_isolated_strand(
         cwd=cwd,
     )
     env = os.environ.copy()
-    python_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{cwd}:{python_path}" if python_path else cwd
+    import textile  # noqa: PLC0415
+
+    textile_pkg_dir = str(Path(textile.__file__).resolve().parent.parent)
+    paths_to_add = [textile_pkg_dir, cwd]
+    for p in sys.path:
+        if p and "site-packages" in p and p not in paths_to_add:
+            paths_to_add.append(p)
+
+    with contextlib.suppress(Exception):
+        file_path = inspect.getfile(yarn.__class__)
+        if file_path:
+            p = Path(file_path).resolve()
+            paths_to_add.append(str(p.parent))
+            paths_to_add.append(str(p.parent.parent))
+            curr = p.parent
+            while curr != curr.parent:
+                venv_sp = curr / ".venv" / "lib"
+                if venv_sp.exists():
+                    for sp in venv_sp.glob("python*/site-packages"):
+                        paths_to_add.append(str(sp))
+                    break
+                curr = curr.parent
+
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    all_paths = [p for p in paths_to_add if p]
+    if existing_pythonpath:
+        for p in existing_pythonpath.split(":"):
+            if p and p not in all_paths:
+                all_paths.append(p)
+    env["PYTHONPATH"] = ":".join(all_paths)
 
     try:
-        cmd = _build_worker_command(spec)
+        cmd = _build_worker_command(spec, env=env)
         proc_timeout = None if (timeout is None or timeout <= 0) else timeout
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=proc_timeout, check=False, env=env)
         return _parse_worker_output(res, strand_name)

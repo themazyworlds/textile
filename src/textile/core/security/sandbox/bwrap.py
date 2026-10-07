@@ -143,6 +143,7 @@ class BubblewrapSandbox:
         cmd: list[str],
         tier: str,
         *,
+        env: dict[str, str] | None = None,
         workspace_root: str | Path | None = None,
         allow_network: bool = False,
         resources: list[str] | None = None,
@@ -156,6 +157,7 @@ class BubblewrapSandbox:
         if not bwrap_path:
             raise SandboxUnavailableError("bwrap binary not found in system PATH.")
 
+        target_env = env if env is not None else dict(os.environ)
         is_writable = "MUTATE" in tier_upper
         ws = Path(workspace_root or Path.cwd()).resolve()
         container_tmp = os.path.join("/", "tmp")
@@ -169,13 +171,25 @@ class BubblewrapSandbox:
             .bind_resources(resources)
             .set_namespaces(allow_network)
             .bind_workspace(ws, is_writable)
-            .set_env("PATH", os.environ.get("PATH", "/usr/bin:/bin"))
+            .set_env("PATH", target_env.get("PATH", "/usr/bin:/bin"))
             .set_env("UV_CACHE_DIR", uv_cache)
-            .set_env("PYTHONPATH", os.environ.get("PYTHONPATH"))
+            .set_env("PYTHONPATH", target_env.get("PYTHONPATH"))
         )
 
         _bind_user_config_and_share(builder)
         _bind_python_prefixes(builder)
         _bind_executable_dependencies(builder, cmd)
+
+        pythonpath = target_env.get("PYTHONPATH") or ""
+        if pythonpath:
+            for p in pythonpath.split(":"):
+                if p and Path(p).exists():
+                    p_res = str(Path(p).resolve())
+                    builder.args.extend(["--ro-bind-try", p_res, p_res])
+
+        for arg in cmd:
+            if arg.endswith(".py") or Path(arg).exists():
+                p_arg = Path(arg).resolve()
+                builder.args.extend(["--ro-bind-try", str(p_arg.parent), str(p_arg.parent)])
 
         return builder.build(cmd)
