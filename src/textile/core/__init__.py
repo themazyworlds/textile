@@ -4,9 +4,6 @@ Organized into 5 functional domains: orchestration, security, telemetry, executi
 """
 
 from textile.core.definitions import (
-    DependenciesManifest,
-    IntentNode,
-    IntentValidationError,
     LayerTier,
     PolicyViolationError,
     StrandNotFoundError,
@@ -52,11 +49,9 @@ from textile.core.telemetry import (
     ElasticEngine,
     EventFrame,
     EventUrgency,
-    SeamOrchestrator,
     SensoryTapestry,
     core_tapestry,
     elastic,
-    seams,
     sensory_tapestry,
 )
 
@@ -64,13 +59,10 @@ __all__ = [
     "AccessBoundaryError",
     "CapabilityTier",
     "CoreTapestry",
-    "DependenciesManifest",
     "ElasticEngine",
     "EventFrame",
     "EventOptions",
     "EventUrgency",
-    "IntentNode",
-    "IntentValidationError",
     "InvokerConfig",
     "LayerTier",
     "Loom",
@@ -79,7 +71,6 @@ __all__ = [
     "PendingOTP",
     "PolicyViolationError",
     "ScopedPath",
-    "SeamOrchestrator",
     "SensoryTapestry",
     "SessionProcessGuard",
     "Skein",
@@ -100,7 +91,6 @@ __all__ = [
     "global_otp_manager",
     "loom",
     "run_twill",
-    "seams",
     "sensory_tapestry",
     "skein",
     "strand",

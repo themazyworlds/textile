@@ -22,9 +22,9 @@ def _display_visual_otp_osd(otp: str, strand_name: str) -> None:
                     "-t",
                     "30000",
                     "-a",
-                    "Textile Security",
-                    f"Textile Security OTP: {otp}",
-                    f"Strand: '{strand_name}'\nCode: {otp}",
+                    "Textile",
+                    f"Textile Code: {otp}",
+                    f"Strand: {strand_name}",
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -139,7 +139,6 @@ class PolicyViolationError(PermissionError):
     """Raised when an operation violates security policy (e.g. invalid/expired OTP)."""
 
 
-
 class OTPChallengeRequiredError(PermissionError):
     """Raised when a MUTATE, PRIVILEGED, or SYSTEM_EXEC strand requires visual OTP confirmation."""
 
@@ -160,31 +159,33 @@ def verify_security_policy(
     strand_name: str,
     args_json: str = "",
     otp: str | None = None,
-) -> None:
+) -> bool:
     """Canonical security policy gate.
 
-    - OBSERVE and INTERACT strands execute freely.
+    - OBSERVE and INTERACT strands execute freely (returns False).
     - MUTATE, PRIVILEGED, and SYSTEM_EXEC strands require a single-use 4-digit OTP.
     - If OTP is missing/invalid, generates an OTP, displays on-screen OSD notification,
-      and raises OTPChallengeRequiredError.
+      and raises OTPChallengeRequiredError or PolicyViolationError.
+    - If OTP is valid and consumed, returns True.
     """
     tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
 
     if tier_val in ("observe", "interact"):
-        return
+        return False
 
     # Calculate deterministic hash of call arguments
     args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
 
     if otp:
         if global_otp_manager.verify_and_consume(otp, strand_name, args_hash):
-            return
+            return True
         raise PolicyViolationError(
-            f"Security Policy Violation: Invalid or expired OTP code for strand '{strand_name}'."
+            f"[Security Policy Violation - Invalid/Expired OTP] Invalid or expired OTP code for strand '{strand_name}'."
         )
 
     # No OTP provided: generate/fetch OTP challenge and display visually on desktop screen
     challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)
     _display_visual_otp_osd(challenge_code, strand_name)
     raise OTPChallengeRequiredError(otp=challenge_code, strand_name=strand_name, args_hash=args_hash)
+
 

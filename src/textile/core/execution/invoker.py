@@ -82,8 +82,7 @@ class InvokerConfig:
     args_model: type[BaseModel] | None
     params: dict[str, Any]
     req_list: list[str]
-    isolated: bool
-    timeout: float
+    timeout: float | None = 30.0
     tier: CapabilityTier = CapabilityTier.INTERACT
 
 
@@ -92,7 +91,7 @@ def _create_invoker(
     method: Callable,
     strand_name: str,
     config: InvokerConfig,
-    isolated_runner: Callable[..., str] | None = None,
+    runner: Callable[..., str] | None = None,
 ) -> Callable[[dict[str, Any]], Any]:
     """Create unified asynchronous execution invoker for a strand."""
 
@@ -108,9 +107,9 @@ def _create_invoker(
         if val_err:
             return val_err
         coerced.pop("otp", None)
-        if config.isolated and isolated_runner is not None:
+        if runner is not None:
             return await asyncio.to_thread(
-                isolated_runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier
+                runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier
             )
         try:
             if is_coro:

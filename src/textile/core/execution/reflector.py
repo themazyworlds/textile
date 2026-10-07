@@ -4,11 +4,14 @@ Converts @strand and @weft decorated methods on Yarn instances into Strand and W
 """
 
 import asyncio
+import importlib.util
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import platformdirs
 from pydantic import BaseModel
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
@@ -38,7 +41,6 @@ class StrandConfig:
     args_schema: type[BaseModel] | None = None
     parameters: dict[str, Any] | None = None
     required: list[str] | None = None
-    isolated: bool | None = None
     timeout: float = 30.0
     capability: str | None = None
     tier: CapabilityTier | str = CapabilityTier.INTERACT
@@ -57,16 +59,27 @@ __all__ = [
 ]
 
 
-def determine_isolation(yarn: Any, explicit_isolated: bool | None, tier_val: CapabilityTier) -> bool:
-    """Determine whether a strand requires process isolation based on explicit config or system tier."""
-    if explicit_isolated is not None:
-        return bool(explicit_isolated)
+def determine_isolation(yarn: Any, tier_val: CapabilityTier) -> bool:
+    """Determine whether a strand requires process isolation based on yarn dependencies or system tier."""
+    if tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) or detects_native_ffi(yarn):
+        return True
+
     deps = getattr(yarn, "get_python_dependencies", list)()
-    return bool(
-        deps
-        or tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC)
-        or detects_native_ffi(yarn)
-    )
+    if not deps:
+        return False
+
+    yarn_name = getattr(yarn, "name", None) or getattr(getattr(yarn, "manifest", None), "name", None)
+    if yarn_name:
+        venv_dir = Path(platformdirs.user_data_dir("textile")) / "yarns" / yarn_name / ".venv"
+        if venv_dir.exists():
+            return True
+
+    for dep in deps:
+        pkg_name = dep.split(">=")[0].split("==")[0].split("<=")[0].strip().replace("-", "_")
+        if importlib.util.find_spec(pkg_name) is None:
+            return True
+
+    return False
 
 
 def method_to_weft(_yarn: Any, method: Callable[..., Any]) -> Weft:
@@ -103,11 +116,10 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     tier_val = _parse_tier(getattr(method, "_strand_tier", CapabilityTier.INTERACT), strand_name)
 
     manifest_res = getattr(getattr(yarn, "manifest", None), "resources", [])
-    explicit_isolated = getattr(method, "_strand_isolated", None)
     strand_resources = getattr(method, "_strand_resources", None) or manifest_res
-    isolated = determine_isolation(yarn, explicit_isolated, tier_val)
 
-    timeout = getattr(method, "_strand_timeout", 30.0)
+    no_timeout = getattr(method, "_strand_no_timeout", False)
+    timeout = None if no_timeout else getattr(method, "_strand_timeout", 30.0)
 
     args_model = _build_args_model(method, f"{strand_name}_Args", param_docs)
     schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
@@ -121,11 +133,10 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
             args_model=args_model,
             params=params,
             req_list=req_list,
-            isolated=isolated,
             timeout=timeout,
             tier=tier_val,
         ),
-        isolated_runner=execute_isolated_strand,
+        runner=execute_isolated_strand if determine_isolation(yarn, tier_val) else None,
     )
 
     return Strand(
@@ -138,7 +149,6 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
         capability=strand_cap,
         args_schema=args_model,
         tier=tier_val,
-        isolated=isolated,
         resources=strand_resources,
     )
 
@@ -188,10 +198,9 @@ def build_dynamic_strand(
     **kwargs: Any,
 ) -> Strand:
     """Dynamically construct a Strand instance."""
+    kwargs.pop("isolated", None)
     cfg = config or StrandConfig(**kwargs)
     tier_val = _parse_tier(cfg.tier, name)
-    is_isolated = determine_isolation(yarn, cfg.isolated, tier_val)
-
     schema_model: type[BaseModel] | None = cfg.args_schema or (
         schema_to_model(name, cfg.parameters or {}, cfg.required or []) if cfg.parameters else None
     )
@@ -203,24 +212,27 @@ def build_dynamic_strand(
     manifest_res = getattr(getattr(yarn, "manifest", None), "resources", [])
     res_list = cfg.resources or manifest_res
 
+    use_isolation = determine_isolation(yarn, tier_val)
+    is_coro = inspect.iscoroutinefunction(handler)
+
     async def _safe_handler(args: dict[str, Any]) -> str:
         val_err, coerced = validate_strand_arguments(
             name, args, schema_model=schema_model, parameters=params, required=req_list
         )
         if val_err:
             return val_err
-        if is_isolated:
+        if use_isolation:
             return await asyncio.to_thread(
                 execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val
             )
         try:
-            if inspect.iscoroutinefunction(handler):
+            if is_coro:
                 res = await handler(coerced)
             else:
                 res = await asyncio.to_thread(handler, coerced)
             return _format_handler_result(res)
         except SAFE_EXCEPTIONS as e:
-            return f"Error executing strand '{name}': {e}"
+            return f"[Operational Failure] Strand '{name}' error: {e}"
 
     return Strand(
         name=name,
@@ -232,6 +244,5 @@ def build_dynamic_strand(
         capability=cfg.capability,
         args_schema=schema_model,
         tier=tier_val,
-        isolated=is_isolated,
         resources=res_list,
     )

@@ -1,3 +1,0 @@
-"""
-Textile Capability Yarns Package.
-"""

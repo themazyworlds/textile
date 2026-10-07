@@ -7,16 +7,19 @@ import importlib
 import importlib.util
 import inspect
 import json
-import re
+import shutil
+import subprocess
 import sys
 import threading
+import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
-import textile.yarns
+import platformdirs
+from pydantic import BaseModel
+
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
-from textile.core.definitions.intent import IntentNode
 from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
@@ -25,7 +28,133 @@ from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
 
-__all__ = ["PolicyViolationError", "Skein", "skein"]
+__all__ = ["PolicyViolationError", "Skein", "YarnVenvManager", "skein", "yarn_venv_manager"]
+
+
+def _format_toml_val(val: Any) -> str:
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, str):
+        escaped = val.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+        return f'"{escaped}"'
+    if isinstance(val, (list, tuple, set)):
+        items = ", ".join(_format_toml_val(x) for x in val)
+        return f"[{items}]"
+    if isinstance(val, dict):
+        items = ", ".join(f"{k} = {_format_toml_val(v)}" for k, v in val.items())
+        return f"{{{items}}}"
+    return f'"{str(val)}"'
+
+
+def _dumps_toml(data: dict[str, Any]) -> str:
+    lines: list[str] = [
+        "# Textile User Configuration & Yarn Overrides",
+        "# Location: ~/.config/textile/settings.toml",
+        "",
+    ]
+    top_level = [f"{k} = {_format_toml_val(v)}" for k, v in data.items() if not isinstance(v, dict)]
+    if top_level:
+        lines.extend(top_level)
+        lines.append("")
+
+    # 2. Table sections
+    for section, table in data.items():
+        if isinstance(table, dict):
+            lines.append(f"[{section}]")
+            for k, v in table.items():
+                lines.append(f"{k} = {_format_toml_val(v)}")
+            lines.append("")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+class YarnVenvManager:
+    """Manages isolated virtual environments for individual Yarns using platformdirs and uv."""
+
+    def __init__(self, base_dir: Path | None = None):
+        self.base_dir = base_dir or (Path(platformdirs.user_data_dir("textile")) / "yarns")
+
+    def get_venv_path(self, yarn_name: str) -> Path:
+        """Get the isolated virtual environment path for a yarn."""
+        return self.base_dir / yarn_name / ".venv"
+
+    def get_python_executable(self, yarn_name: str) -> Path:
+        """Get path to the python interpreter in the yarn's venv."""
+        venv_dir = self.get_venv_path(yarn_name)
+        python_bin = venv_dir / "bin" / "python"
+        if python_bin.exists():
+            return python_bin
+        return Path(sys.executable)
+
+    def provision_venv(self, yarn_name: str, dependencies: list[str] | None = None) -> Path:
+        """Provision a micro-venv for a yarn using uv venv and install dependencies."""
+        venv_dir = self.get_venv_path(yarn_name)
+        if not venv_dir.exists():
+            venv_dir.parent.mkdir(parents=True, exist_ok=True)
+            uv_bin = shutil.which("uv")
+            if uv_bin:
+                subprocess.run([uv_bin, "venv", str(venv_dir)], check=True, capture_output=True)
+
+        if dependencies and venv_dir.exists():
+            uv_bin = shutil.which("uv")
+            python_bin = venv_dir / "bin" / "python"
+            if uv_bin and python_bin.exists():
+                cmd = [uv_bin, "pip", "install", "--python", str(python_bin), *dependencies]
+                subprocess.run(cmd, check=True, capture_output=True)
+
+        return venv_dir
+
+
+yarn_venv_manager = YarnVenvManager()
+
+
+def get_yarn_search_paths(config_dir: Path | None = None) -> list[Path]:
+    """Retrieve ordered list of filesystem search paths for yarn discovery using platformdirs."""
+    import os  # noqa: PLC0415
+
+    paths: list[Path] = []
+
+    # 1. Explicit environment variable override
+    env_paths = os.environ.get("TEXTILE_YARN_PATH")
+    if env_paths:
+        for p in env_paths.split(":"):
+            if p.strip():
+                paths.append(Path(p.strip()).expanduser().resolve())
+
+    # 2. User custom / override directory (~/.config/textile/yarns)
+    user_config = config_dir or (Path(platformdirs.user_config_dir("textile")) / "yarns")
+    paths.append(user_config.expanduser().resolve())
+
+    # 3. User installed plugins directory (~/.local/share/textile/yarns)
+    user_data = Path(platformdirs.user_data_dir("textile")) / "yarns"
+    paths.append(user_data.expanduser().resolve())
+
+    # 4. System-wide installed directories (/usr/local/share/textile/yarns, /usr/share/textile/yarns)
+    site_dirs = platformdirs.site_data_dir("textile", multipath=True)
+    for site_dir in site_dirs.split(":"):
+        if site_dir.strip():
+            paths.append((Path(site_dir.strip()) / "yarns").resolve())
+
+    # 5. Sibling textile-yarns repo or workspace dev directory (if running from git source tree)
+    with contextlib.suppress(Exception):
+        sibling_yarns = Path(__file__).resolve().parents[5] / "textile-yarns" / "yarns"
+        if sibling_yarns.exists():
+            paths.append(sibling_yarns.resolve())
+        repo_yarns = Path(__file__).resolve().parents[4] / "yarns"
+        if repo_yarns.exists():
+            paths.append(repo_yarns.resolve())
+
+    # Deduplicate while preserving priority order
+    seen: set[Path] = set()
+    unique_paths: list[Path] = []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+
+    return unique_paths
 
 
 class Skein:
@@ -35,10 +164,16 @@ class Skein:
         self._lock = threading.RLock()
         self._config_dir = config_dir or (Path.home() / ".config" / "textile")
         self._config_file = self._config_dir / "yarns.json"
+        self._settings_file = self._config_dir / "settings.toml"
         self._user_yarns_dir = self._config_dir / "yarns"
         self.all_yarns: dict[str, Yarn] = {}
         self._disabled_yarns: set[str] = set()
+        self._settings: dict[str, dict[str, Any]] = {}
         self._initialized: bool = False
+
+    def get_search_paths(self) -> list[Path]:
+        """Return ordered search paths for yarn discovery."""
+        return get_yarn_search_paths(config_dir=self._user_yarns_dir)
 
     def _register_module_yarns(self, mod: Any, override: bool = True) -> None:
         """Inspect a Python module and register all non-base Yarn subclasses."""
@@ -52,41 +187,39 @@ class Skein:
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
-    def load_bundled_yarns(self) -> None:
-        """Discover and load pre-installed Yarns directly from the textile.yarns package."""
-        with contextlib.suppress(*SAFE_EXCEPTIONS):
-            yarns_root = Path(textile.yarns.__file__).parent
-            if not yarns_root.exists():
-                return
-            for py_file in yarns_root.rglob("*.py"):
-                if py_file.name.startswith("_"):
-                    continue
-                try:
-                    resolved_file = py_file.resolve()
-                    resolved_root = yarns_root.resolve()
-                    if not resolved_file.is_relative_to(resolved_root):
-                        logger.warning("skein.yarn_path_traversal_blocked", path=str(py_file))
-                        continue
+    def load_yarns_from_dir(self, target_dir: Path, override: bool = False) -> None:
+        """Discover and register Yarns from a target directory."""
+        if not target_dir.exists() or not target_dir.is_dir():
+            return
 
-                    rel_stem = py_file.relative_to(yarns_root).with_suffix("").as_posix().replace("/", ".")
-                    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$", rel_stem):
-                        logger.warning("skein.invalid_module_name_blocked", name=rel_stem)
-                        continue
+        for py_file in target_dir.rglob("*.py"):
+            if py_file.name.startswith("_"):
+                continue
+            if (
+                py_file.parent != target_dir
+                and py_file.stem != py_file.parent.name
+                and not (py_file.parent / f"{py_file.stem}.toml").exists()
+                and not (py_file.parent / "yarn.toml").exists()
+            ):
+                continue
 
-                    mod_name = f"textile.yarns.{rel_stem}"
-                    spec = importlib.util.spec_from_file_location(mod_name, py_file)
-                    if spec and spec.loader:
-                        mod = importlib.util.module_from_spec(spec)
-                        sys.modules[mod_name] = mod
-                        spec.loader.exec_module(mod)
-                        self._register_module_yarns(mod, override=True)
-                except SAFE_EXCEPTIONS as e:
-                    logger.debug("skein.bundled_yarn_load_failed", path=str(py_file), error=str(e))
+            try:
+                rel_stem = py_file.relative_to(target_dir).with_suffix("").as_posix().replace("/", "_")
+                mod_name = f"textile_yarn_{rel_stem}"
+                spec = importlib.util.spec_from_file_location(mod_name, py_file)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[mod_name] = mod
+                    spec.loader.exec_module(mod)
+                    self._register_module_yarns(mod, override=override)
+            except SAFE_EXCEPTIONS as e:
+                logger.debug("skein.yarn_load_failed", path=str(py_file), error=str(e))
 
     def load_yarns(self) -> None:
-        """Discover and register all pre-installed, entrypoint, and custom Yarns."""
-        # 1. Load bundled core Yarns directly from package directory
-        self.load_bundled_yarns()
+        """Discover and register all Yarns across XDG search paths and entrypoints."""
+        # 1. Scan all standard search paths (in reverse order so higher-priority paths override lower-priority)
+        for search_path in reversed(self.get_search_paths()):
+            self.load_yarns_from_dir(search_path, override=True)
 
         # 2. PEP 621 Entry Point Yarns
         with contextlib.suppress(*SAFE_EXCEPTIONS):
@@ -98,34 +231,14 @@ class Skein:
                         with self._lock:
                             self.all_yarns[instance.name] = instance
 
-        # 3. Load custom user Yarns from ~/.config/textile/yarns/ directory (without overwriting core bundled yarns)
-        self.load_user_yarns()
-
-    def load_user_yarns(self, yarn_dir: Path | None = None) -> None:
-        """Discover and register Yarns from local user directory."""
-        target_dir = yarn_dir or self._user_yarns_dir
-        if not target_dir.exists():
-            return
-        for py_file in target_dir.rglob("*.py"):
-            if py_file.name.startswith("_"):
-                continue
-            try:
-                rel_stem = py_file.relative_to(target_dir).with_suffix("").as_posix().replace("/", "_")
-                mod_name = f"textile_yarn_{rel_stem}"
-                spec = importlib.util.spec_from_file_location(mod_name, py_file)
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    sys.modules[mod_name] = mod
-                    spec.loader.exec_module(mod)
-                    self._register_module_yarns(mod, override=False)
-            except SAFE_EXCEPTIONS as e:
-                logger.debug("skein.user_yarn_load_failed", path=str(py_file), error=str(e))
-
     def initialize(self) -> None:
         with self._lock:
             if self._initialized:
                 return
             self._load_config()
+            from textile.core.orchestration.fabric import core_fabric_yarn  # noqa: PLC0415
+
+            self.register_yarn(core_fabric_yarn)
             self.load_yarns()
             self._initialized = True
 
@@ -175,13 +288,6 @@ class Skein:
                     return yarn, strand_obj
         return None
 
-    def compile_and_execute_intent(self, intent: IntentNode) -> str:
-        """Layer 3: Validate grammar and execute intent via central Loom dispatcher."""
-        intent.validate_grammar()
-        from textile.core.orchestration.loom import loom  # noqa: PLC0415
-
-        return loom.execute_sync(intent.strand_name, intent.parameters, otp=intent.otp)
-
     def _load_config(self) -> None:
         try:
             if self._config_file.exists():
@@ -189,15 +295,85 @@ class Skein:
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
             logger.debug("skein.config_load_failed", path=str(self._config_file), error=str(e))
 
+        self._load_settings()
+
+    def _load_settings(self) -> None:
+        try:
+            if self._settings_file.exists():
+                with self._settings_file.open("rb") as f:
+                    parsed = tomllib.load(f)
+                    if isinstance(parsed, dict):
+                        self._settings = parsed
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            logger.warning("skein.settings_load_failed", path=str(self._settings_file), error=str(e))
+            self._settings = {}
+
+    def get_yarn_settings(self, name: str) -> dict[str, Any]:
+        self.initialize()
+        with self._lock:
+            data = self._settings.get(name, {})
+            return dict(data) if isinstance(data, dict) else {}
+
+    def get_yarn_settings_model(self, name: str) -> Any:
+        """Retrieve validated Pydantic settings model for a yarn from active instances or static manifest."""
+        self.initialize()
+        with self._lock:
+            if name in self.all_yarns:
+                return self.all_yarns[name].settings
+
+        manifests = self.get_static_manifests()
+        manifest = manifests.get(name)
+        if manifest:
+            schema = manifest.create_settings_model()
+            if schema:
+                raw = self.get_yarn_settings(name)
+                defaults = manifest.get_default_settings()
+                try:
+                    return schema.model_validate({**defaults, **raw})
+                except SAFE_EXCEPTIONS:
+                    with contextlib.suppress(*SAFE_EXCEPTIONS):
+                        return schema()
+                    return {**defaults, **raw}
+        return self.get_yarn_settings(name)
+
+    def set_yarn_settings(self, name: str, settings: dict[str, Any]) -> None:
+        self.initialize()
+        with self._lock:
+            if settings:
+                self._settings[name] = settings
+            else:
+                self._settings.pop(name, None)
+            self._save_settings()
+            if name in self.all_yarns:
+                self.all_yarns[name].reload_settings()
+
+    def get_all_settings(self) -> dict[str, Any]:
+        self.initialize()
+        with self._lock:
+            return {k: dict(v) if isinstance(v, dict) else v for k, v in self._settings.items()}
+
+    def get_all_yarn_schemas(self) -> dict[str, type[BaseModel]]:
+        self.initialize()
+        with self._lock:
+            schemas: dict[str, type[BaseModel]] = {}
+            for name, yarn_obj in self.all_yarns.items():
+                schema = yarn_obj.get_settings_schema()
+                if schema is not None:
+                    schemas[name] = schema
+            return schemas
+
+    def generate_settings_template(self) -> str:
+        from textile.core.definitions.settings import generate_documented_toml  # noqa: PLC0415
+
+        return generate_documented_toml(self.get_all_yarn_schemas())
+
     def get_static_manifests(self) -> dict[str, YarnManifest]:
         """Statically inspect all TOML manifests without importing Python modules."""
         manifests: dict[str, YarnManifest] = {}
-        dirs = [Path(__file__).parent.parent / "yarns"]
-        if self._user_yarns_dir.exists():
-            dirs.append(self._user_yarns_dir)
-
-        for target_dir in dirs:
-            for toml_file in target_dir.rglob("*.toml"):
+        for search_path in reversed(self.get_search_paths()):
+            if not search_path.exists():
+                continue
+            for toml_file in search_path.rglob("*.toml"):
                 with contextlib.suppress(*SAFE_EXCEPTIONS):
                     m = YarnManifest.from_toml(toml_file)
                     if m.name:
@@ -213,5 +389,23 @@ class Skein:
         except (OSError, TypeError) as e:
             logger.warning("skein.config_save_failed", path=str(self._config_file), error=str(e))
 
+    def _save_settings(self) -> None:
+        try:
+            self._settings_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp_file = self._settings_file.with_suffix(".tmp")
+            from textile.core.definitions.settings import generate_documented_toml  # noqa: PLC0415
+
+            schemas = self.get_all_yarn_schemas()
+            if schemas:
+                content = generate_documented_toml(schemas, current_settings=self._settings)
+            else:
+                content = _dumps_toml(self._settings)
+
+            tmp_file.write_text(content, encoding="utf-8")
+            tmp_file.replace(self._settings_file)
+        except (OSError, TypeError) as e:
+            logger.warning("skein.settings_save_failed", path=str(self._settings_file), error=str(e))
+
 
 skein = Skein()
+

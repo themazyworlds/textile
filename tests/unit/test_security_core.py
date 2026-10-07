@@ -87,4 +87,19 @@ class TestSecurityPolicyGate:
             verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args_json)
 
         otp = exc_info.value.otp
-        verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args_json, otp=otp)
+        assert verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args_json, otp=otp) is True
+
+    @pytest.mark.asyncio
+    async def test_loom_unmasked_error_propagation(self):
+        from textile.core.orchestration.loom import loom
+
+        loom.initialize()
+        # Mock an elevated strand returning an error string after valid OTP verification
+        args_json = json.dumps({"packages": "invalid_pkg_123"})
+        args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
+        otp = global_otp_manager.create_challenge("packagekit_install", args_hash)
+
+        res = await loom.execute("packagekit_install", {"packages": "invalid_pkg_123"}, otp=otp)
+        assert "[OTP Code Verified & Accepted]" in res
+        assert "Error" in res or "not" in res
+

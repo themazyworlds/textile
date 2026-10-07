@@ -37,28 +37,27 @@ class Strand(BaseModel):
     capability: str | None = None
     args_schema: type[BaseModel] | None = None
     tier: CapabilityTier = CapabilityTier.INTERACT
-    isolated: bool = False
     resources: list[str] = Field(default_factory=list)
 
     def to_mcp_definition(self) -> dict[str, Any]:
         """Convert strand schema into Model Context Protocol format."""
         tier_str = str(self.tier.value).upper() if hasattr(self.tier, "value") else str(self.tier).upper()
         desc = f"[Capability Tier: {tier_str}] {self.description}"
-        if self.args_schema:
-            return {
-                "name": self.name,
-                "description": desc,
-                "inputSchema": self.args_schema.model_json_schema(),
-            }
-        return {
-            "name": self.name,
-            "description": desc,
-            "inputSchema": {
+        schema = (
+            self.args_schema.model_json_schema()
+            if self.args_schema
+            else {
                 "type": "object",
                 "properties": self.parameters,
                 "required": self.required,
                 "additionalProperties": False,
-            },
+            }
+        )
+        return {
+            "name": self.name,
+            "description": desc,
+            "input_schema": schema,
+            "inputSchema": schema,
         }
 
 

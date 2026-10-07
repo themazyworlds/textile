@@ -1,162 +1,16 @@
 """
-Textile Sandbox Confinement Subsystem.
-Provides Bubblewrap (bwrap) unprivileged container isolation and Landlock kernel walls.
+Bubblewrap (bwrap) unprivileged container builder and isolation manager.
+Enforces mount isolation, network namespaces, and capability tier bounds.
 """
 
-import ctypes
 import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 from textile.core.definitions.errors import SandboxUnavailableError
-from textile.core.telemetry.log import get_logger
-
-logger = get_logger(__name__)
-
-
-def _resolve_display_bind() -> list[str]:
-    """Resolve dynamic Wayland / X11 display socket mounts for GUI strands."""
-    args = []
-    wayland_display = os.environ.get("WAYLAND_DISPLAY")
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if wayland_display and runtime:
-        wl_sock = os.path.join(runtime, wayland_display)
-        if Path(wl_sock).exists():
-            args.extend(
-                [
-                    "--ro-bind",
-                    wl_sock,
-                    wl_sock,
-                    "--setenv",
-                    "WAYLAND_DISPLAY",
-                    wayland_display,
-                    "--setenv",
-                    "XDG_RUNTIME_DIR",
-                    runtime,
-                ]
-            )
-    if x11_display := os.environ.get("DISPLAY"):
-        args.extend(["--setenv", "DISPLAY", x11_display])
-        x11_sock = os.path.join("/", "tmp", ".X11-unix")
-        if Path(x11_sock).exists():
-            args.extend(["--ro-bind", x11_sock, x11_sock])
-    return args
-
-
-def _resolve_sound_bind() -> list[str]:
-    """Resolve dynamic PipeWire / PulseAudio sound socket mounts for audio strands."""
-    args = []
-    if runtime := os.environ.get("XDG_RUNTIME_DIR"):
-        for sock_name in ("pipewire-0", "pulse"):
-            p = os.path.join(runtime, sock_name)
-            if Path(p).exists():
-                args.extend(["--ro-bind", p, p])
-    return args
-
-
-KNOWN_RESOURCES: dict[str, Callable[[], list[str]]] = {
-    "display": _resolve_display_bind,
-    "sound": _resolve_sound_bind,
-}
-
-# Syscall numbers on x86_64
-SYS_landlock_create_ruleset = 444
-SYS_landlock_add_rule = 445
-SYS_landlock_restrict_self = 446
-PR_SET_NO_NEW_PRIVS = 38
-
-# Landlock access flags
-LANDLOCK_ACCESS_FS_EXECUTE = 1 << 0
-LANDLOCK_ACCESS_FS_WRITE_FILE = 1 << 1
-LANDLOCK_ACCESS_FS_READ_FILE = 1 << 2
-LANDLOCK_ACCESS_FS_READ_DIR = 1 << 3
-LANDLOCK_ACCESS_FS_REMOVE_DIR = 1 << 4
-LANDLOCK_ACCESS_FS_REMOVE_FILE = 1 << 5
-LANDLOCK_ACCESS_FS_MAKE_DIR = 1 << 7
-LANDLOCK_ACCESS_FS_MAKE_REG = 1 << 8
-LANDLOCK_ACCESS_FS_TRUNCATE = 1 << 14
-
-ACCESS_FS_RO = LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR
-ALL_HANDLED_ACCESS = ACCESS_FS_RO | (
-    LANDLOCK_ACCESS_FS_WRITE_FILE
-    | LANDLOCK_ACCESS_FS_REMOVE_DIR
-    | LANDLOCK_ACCESS_FS_REMOVE_FILE
-    | LANDLOCK_ACCESS_FS_MAKE_DIR
-    | LANDLOCK_ACCESS_FS_MAKE_REG
-    | LANDLOCK_ACCESS_FS_TRUNCATE
-)
-
-
-class LandlockRulesetAttr(ctypes.Structure):
-    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
-
-
-class LandlockPathBeneathAttr(ctypes.Structure):
-    _fields_ = [
-        ("allowed_access", ctypes.c_uint64),
-        ("parent_fd", ctypes.c_int32),
-    ]
-
-
-ENOSYS_ERRNO = 38
-
-
-class LandlockSandbox:
-    """Linux Landlock filesystem confinement manager."""
-
-    @classmethod
-    def is_supported(cls) -> bool:
-        if sys.platform != "linux":
-            return False
-        try:
-            libc = ctypes.CDLL(None, use_errno=True)
-            res = libc.syscall(SYS_landlock_create_ruleset, 0, 0, 1)
-            return res >= 0 or ctypes.get_errno() != ENOSYS_ERRNO
-        except (OSError, AttributeError):
-            return False
-
-    @classmethod
-    def apply_read_only(cls, allowed_read_path: str = "/") -> bool:
-        """Confine the current process to read-only filesystem access."""
-        if not cls.is_supported():
-            logger.debug("sandbox.landlock_unsupported")
-            return False
-
-        try:
-            libc = ctypes.CDLL(None, use_errno=True)
-            attr = LandlockRulesetAttr()
-            attr.handled_access_fs = ALL_HANDLED_ACCESS
-            ruleset_fd = libc.syscall(SYS_landlock_create_ruleset, ctypes.byref(attr), ctypes.sizeof(attr), 0)
-            if ruleset_fd < 0:
-                # Fallback handled access without TRUNCATE for Linux kernels < 6.2 (Landlock ABI v1/v2)
-                attr.handled_access_fs = ALL_HANDLED_ACCESS & ~LANDLOCK_ACCESS_FS_TRUNCATE
-                ruleset_fd = libc.syscall(SYS_landlock_create_ruleset, ctypes.byref(attr), ctypes.sizeof(attr), 0)
-                if ruleset_fd < 0:
-                    return False
-
-            root_fd = os.open(allowed_read_path, os.O_PATH | os.O_CLOEXEC)
-            try:
-                path_attr = LandlockPathBeneathAttr()
-                path_attr.allowed_access = ACCESS_FS_RO
-                path_attr.parent_fd = root_fd
-
-                ret_add = libc.syscall(SYS_landlock_add_rule, ruleset_fd, 1, ctypes.byref(path_attr), 0)
-                if ret_add < 0:
-                    os.close(ruleset_fd)
-                    return False
-            finally:
-                os.close(root_fd)
-
-            libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
-            ret_restrict = libc.syscall(SYS_landlock_restrict_self, ruleset_fd, 0)
-            os.close(ruleset_fd)
-            return ret_restrict == 0
-        except (OSError, AttributeError, RuntimeError) as e:
-            logger.debug("sandbox.landlock_apply_failed", error=str(e))
-            return False
+from textile.core.security.sandbox.resources import resolve_sandbox_resources
 
 
 class BubblewrapBuilder:
@@ -203,12 +57,7 @@ class BubblewrapBuilder:
 
     def bind_resources(self, resources: list[str] | None) -> BubblewrapBuilder:
         if resources:
-            for res_name in resources:
-                clean_res = res_name.strip().lower()
-                if clean_res in KNOWN_RESOURCES:
-                    self.args.extend(KNOWN_RESOURCES[clean_res]())
-                else:
-                    logger.warning("sandbox.unrecognized_resource_requested", resource=res_name)
+            self.args.extend(resolve_sandbox_resources(resources))
         return self
 
     def bind_workspace(self, workspace: Path, writable: bool) -> BubblewrapBuilder:

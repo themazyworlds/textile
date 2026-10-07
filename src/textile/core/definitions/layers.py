@@ -48,9 +48,3 @@ def get_layer_info(layer: int) -> LayerInfo:
     if layer >= LAYER_DESKTOP_PROTOCOL_THRESHOLD:
         return LayerInfo(level=2, name="Desktop Protocol", threshold=LAYER_DESKTOP_PROTOCOL_THRESHOLD)
     return LayerInfo(level=1, name="Core POSIX", threshold=LAYER_CORE_POSIX_THRESHOLD)
-
-
-def _layer_info(layer: int) -> dict[str, Any]:
-    """Legacy helper compatibility wrapper for layer dictionary representation."""
-    info = get_layer_info(layer)
-    return {"level": info.level, "name": info.name}

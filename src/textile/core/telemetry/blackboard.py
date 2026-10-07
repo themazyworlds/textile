@@ -6,6 +6,7 @@ Provides state slot retention, notice feeds, and Elastic cross-process IPC event
 import contextlib
 import json
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -58,6 +59,17 @@ class SensoryTapestry:
     def __init__(self, max_notices: int = 100, persist: bool = False):
         self._max_notices = max_notices
         self._database = TapestryDatabase(persist=persist)
+        self._slots_lock = threading.RLock()
+        self._slots_cache: dict[str, Any] = {}
+        self._load_cached_slots()
+
+    def _load_cached_slots(self) -> None:
+        with self._slots_lock, self._database._lock, self._database.get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT key, val_json FROM slots")
+            for row in cursor.fetchall():
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
+                    self._slots_cache[row[0]] = json.loads(row[1]) if row[1] else None
 
     def stitch(
         self,
@@ -102,6 +114,8 @@ class SensoryTapestry:
     def set_slot(self, key: str, value: Any) -> None:
         """Set a retained state slot in the sensory blackboard."""
         clean_key = key.strip()
+        with self._slots_lock:
+            self._slots_cache[clean_key] = value
         with self._database._lock, self._database.get_connection() as connection:
             query = """
                 INSERT INTO slots (key, val_json) VALUES (?, ?)
@@ -110,16 +124,10 @@ class SensoryTapestry:
             connection.execute(query, (clean_key, json.dumps(value)))
 
     def get_slot(self, key: str, default: Any = None) -> Any:
-        """Get a retained state slot value."""
+        """Get a retained state slot value with sub-microsecond in-memory lookup."""
         clean_key = key.strip()
-        with self._database._lock, self._database.get_connection() as connection:
-            cursor = connection.cursor()
-            cursor.execute("SELECT val_json FROM slots WHERE key = ?", (clean_key,))
-            row = cursor.fetchone()
-            if row and row[0] is not None:
-                with contextlib.suppress(json.JSONDecodeError):
-                    return json.loads(row[0])
-        return default
+        with self._slots_lock:
+            return self._slots_cache.get(clean_key, default)
 
     def get_notices(
         self,
@@ -256,6 +264,8 @@ class SensoryTapestry:
 
     def clear(self) -> None:
         """Clear all sensory state slots and notices."""
+        with self._slots_lock:
+            self._slots_cache.clear()
         with self._database._lock, self._database.get_connection() as connection:
             connection.execute("DELETE FROM slots")
             connection.execute("DELETE FROM notices")
@@ -263,17 +273,12 @@ class SensoryTapestry:
 
     def get_state(self) -> dict[str, Any]:
         """Return snapshot of sensory state slots and recent stitched notices."""
-        with self._database._lock, self._database.get_connection() as connection:
-            cursor = connection.cursor()
-            cursor.execute("SELECT key, val_json FROM slots")
-            slots_copy = {}
-            for row in cursor.fetchall():
-                with contextlib.suppress(json.JSONDecodeError, TypeError):
-                    slots_copy[row[0]] = json.loads(row[1]) if row[1] else None
-            return {
-                "slots": slots_copy,
-                "recent_notices": self.get_notices(limit=20),
-            }
+        with self._slots_lock:
+            slots_copy = dict(self._slots_cache)
+        return {
+            "slots": slots_copy,
+            "recent_notices": self.get_notices(limit=20),
+        }
 
 
 sensory_tapestry = SensoryTapestry(persist=True)

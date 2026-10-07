@@ -89,3 +89,34 @@ class TestBubblewrapSandbox:
                 assert dummy_sock.name in wrapped
                 assert "--setenv" in wrapped
                 assert "WAYLAND_DISPLAY" in wrapped
+
+    def test_resolve_declarative_sandbox_resources(self):
+        from textile.core.security.sandbox import resolve_sandbox_resources
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sock_file = Path(tmp_dir) / "test.sock"
+            sock_file.touch()
+
+            env_vars = {
+                "XDG_RUNTIME_DIR": tmp_dir,
+                "WAYLAND_DISPLAY": "test.sock",
+                "DBUS_SESSION_BUS_ADDRESS": f"unix:path={sock_file}",
+                "TEST_CUSTOM_ENV": "active",
+            }
+            with unittest.mock.patch.dict("os.environ", env_vars):
+                args = resolve_sandbox_resources(
+                    [
+                        "display:wayland",
+                        "dbus:session",
+                        "socket:$XDG_RUNTIME_DIR/test.sock",
+                        "env:TEST_CUSTOM_ENV",
+                        "env:STATIC_VAL=123",
+                    ]
+                )
+                assert "--setenv" in args
+                assert "WAYLAND_DISPLAY" in args
+                assert "DBUS_SESSION_BUS_ADDRESS" in args
+                assert "TEST_CUSTOM_ENV" in args
+                assert "STATIC_VAL" in args
+                assert str(sock_file) in args
+

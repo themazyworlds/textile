@@ -15,11 +15,9 @@ from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.decorators import strand
 from textile.core.execution.strands import CapabilityTier
 from textile.core.execution.yarn import Yarn
-from textile.core.orchestration.loom import loom
-from textile.core.orchestration.skein import skein
 from textile.core.telemetry.auditor import audit_all
 from textile.core.telemetry.elastic import elastic
-from textile.core.telemetry.tapestry import core_tapestry
+from textile.core.telemetry.ledger import core_tapestry
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +64,9 @@ class CoreFabricYarn(Yarn):
     @strand(tier=CapabilityTier.OBSERVE)
     def audit_yarn_integrity(self) -> dict[str, Any]:
         """Audit system-wide yarn health, runtime dependencies, layer overrides, and schemas."""
+        from textile.core.orchestration.loom import loom  # noqa: PLC0415
+        from textile.core.orchestration.skein import skein  # noqa: PLC0415
+
         return audit_all(loom, skein).model_dump()
 
     @strand(tier=CapabilityTier.PRIVILEGED)
@@ -92,4 +93,4 @@ class CoreFabricYarn(Yarn):
 
 
 core_fabric_yarn = CoreFabricYarn()
-skein.register_yarn(core_fabric_yarn)
+

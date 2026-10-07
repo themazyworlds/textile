@@ -12,17 +12,19 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError
+from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
 from textile.core.execution.strands import Strand, Weft
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.skein import Skein, skein
-from textile.core.security.context import verify_security_policy
+from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError, verify_security_policy
+from textile.core.telemetry.blackboard import NoticeLevel, sensory_tapestry
 from textile.core.telemetry.elastic import EventUrgency, elastic
+from textile.core.telemetry.ledger import core_tapestry
 from textile.core.telemetry.log import get_logger
-from textile.core.telemetry.tapestry import NoticeLevel, core_tapestry, sensory_tapestry
 
 logger = get_logger(__name__)
+
 
 
 @dataclass(slots=True)
@@ -41,10 +43,22 @@ class Loom:
         self._skein = registry or skein
         self.active_yarns: dict[str, Yarn] = {}
         self.strands: dict[str, Strand] = {}
-        self.wefts: list[Weft] = []
+        self._wefts: list[Weft] = []
         self._strand_to_yarn: dict[str, Yarn] = {}
         self._capability_to_strand: dict[str, tuple[Strand, Yarn]] = {}
         self._initialized: bool = False
+
+    @property
+    def wefts(self) -> list[Weft]:
+        self.initialize()
+        return self._wefts
+
+    def get_settings(self, yarn_name: str) -> Any:
+        """Retrieve validated settings model for any yarn by name."""
+        self.initialize()
+        if yarn_name in self.active_yarns:
+            return self.active_yarns[yarn_name].settings
+        return self._skein.get_yarn_settings_model(yarn_name)
 
     def initialize(self) -> None:
         if self._initialized:
@@ -112,7 +126,7 @@ class Loom:
         new_wefts.sort(key=lambda w: w.priority, reverse=True)
         self._notify_yarn_lifecycle_events(set(self.active_yarns.keys()), set(new_active.keys()), new_active)
 
-        self.active_yarns, self.strands, self.wefts = new_active, new_strands, new_wefts
+        self.active_yarns, self.strands, self._wefts = new_active, new_strands, new_wefts
         self._strand_to_yarn, self._capability_to_strand = new_strand_map, new_cap_map
 
     def get_strand_override_status(self, strand: Strand, yarn: Yarn) -> tuple[bool, str | None, str | None]:
@@ -228,7 +242,7 @@ class Loom:
             effective_otp = effective_otp.strip()
 
         args_json = json.dumps(clean_args, sort_keys=True)
-        verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=effective_otp)
+        otp_verified = verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=effective_otp)
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
@@ -247,14 +261,38 @@ class Loom:
         success = True
         err = None
         try:
-            return await handler(args)
+            res = await handler(args)
+            if isinstance(res, str):
+                lower_res = res.lower()
+                error_indicators = ("error:", "installation error:", "removal error:", "failed to", "permission error:")
+                if any(k in lower_res for k in error_indicators):
+                    if otp_verified:
+                        res = f"[OTP Code Verified & Accepted] Operational Error in strand '{strand_name}': {res}"
+                    else:
+                        res = f"[Operational Failure] Strand '{strand_name}' error: {res}"
+            return res
+        except (PolicyViolationError, OTPChallengeRequiredError):
+            success = False
+            err = "Security Policy Gate Failure"
+            raise
         except Exception as e:
             success = False
             err = str(e)
-            raise
+            if otp_verified:
+                raise StrandOperationalError(
+                    strand_name=strand_name,
+                    reason=f"[OTP Code Verified & Accepted] Operational Failure in strand '{strand_name}': {e}",
+                    original_error=e,
+                ) from e
+            raise StrandOperationalError(
+                strand_name=strand_name,
+                reason=f"[Operational Failure] Strand '{strand_name}' failed during execution: {e}",
+                original_error=e,
+            ) from e
         finally:
             dur = (time.perf_counter() - t0) * 1000.0
             self._record_execution_end(ctx, dur, success, err)
+
 
     def execute_sync(
         self,

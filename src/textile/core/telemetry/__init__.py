@@ -16,14 +16,12 @@ from textile.core.telemetry.ledger import (
     core_tapestry,
 )
 from textile.core.telemetry.log import configure_logging, get_logger
-from textile.core.telemetry.seams import SeamOrchestrator, seams
 
 __all__ = [
     "CoreTapestry",
     "ElasticEngine",
     "EventFrame",
     "EventUrgency",
-    "SeamOrchestrator",
     "SensoryTapestry",
     "TapestryDatabase",
     "audit_all",
@@ -33,6 +31,5 @@ __all__ = [
     "core_tapestry",
     "elastic",
     "get_logger",
-    "seams",
     "sensory_tapestry",
 ]

@@ -2,6 +2,12 @@
 Textile CLI Registry, Health Audit, and Blackboard Diagnostics Commands.
 """
 
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import platformdirs
 import typer
 from rich import box
 from rich.table import Table
@@ -19,7 +25,8 @@ from textile.core.definitions.layers import get_layer_info
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
 from textile.core.telemetry.auditor import audit_all
-from textile.core.telemetry.tapestry import core_tapestry, sensory_tapestry
+from textile.core.telemetry.blackboard import sensory_tapestry
+from textile.core.telemetry.ledger import core_tapestry
 
 
 @app.command("skein")
@@ -74,6 +81,135 @@ def cmd_skein(
         table.add_row(yarn.name, f"{yarn.layer} ({layer_name})", en_str, av_str, yarn.description or "")
 
     console.print(table)
+
+
+def _parse_cli_setting_val(raw: str) -> Any:
+    if raw.lower() == "true":
+        return True
+    if raw.lower() == "false":
+        return False
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
+
+
+def _render_yarn_settings_table(yarn_name: str, settings: dict[str, Any]) -> None:
+    table = Table(
+        title=f"Settings for yarn '{yarn_name}'",
+        box=box.SIMPLE_HEAD,
+        show_edge=False,
+        header_style="bold cyan",
+    )
+    table.add_column("Setting Key", style="bold white")
+    table.add_column("Value", style="green")
+    for k, v in sorted(settings.items()):
+        table.add_row(k, str(v))
+    console.print(table)
+
+
+def _render_all_settings_table(all_settings: dict[str, Any]) -> None:
+    if not all_settings:
+        console.print("[dim]No user overrides found in ~/.config/textile/settings.toml.[/dim]")
+        return
+
+    table = Table(
+        title="Textile User Settings (~/.config/textile/settings.toml)",
+        box=box.SIMPLE_HEAD,
+        show_edge=False,
+        header_style="bold cyan",
+    )
+    table.add_column("Yarn", style="bold cyan")
+    table.add_column("Key", style="bold white")
+    table.add_column("Value", style="green")
+
+    for y_name, s_dict in sorted(all_settings.items()):
+        if isinstance(s_dict, dict):
+            for k, v in sorted(s_dict.items()):
+                table.add_row(y_name, k, str(v))
+
+    console.print(table)
+
+
+def _render_schema_docs(yarn_name: str | None = None) -> None:
+    from textile.core.definitions.settings import _format_type_name  # noqa: PLC0415
+
+    schemas = skein.get_all_yarn_schemas()
+    if yarn_name and yarn_name in schemas:
+        targets = {yarn_name: schemas[yarn_name]}
+    elif yarn_name:
+        console.print(f"[bold red]Yarn '{yarn_name}' has no declared settings schema.[/bold red]")
+        return
+    else:
+        targets = schemas
+
+    for y_name, schema_cls in sorted(targets.items()):
+        table = Table(
+            title=f"Schema Documentation: yarn '{y_name}'",
+            box=box.SIMPLE_HEAD,
+            show_edge=False,
+            header_style="bold cyan",
+        )
+        table.add_column("Field", style="bold white")
+        table.add_column("Type", style="cyan")
+        table.add_column("Default", style="yellow")
+        table.add_column("Description", style="dim green")
+
+        for f_name, f_info in schema_cls.model_fields.items():
+            type_str = _format_type_name(f_info.annotation)
+            default_str = str(f_info.default) if f_info.default is not None else "None"
+            desc_str = f_info.description or ""
+            table.add_row(f_name, type_str, default_str, desc_str)
+
+        console.print(table)
+
+
+def _handle_settings_init() -> None:
+    template = skein.generate_settings_template()
+    skein._settings_file.parent.mkdir(parents=True, exist_ok=True)
+    skein._settings_file.write_text(template, encoding="utf-8")
+    console.print(
+        f"  [bold green]✓[/bold green] Generated documented settings template at\n"
+        f"    [bold white]{skein._settings_file}[/bold white]."
+    )
+
+
+@app.command("settings")
+def cmd_settings(
+    action: str | None = typer.Argument(None, help="Action: get, set, reset, init, docs"),
+    yarn_name: str | None = typer.Argument(None, help="Target yarn name (e.g. weave, hyprland, web_research)"),
+    key: str | None = typer.Argument(None, help="Setting key"),
+    value: str | None = typer.Argument(None, help="Setting value"),
+):
+    """Inspect and manage per-yarn user configuration (~/.config/textile/settings.toml)."""
+    ensure_initialized()
+
+    if action == "init":
+        _handle_settings_init()
+    elif action == "docs":
+        _render_schema_docs(yarn_name)
+    elif action == "get" and yarn_name:
+        settings = skein.get_yarn_settings(yarn_name)
+        if key:
+            console.print(f"[bold cyan]{yarn_name}.{key}:[/bold cyan] {settings.get(key)}")
+        else:
+            _render_yarn_settings_table(yarn_name, settings)
+    elif action == "set" and yarn_name and key and value is not None:
+        current = skein.get_yarn_settings(yarn_name)
+        current[key] = _parse_cli_setting_val(value)
+        skein.set_yarn_settings(yarn_name, current)
+        console.print(f"  [bold green]✓[/bold green] Set [bold white]{yarn_name}.{key}[/bold white] = {current[key]}.")
+    elif action == "reset" and yarn_name:
+        skein.set_yarn_settings(yarn_name, {})
+        console.print(f"  [bold yellow]✓[/bold yellow] Reset settings for yarn [bold white]{yarn_name}[/bold white].")
+    else:
+        _render_all_settings_table(skein.get_all_settings())
+
 
 
 @app.command("loom")
@@ -213,3 +349,95 @@ def cmd_tapestry(
         table.add_row(t["task_id"][:8], t["strand_name"], str(t.get("tier", "-")), status_str)
 
     console.print(table)
+
+
+@app.command("yarn")
+def cmd_yarn(
+    action: str = typer.Argument("list", help="Action: list, install, remove, paths"),
+    target: str | None = typer.Argument(None, help="Yarn name, git repository URL, or local path"),
+):
+    """Manage installed capability yarns, discovery search paths, and third-party extensions."""
+    ensure_initialized()
+    user_yarns = Path(platformdirs.user_data_dir("textile")) / "yarns"
+
+    if action in ("paths", "search-paths"):
+        console.print("\n  [bold cyan]Textile Yarn Discovery Search Paths (in priority order):[/bold cyan]\n")
+        for i, p in enumerate(skein.get_search_paths(), 1):
+            exists_str = "[green]exists[/green]" if p.exists() else "[dim]not found[/dim]"
+            console.print(f"  [bold yellow]{i}.[/bold yellow] {p} ({exists_str})")
+        console.print()
+        return
+
+    if action == "install" and target:
+        user_yarns.mkdir(parents=True, exist_ok=True)
+        target_path = Path(target).expanduser().resolve()
+        if target_path.exists() and target_path.is_dir():
+            dest = user_yarns / target_path.name
+            shutil.copytree(target_path, dest, dirs_exist_ok=True)
+            console.print(f"  [bold green]✓[/bold green] Installed yarn from [bold white]{target}[/bold white]")
+            console.print(f"    Destination: {dest}")
+        else:
+            repo_url = (
+                target
+                if target.startswith(("http://", "https://", "git@"))
+                else f"https://github.com/{target}.git"
+            )
+            raw_name = target.rstrip("/").split("/")[-1].replace(".git", "")
+            repo_name = raw_name.replace("textile-yarn-", "").replace("textile-", "")
+            dest = user_yarns / repo_name
+            git_bin = shutil.which("git")
+            if not git_bin:
+                console.print("  [bold red]Error:[/bold red] git binary not found in PATH.")
+                return
+            res = subprocess.run(
+                [git_bin, "clone", "--depth", "1", repo_url, str(dest)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode != 0:
+                console.print(f"  [bold red]Error installing yarn:[/bold red] {res.stderr.strip()}")
+                return
+            console.print(
+                f"  [bold green]✓[/bold green] Installed yarn [bold white]{repo_name}[/bold white] from {repo_url}"
+            )
+            console.print(f"    Destination: {dest}")
+
+        skein._initialized = False
+        ensure_initialized()
+        return
+
+    if action == "remove" and target:
+        dest = user_yarns / target
+        if dest.exists():
+            shutil.rmtree(dest)
+            console.print(
+                f"  [bold yellow]✓[/bold yellow] Removed yarn [bold white]{target}[/bold white] from {dest}"
+            )
+        else:
+            console.print(f"  [bold red]Error:[/bold red] Yarn '{target}' not found in {user_yarns}.")
+        return
+
+    # Default action: list
+    table = Table(
+        title=f"Discovered Capability Yarns ({len(skein.all_yarns)} active)",
+        box=box.SIMPLE_HEAD,
+        show_edge=False,
+        header_style="bold cyan",
+    )
+    table.add_column("Yarn", style="bold cyan", width=18)
+    table.add_column("Layer", style="bold yellow", width=8)
+    table.add_column("Publisher", width=12)
+    table.add_column("Strands", justify="right", width=8)
+    table.add_column("Description", style="dim")
+
+    for name, yarn in sorted(skein.all_yarns.items()):
+        table.add_row(
+            name,
+            str(yarn.layer),
+            yarn.publisher or "textile",
+            str(len(yarn.get_strands())),
+            yarn.description,
+        )
+    console.print(table)
+

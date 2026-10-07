@@ -25,9 +25,9 @@ class DummyYarn(Yarn):
         return [
             self.build_strand("normal_tool", "Normal tool", lambda args: "normal_ok"),
             self.build_strand(
-                "isolated_tool", "Isolated tool", lambda args: f"isolated_{args.get('x')}", isolated=True
+                "isolated_tool", "Isolated tool", lambda args: f"isolated_{args.get('x')}", tier="system_exec"
             ),
-            self.build_strand("crashing_tool", "Crashing tool", lambda args: os._exit(11), isolated=True),
+            self.build_strand("crashing_tool", "Crashing tool", lambda args: os._exit(11), tier="system_exec"),
             self.build_strand(
                 "typed_tool",
                 "Typed tool",
@@ -191,7 +191,7 @@ class TestYarnArchitecture(unittest.TestCase):
             loom._rebuild_active()
 
     def test_canvas_yarn_and_mood(self):
-        from textile.yarns.canvas.canvas import Canvas
+        from canvas.canvas import Canvas
 
         canvas = Canvas()
         self.assertEqual(canvas.name, "canvas")
@@ -239,14 +239,16 @@ class TestYarnArchitecture(unittest.TestCase):
         yarn = TierTestYarn()
         strands = {s.name: s for s in yarn.get_strands()}
 
+        from textile.core.execution.reflector import determine_isolation
+
         self.assertEqual(strands["read_stat"].tier, "observe")
-        self.assertFalse(strands["read_stat"].isolated)
+        self.assertFalse(determine_isolation(yarn, strands["read_stat"].tier))
 
         self.assertEqual(strands["admin_task"].tier, "privileged")
-        self.assertTrue(strands["admin_task"].isolated)
+        self.assertTrue(determine_isolation(yarn, strands["admin_task"].tier))
 
         self.assertEqual(strands["exec_task"].tier, "system_exec")
-        self.assertTrue(strands["exec_task"].isolated)
+        self.assertTrue(determine_isolation(yarn, strands["exec_task"].tier))
 
     def test_weft_attunements_and_pydantic_coercion(self):
         from textile import weft
@@ -289,11 +291,12 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_weave_mood_tag_parsing(self):
         import time
 
+        from canvas.canvas import Canvas
+
         from textile.core.orchestration.loom import loom
         from textile.core.orchestration.skein import skein
         from textile.core.orchestration.stream import stream_engine
-        from textile.core.telemetry.tapestry import sensory_tapestry
-        from textile.yarns.canvas.canvas import Canvas
+        from textile.core.telemetry.blackboard import sensory_tapestry
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -310,14 +313,17 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "happy")
 
     def test_weave_streaming_transcription_node(self):
+        import pytest  # noqa: PLC0415
+        pytest.importorskip("livekit")
         import asyncio
         import time
 
+        from canvas.canvas import Canvas
+        from weave.weave import WeaveAgent
+
         from textile.core.orchestration.loom import loom
         from textile.core.orchestration.skein import skein
-        from textile.core.telemetry.tapestry import sensory_tapestry
-        from textile.yarns.canvas.canvas import Canvas
-        from textile.yarns.weave.weave import WeaveAgent
+        from textile.core.telemetry.blackboard import sensory_tapestry
 
         canvas = Canvas()
         canvas.is_available = lambda: True
@@ -349,9 +355,10 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(clean_text, " What shall we investigate next?")
 
     def test_packagekit_pure_dbus_yarn(self):
+        import pytest  # noqa: PLC0415
+        pytest.importorskip("dbus_fast")
         from dbus_fast import Variant
-
-        from textile.yarns.packagekit.packagekit import (
+        from packagekit.packagekit import (
             PackageKit,
             parse_package_id,
             unwrap_variant,
@@ -384,7 +391,7 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(unwrapped, {"key": 42, "nested": ["foo"]})
 
     def test_clipboard_yarn(self):
-        from textile.yarns.clipboard.clipboard import Clipboard
+        from clipboard.clipboard import Clipboard
 
         cb = Clipboard()
         self.assertEqual(cb.name, "clipboard")
@@ -433,9 +440,9 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_app_launching_terminal_e_flag(self):
         from unittest.mock import MagicMock, patch
 
-        from textile.yarns.hyprland.hyprland import HyprlandIPC
-        from textile.yarns.process.process import ProcessControl
-        from textile.yarns.uwsm.uwsm import UWSM
+        from hyprland.hyprland import HyprlandIPC
+        from process.process import ProcessControl
+        from uwsm.uwsm import UWSM
 
         # 1. ProcessControl launch_app with is_tui=True using dynamic $TERMINAL env var
         proc_yarn = ProcessControl()
@@ -490,8 +497,9 @@ class TestYarnArchitecture(unittest.TestCase):
     def test_timer_yarn_strands(self):
         import asyncio
 
+        from timer.timer import Timer
+
         from textile.core.telemetry.elastic import EventFrame, elastic
-        from textile.yarns.timer.timer import Timer
 
         timer_yarn = Timer()
         events_fired: list[EventFrame] = []
@@ -551,6 +559,82 @@ class TestYarnArchitecture(unittest.TestCase):
             elastic.unsubscribe(token)
             loop.close()
 
+    def test_yarn_settings_and_skein_configuration(self):
+        class SampleSettings(BaseModel):
+            timeout: int = Field(default=30, ge=1)
+            debug_mode: bool = Field(default=False)
+            tags: list[str] = Field(default_factory=lambda: ["core"])
+
+        class ConfigurableDummyYarn(Yarn):
+            settings_schema = SampleSettings
+
+            def __init__(self):
+                super().__init__(manifest=YarnManifest(name="configurable_dummy", layer=50))
+
+        # Ensure clean state
+        skein.set_yarn_settings("configurable_dummy", {})
+
+        # 1. Default settings when no user config exists
+        yarn = ConfigurableDummyYarn()
+        skein.register_yarn(yarn)
+        self.assertIsInstance(yarn.settings, SampleSettings)
+        self.assertEqual(yarn.settings.timeout, 30)
+        self.assertFalse(yarn.settings.debug_mode)
+        self.assertEqual(yarn.settings.tags, ["core"])
+
+        # 2. Update user settings in Skein
+        skein.set_yarn_settings("configurable_dummy", {"timeout": 60, "debug_mode": True, "tags": ["custom", "test"]})
+        self.assertEqual(yarn.settings.timeout, 60)
+        self.assertTrue(yarn.settings.debug_mode)
+        self.assertEqual(yarn.settings.tags, ["custom", "test"])
+
+        # 3. Settings validation fallback on invalid input
+        skein.set_yarn_settings("configurable_dummy", {"timeout": -5})  # violates ge=1
+        self.assertIsInstance(yarn.settings, SampleSettings)
+        self.assertEqual(yarn.settings.timeout, 30)  # fell back to schema defaults
+
+        # 4. Clean up test settings
+        skein.set_yarn_settings("configurable_dummy", {})
+        skein.unregister_yarn("configurable_dummy")
+
+    def test_pure_manifest_driven_settings(self):
+        from textile.core.definitions.manifest import SettingFieldManifest
+
+        manifest = YarnManifest(
+            name="manifest_pure_dummy",
+            layer=50,
+            settings={
+                "retries": SettingFieldManifest(type="int", default=3, description="Number of retries"),
+                "mode": SettingFieldManifest(type="string", default="fast", options=["fast", "safe"]),
+            },
+        )
+
+        class PureManifestYarn(Yarn):
+            def __init__(self):
+                super().__init__(manifest=manifest)
+
+        yarn = PureManifestYarn()
+        skein.register_yarn(yarn)
+
+        # 1. Access settings property directly on yarn
+        self.assertEqual(yarn.settings.retries, 3)
+        self.assertEqual(yarn.settings.mode, "fast")
+
+        # 2. Access via loom.get_settings("manifest_pure_dummy")
+        loom_settings = loom.get_settings("manifest_pure_dummy")
+        self.assertEqual(loom_settings.retries, 3)
+        self.assertEqual(loom_settings.mode, "fast")
+
+        # 3. Modify setting in skein
+        skein.set_yarn_settings("manifest_pure_dummy", {"retries": 10, "mode": "safe"})
+        self.assertEqual(yarn.settings.retries, 10)
+        self.assertEqual(yarn.settings.mode, "safe")
+
+        # 4. Cleanup
+        skein.set_yarn_settings("manifest_pure_dummy", {})
+        skein.unregister_yarn("manifest_pure_dummy")
+
 
 if __name__ == "__main__":
     unittest.main()
+

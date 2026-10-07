@@ -5,7 +5,7 @@ Provides structured, diagnostic domain exceptions across Textile core & yarns.
 
 from typing import Any
 
-SAFE_EXCEPTIONS = (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError)
+SAFE_EXCEPTIONS = (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError, ImportError)
 
 
 class TextileError(Exception):
@@ -104,4 +104,17 @@ class StrandCollisionError(TextileError):
             code="ERR_STRAND_COLLISION",
             details={"strand": strand_name, "existing_yarn": existing_yarn, "new_yarn": new_yarn},
         )
+
+
+class StrandOperationalError(TextileError):
+    """Raised when a strand execution fails during underlying tool execution (distinct from security/OTP errors)."""
+
+    def __init__(self, strand_name: str, reason: str, original_error: Exception | None = None):
+        super().__init__(
+            message=reason,
+            hint="Inspect operational details. OTP verification succeeded; this is a system/tool error.",
+            code="ERR_STRAND_OPERATIONAL",
+            details={"strand": strand_name, "original_error": str(original_error) if original_error else None},
+        )
+
 

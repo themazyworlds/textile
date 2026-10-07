@@ -11,6 +11,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
+
 from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.reflector import (
     StrandConfig,
@@ -19,8 +21,8 @@ from textile.core.execution.reflector import (
     reflect_wefts,
 )
 from textile.core.execution.strands import Strand, Weft
+from textile.core.telemetry.blackboard import sensory_tapestry
 from textile.core.telemetry.elastic import EventUrgency, elastic
-from textile.core.telemetry.tapestry import sensory_tapestry
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +40,10 @@ class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
     manifest: YarnManifest
+    settings_schema: type[BaseModel] | None = None
 
     def __init__(self, manifest: YarnManifest | None = None) -> None:
+        self._settings: Any = None
         if manifest is not None:
             self.manifest = manifest
             return
@@ -88,6 +92,50 @@ class Yarn(ABC):
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated uv execution."""
         return list(self.manifest.python_dependencies)
+
+    def get_settings_schema(self) -> type[BaseModel] | None:
+        """Return explicit or dynamically-generated Pydantic settings schema for this yarn."""
+        if self.settings_schema is not None:
+            return self.settings_schema
+        if hasattr(self, "manifest") and self.manifest.settings:
+            return self.manifest.create_settings_model()
+        return None
+
+    @property
+    def settings(self) -> Any:
+        """Returns validated settings for this yarn based on settings_schema and ~/.config/textile/settings.toml."""
+        if self._settings is not None:
+            return self._settings
+
+        from textile.core.orchestration.skein import skein  # noqa: PLC0415
+
+        manifest_defaults = self.manifest.get_default_settings() if hasattr(self, "manifest") else {}
+        user_config = skein.get_yarn_settings(self.name)
+        merged_config = {**manifest_defaults, **user_config}
+
+        schema = self.get_settings_schema()
+        if schema is not None and isinstance(schema, type) and issubclass(schema, BaseModel):
+            try:
+                self._settings = schema.model_validate(merged_config)
+            except ValidationError as e:
+                logger.warning(
+                    "yarn.settings_validation_failed: %s (error: %s). Falling back to schema defaults.",
+                    self.name,
+                    str(e),
+                )
+                try:
+                    self._settings = schema()
+                except (ValidationError, TypeError, ValueError):
+                    self._settings = merged_config
+        else:
+            self._settings = merged_config
+
+        return self._settings
+
+    def reload_settings(self) -> Any:
+        """Clear cached settings and reload from Skein."""
+        self._settings = None
+        return self.settings
 
     @property
     def elastic(self):

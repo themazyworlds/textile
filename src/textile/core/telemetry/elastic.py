@@ -20,8 +20,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from textile.core.telemetry.blackboard import NoticeLevel, sensory_tapestry
 from textile.core.telemetry.log import get_logger
-from textile.core.telemetry.tapestry import NoticeLevel, sensory_tapestry
 
 logger = get_logger(__name__)
 
@@ -202,41 +202,44 @@ class ElasticEngine:
         if opts.retained_slot is not None:
             sensory_tapestry.set_slot(opts.retained_slot, opts.retained_value)
 
-        # 2. Persist Notice to Tapestry SQLite Ledger
-        notice_level = NoticeLevel.INFO
-        if parsed_urgency == EventUrgency.FLASH:
-            notice_level = NoticeLevel.CRITICAL
-        elif parsed_urgency == EventUrgency.ALERT:
-            notice_level = NoticeLevel.WARNING
-        elif parsed_urgency == EventUrgency.NOTICE:
-            notice_level = NoticeLevel.NOTICE
-
-        sensory_tapestry.stitch(
-            level=notice_level,
-            source=clean_source,
-            message=frame.summary,
-            data={"topic": clean_topic, "urgency": parsed_urgency.value} | payload_data,
-        )
-
-        # 3. Record to shared SQLite cross-process event stream
-        try:
-            sensory_tapestry.record_elastic_event(
-                event_id=frame.id,
-                topic=frame.topic,
-                source=frame.source,
-                urgency=frame.urgency.value,
-                summary=frame.summary,
-                data=frame.data,
-                timestamp=frame.timestamp,
-                process_id=self._pid,
-                retained_slot=opts.retained_slot,
-                retained_value=opts.retained_value,
-            )
-        except (sqlite3.Error, OSError, RuntimeError, ValueError) as e:
-            logger.debug("elastic.record_event_failed", error=str(e))
-
-        # 4. Deliver in-process immediately
+        # 2. Deliver in-process immediately (zero latency for local UI & listeners)
         self._deliver_local(frame)
+
+        # 3. Persist Notice & Record to shared SQLite cross-process event stream off-thread
+        def _persist_to_sqlite() -> None:
+            notice_level = NoticeLevel.INFO
+            if parsed_urgency == EventUrgency.FLASH:
+                notice_level = NoticeLevel.CRITICAL
+            elif parsed_urgency == EventUrgency.ALERT:
+                notice_level = NoticeLevel.WARNING
+            elif parsed_urgency == EventUrgency.NOTICE:
+                notice_level = NoticeLevel.NOTICE
+
+            with contextlib.suppress(sqlite3.Error, OSError, RuntimeError, ValueError):
+                sensory_tapestry.stitch(
+                    level=notice_level,
+                    source=clean_source,
+                    message=frame.summary,
+                    data={"topic": clean_topic, "urgency": parsed_urgency.value} | payload_data,
+                )
+                sensory_tapestry.record_elastic_event(
+                    event_id=frame.id,
+                    topic=frame.topic,
+                    source=frame.source,
+                    urgency=frame.urgency.value,
+                    summary=frame.summary,
+                    data=frame.data,
+                    timestamp=frame.timestamp,
+                    process_id=self._pid,
+                    retained_slot=opts.retained_slot,
+                    retained_value=opts.retained_value,
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, _persist_to_sqlite)
+        except RuntimeError:
+            _persist_to_sqlite()
 
         return frame
 

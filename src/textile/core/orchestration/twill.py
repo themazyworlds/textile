@@ -6,36 +6,41 @@ Provides standard MCP stdio JSON-RPC tool/strand dispatching aggregated across a
 import asyncio
 import os
 import sys
+from typing import Any
 
 from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS
+from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandOperationalError
 from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.loom import loom
+from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError
 
 
 def create_twill_server() -> Server:
     """Create and configure official Twill / MCP Server with yarn strand dispatchers."""
     loom.initialize()
     instructions = fabric_instructions.build_instructions(loom.active_yarns)
-    app = Server("textile", instructions=instructions)
 
-    @app.list_prompts()
-    async def handle_list_prompts() -> list[types.Prompt]:
-        return [
-            types.Prompt(
-                name="textile_system_instructions",
-                description=(
-                    "Textile Desktop Fabric security governance, capability tiers, and visual OTP confirmation."
-                ),
-            )
-        ]
+    async def handle_list_prompts(
+        _ctx: Any, _params: types.PaginatedRequestParams | None = None
+    ) -> types.ListPromptsResult:
+        return types.ListPromptsResult(
+            prompts=[
+                types.Prompt(
+                    name="textile_system_instructions",
+                    description=(
+                        "Textile Desktop Fabric security governance, capability tiers, and visual OTP confirmation."
+                    ),
+                )
+            ]
+        )
 
-    @app.get_prompt()
-    async def handle_get_prompt(name: str, _arguments: dict | None = None) -> types.GetPromptResult:
-        if name in {"textile_system_instructions", "textile_system_contract"}:
+    async def handle_get_prompt(
+        _ctx: Any, params: types.GetPromptRequestParams
+    ) -> types.GetPromptResult:
+        if params.name in {"textile_system_instructions", "textile_system_contract"}:
             return types.GetPromptResult(
                 description="Textile Desktop Fabric Active System Instructions",
                 messages=[
@@ -48,31 +53,54 @@ def create_twill_server() -> Server:
                     )
                 ],
             )
-        raise ValueError(f"Unknown prompt: {name}")
+        raise ValueError(f"Unknown prompt: {params.name}")
 
-    @app.list_tools()
-    async def handle_list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name=strand_def["name"],
-                description=strand_def.get("description", ""),
-                inputSchema=strand_def.get("inputSchema", {"type": "object", "properties": {}}),
-            )
-            for strand_def in fabric_instructions.get_mcp_definitions(loom.get_all_strands())
-        ]
+    async def handle_list_tools(
+        _ctx: Any, _params: types.PaginatedRequestParams | None = None
+    ) -> types.ListToolsResult:
+        return types.ListToolsResult(
+            tools=[
+                types.Tool(
+                    name=strand_def["name"],
+                    description=strand_def.get("description", ""),
+                    input_schema=strand_def.get("input_schema")
+                    or strand_def.get("inputSchema", {"type": "object", "properties": {}}),
+                )
+                for strand_def in fabric_instructions.get_mcp_definitions(loom.get_all_strands())
+            ]
+        )
 
-    @app.call_tool()
-    async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
+    async def handle_call_tool(
+        _ctx: Any, params: types.CallToolRequestParams
+    ) -> types.CallToolResult:
+        name = params.name
+        arguments = params.arguments or {}
         try:
-            args_dict = dict(arguments) if arguments else {}
+            args_dict = dict(arguments)
             otp_val = args_dict.pop("otp", None)
             effective_caller = os.getenv("TEXTILE_CALLER", "twill_mcp")
             res_text = await loom.execute(name, args_dict, caller=effective_caller, otp=otp_val)
-            return [types.TextContent(type="text", text=str(res_text))]
+            return types.CallToolResult(content=[types.TextContent(type="text", text=str(res_text))])
+        except PolicyViolationError as e:
+            return types.CallToolResult(
+                content=[types.TextContent(type="text", text=f"Security Policy Violation: {e}")], is_error=True
+            )
+        except OTPChallengeRequiredError as e:
+            return types.CallToolResult(content=[types.TextContent(type="text", text=str(e))], is_error=True)
+        except StrandOperationalError as e:
+            return types.CallToolResult(content=[types.TextContent(type="text", text=str(e))], is_error=True)
         except SAFE_EXCEPTIONS as e:
-            return [types.TextContent(type="text", text=f"Strand execution error: {e}")]
+            err_msg = f"[Operational Failure] Strand '{name}' execution error: {e}"
+            return types.CallToolResult(content=[types.TextContent(type="text", text=err_msg)], is_error=True)
 
-    return app
+    return Server(
+        "textile",
+        instructions=instructions,
+        on_list_prompts=handle_list_prompts,
+        on_get_prompt=handle_get_prompt,
+        on_list_tools=handle_list_tools,
+        on_call_tool=handle_call_tool,
+    )
 
 
 async def run_twill_async():

@@ -9,10 +9,15 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "mcp>=1.3.0",
-    "pydantic>=2.10.0",
+    "anyio>=4.10.0",
+    "mcp[cli]>=2.0.0",
+    "orjson>=3.10.0",
+    "platformdirs>=4.3.0",
+    "pydantic>=2.12.0",
+    "pydantic-settings>=2.15.0",
     "pyee>=13.0.0",
     "rich>=15.0.0",
+    "stamina>=26.1.0",
     "structlog>=26.1.0",
     "typer>=0.15.0",
 ]
@@ -21,21 +26,6 @@ classifiers = [
     "Environment :: Console",
     "Topic :: System :: Systems Administration",
     "Programming Language :: Python :: 3.14",
-]
-
-[project.optional-dependencies]
-dbus = ["dbus-fast>=5.0.22"]
-weave = ["livekit-agents[google,mcp]>=1.8.2"]
-twill = ["mcp>=1.3.0"]
-screen_vision = ["mss>=10.2.0", "pillow>=12.3.0"]
-clipboard = ["pyxclip>=0.2.3"]
-all = [
-    "dbus-fast>=5.0.22",
-    "livekit-agents[google,mcp]>=1.8.2",
-    "mcp>=1.3.0",
-    "mss>=10.2.0",
-    "pillow>=12.3.0",
-    "pyxclip>=0.2.3",
 ]
 
 [project.scripts]
@@ -116,5 +106,6 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
 include = ["src"]
+extraPaths = ["src", "../textile-yarns/yarns", "../textile-yarns/yarns/weave"]
 pythonVersion = "3.14"
 pythonPlatform = "Linux"

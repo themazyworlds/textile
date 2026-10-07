@@ -12,45 +12,45 @@ from textile import (
     LAYER_SESSION_MANAGER,
     LAYER_USER_OVERRIDE,
 )
-from textile.core.definitions.layers import _layer_info
+from textile.core.definitions.layers import get_layer_info
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.twill import create_twill_server
 
 
 class TestLayerHierarchy(unittest.TestCase):
-    """Unit tests for _layer_info() in textile.core.cli."""
+    """Unit tests for get_layer_info() layer metadata resolution."""
 
     def test_core_posix_layer(self):
-        t = _layer_info(LAYER_BASE)
+        t = get_layer_info(LAYER_BASE).to_dict()
         self.assertEqual(t["name"], "Core POSIX")
         self.assertEqual(t["level"], 1)
 
     def test_below_base_falls_back_to_core_posix(self):
-        t = _layer_info(1)
+        t = get_layer_info(1).to_dict()
         self.assertEqual(t["level"], 1)
 
     def test_desktop_protocol_layer(self):
-        t = _layer_info(LAYER_DESKTOP_PROTOCOL)
+        t = get_layer_info(LAYER_DESKTOP_PROTOCOL).to_dict()
         self.assertEqual(t["name"], "Desktop Protocol")
         self.assertEqual(t["level"], 2)
 
     def test_compositor_de_layer(self):
-        t = _layer_info(LAYER_COMPOSITOR_DE)
+        t = get_layer_info(LAYER_COMPOSITOR_DE).to_dict()
         self.assertEqual(t["name"], "Compositor / DE")
         self.assertEqual(t["level"], 3)
 
     def test_session_manager_layer(self):
-        t = _layer_info(LAYER_SESSION_MANAGER)
+        t = get_layer_info(LAYER_SESSION_MANAGER).to_dict()
         self.assertEqual(t["name"], "Session Manager")
         self.assertEqual(t["level"], 4)
 
     def test_user_override_layer(self):
-        t = _layer_info(LAYER_USER_OVERRIDE)
+        t = get_layer_info(LAYER_USER_OVERRIDE).to_dict()
         self.assertEqual(t["name"], "User Override")
         self.assertEqual(t["level"], 5)
 
     def test_above_user_override(self):
-        t = _layer_info(9999)
+        t = get_layer_info(9999).to_dict()
         self.assertEqual(t["level"], 5)
 
     def test_layer_ordering(self):
@@ -62,7 +62,7 @@ class TestLayerHierarchy(unittest.TestCase):
             LAYER_SESSION_MANAGER,
             LAYER_USER_OVERRIDE,
         ]
-        levels = [_layer_info(p)["level"] for p in layers]
+        levels = [get_layer_info(p).level for p in layers]
         self.assertEqual(levels, sorted(levels))
 
 

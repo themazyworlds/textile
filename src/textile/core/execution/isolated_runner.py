@@ -101,7 +101,7 @@ def execute_isolated_strand(
     yarn: Any,
     strand_name: str,
     args: dict[str, Any],
-    timeout: float = 30.0,
+    timeout: float | None = 300.0,
     tier: CapabilityTier | str = CapabilityTier.INTERACT,
 ) -> str:
     """Run a strand in an isolated ephemeral subprocess using `uv`."""
@@ -125,7 +125,8 @@ def execute_isolated_strand(
 
     try:
         cmd = _build_worker_command(spec)
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False, env=env)
+        proc_timeout = None if (timeout is None or timeout <= 0) else timeout
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=proc_timeout, check=False, env=env)
         return _parse_worker_output(res, strand_name)
     except subprocess.TimeoutExpired:
         return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
