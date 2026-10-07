@@ -1,13 +1,13 @@
-"""
-Textile CLI Subsystem Daemon Commands (Twill MCP, Weave Voice AI, Canvas UI).
-"""
-
-
+import contextlib
+import shutil
+import subprocess
 from typing import Any
 
 import typer
 
 from textile.core.cli.app import app, console
+from textile.core.orchestration.loom import loom
+from textile.core.orchestration.skein import skein
 from textile.core.orchestration.twill import run_twill
 
 
@@ -23,11 +23,6 @@ def cmd_weave(
     text: bool = typer.Option(False, "--text", help="Text-only mode, no mic/speaker (lk agent console --text)"),
 ):
     """Launch Weave real-time voice & desktop companion."""
-    import shutil  # noqa: PLC0415
-    import subprocess  # noqa: PLC0415
-
-    from textile.core.orchestration.skein import skein  # noqa: PLC0415
-
     for search_path in skein.get_search_paths():
         agent_file = search_path / "weave" / "agent.py"
         if agent_file.exists():
@@ -44,8 +39,6 @@ def cmd_weave(
                 cmd.append("--text")
             cmd.append("agent.py")
 
-            import contextlib  # noqa: PLC0415
-
             with contextlib.suppress(KeyboardInterrupt):
                 subprocess.run(cmd, cwd=str(agent_file.parent), check=False)
             return
@@ -59,8 +52,6 @@ def cmd_canvas(
     target: str | None = typer.Argument(None, help="Mood name, expression name, or on/off flag"),
 ):
     """Control the Quickshell Canvas Face UI and dynamic mood engine."""
-    from textile.core.orchestration.loom import loom  # noqa: PLC0415
-
     loom.initialize()
     canvas_yarn: Any = loom.active_yarns.get("canvas")
     if not canvas_yarn:

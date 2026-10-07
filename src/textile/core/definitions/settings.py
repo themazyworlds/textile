@@ -3,8 +3,11 @@ Textile Core Settings Subsystem & Auto-Documented Configuration Generator.
 Powered by Pydantic v2 and pydantic-settings.
 """
 
+import tomllib
+from pathlib import Path
 from typing import Any, get_args, get_origin
 
+import platformdirs
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +21,19 @@ class YarnSettings(BaseSettings):
         case_sensitive=False,
         arbitrary_types_allowed=True,
     )
+
+
+def get_user_yarn_settings(yarn_name: str) -> dict[str, Any]:
+    """Retrieve raw user settings dictionary for a specific yarn from ~/.config/textile/settings.toml."""
+    settings_file = Path(platformdirs.user_config_dir("textile")) / "settings.toml"
+    if not settings_file.exists():
+        return {}
+    try:
+        with settings_file.open("rb") as f:
+            data = tomllib.load(f)
+            return data.get(yarn_name, {})
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
 
 
 def _format_type_name(annotation: Any) -> str:

@@ -7,6 +7,7 @@ import importlib
 import importlib.util
 import inspect
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from pydantic import BaseModel
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.definitions.manifest import YarnManifest
+from textile.core.definitions.settings import generate_documented_toml
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
 from textile.core.security.context import PolicyViolationError
@@ -112,8 +114,6 @@ yarn_venv_manager = YarnVenvManager()
 
 def get_yarn_search_paths(config_dir: Path | None = None) -> list[Path]:
     """Retrieve ordered list of filesystem search paths for yarn discovery using platformdirs."""
-    import os  # noqa: PLC0415
-
     paths: list[Path] = []
 
     # 1. Explicit environment variable override
@@ -236,9 +236,6 @@ class Skein:
             if self._initialized:
                 return
             self._load_config()
-            from textile.core.orchestration.fabric import core_fabric_yarn  # noqa: PLC0415
-
-            self.register_yarn(core_fabric_yarn)
             self.load_yarns()
             self._initialized = True
 
@@ -363,8 +360,6 @@ class Skein:
             return schemas
 
     def generate_settings_template(self) -> str:
-        from textile.core.definitions.settings import generate_documented_toml  # noqa: PLC0415
-
         return generate_documented_toml(self.get_all_yarn_schemas())
 
     def get_static_manifests(self) -> dict[str, YarnManifest]:
@@ -393,7 +388,6 @@ class Skein:
         try:
             self._settings_file.parent.mkdir(parents=True, exist_ok=True)
             tmp_file = self._settings_file.with_suffix(".tmp")
-            from textile.core.definitions.settings import generate_documented_toml  # noqa: PLC0415
 
             schemas = self.get_all_yarn_schemas()
             if schemas:

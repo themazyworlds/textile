@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from textile.core.definitions.manifest import YarnManifest
+from textile.core.definitions.settings import get_user_yarn_settings
 from textile.core.execution.reflector import (
     StrandConfig,
     build_dynamic_strand,
@@ -107,10 +108,8 @@ class Yarn(ABC):
         if self._settings is not None:
             return self._settings
 
-        from textile.core.orchestration.skein import skein  # noqa: PLC0415
-
         manifest_defaults = self.manifest.get_default_settings() if hasattr(self, "manifest") else {}
-        user_config = skein.get_yarn_settings(self.name)
+        user_config = get_user_yarn_settings(self.name)
         merged_config = {**manifest_defaults, **user_config}
 
         schema = self.get_settings_schema()

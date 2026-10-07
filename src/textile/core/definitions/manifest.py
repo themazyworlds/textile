@@ -6,9 +6,11 @@ import contextlib
 import logging
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, create_model
+
+from textile.core.definitions.settings import YarnSettings
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +61,6 @@ class YarnManifest(BaseModel):
         """Dynamically construct a Pydantic Settings model directly from this manifest's [settings] table."""
         if not self.settings:
             return None
-
-        from typing import Literal  # noqa: PLC0415
-
-        from pydantic import create_model  # noqa: PLC0415
-
-        from textile.core.definitions.settings import YarnSettings  # noqa: PLC0415
 
         fields: dict[str, Any] = {}
         for name, field_spec in self.settings.items():

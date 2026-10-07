@@ -22,6 +22,7 @@ from textile.core.cli.app import (
     ensure_initialized,
 )
 from textile.core.definitions.layers import get_layer_info
+from textile.core.definitions.settings import _format_type_name
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
 from textile.core.telemetry.auditor import audit_all
@@ -137,8 +138,6 @@ def _render_all_settings_table(all_settings: dict[str, Any]) -> None:
 
 
 def _render_schema_docs(yarn_name: str | None = None) -> None:
-    from textile.core.definitions.settings import _format_type_name  # noqa: PLC0415
-
     schemas = skein.get_all_yarn_schemas()
     if yarn_name and yarn_name in schemas:
         targets = {yarn_name: schemas[yarn_name]}

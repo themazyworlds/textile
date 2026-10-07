@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import textile
 from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.execution.invoker import execute_direct
 from textile.core.execution.strands import CapabilityTier
@@ -96,8 +97,6 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
 
 def _build_isolated_pythonpath(yarn: Any, cwd: str, existing_pythonpath: str = "") -> str:
     """Build unified PYTHONPATH containing textile root, yarn paths, and site-packages."""
-    import textile  # noqa: PLC0415
-
     textile_pkg_dir = str(Path(textile.__file__).resolve().parent.parent)
     paths_to_add = [textile_pkg_dir, cwd]
     for p in sys.path:

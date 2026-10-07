@@ -2,6 +2,7 @@ import os
 import unittest
 from typing import Literal
 
+import pytest
 from pydantic import BaseModel, Field
 
 from textile import Strand, Yarn, YarnManifest
@@ -313,7 +314,6 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "happy")
 
     def test_weave_streaming_transcription_node(self):
-        import pytest  # noqa: PLC0415
         pytest.importorskip("livekit")
         import asyncio
         import time
@@ -355,7 +355,6 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(clean_text, " What shall we investigate next?")
 
     def test_packagekit_pure_dbus_yarn(self):
-        import pytest  # noqa: PLC0415
         pytest.importorskip("dbus_fast")
         from dbus_fast import Variant
         from packagekit.packagekit import (
