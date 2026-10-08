@@ -21,7 +21,6 @@ from textile.core.cli.app import (
     ensure_initialized,
 )
 from textile.core.cli.ui import Column, print_table
-from textile.core.definitions.layers import get_layer_info
 from textile.core.definitions.settings import _format_type_name
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
@@ -67,16 +66,15 @@ def cmd_skein(
         except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
             av_str = "[red]ERR[/red]"
 
-        layer_name = get_layer_info(yarn.layer).name
         desc = (yarn.description or "").splitlines()[0].strip() if yarn.description else ""
-        rows.append((yarn.name, f"{yarn.layer} ({layer_name})", en_str, av_str, desc))
+        rows.append((yarn.name, str(yarn.layer), en_str, av_str, desc))
 
     print_table(
         header_title="Textile Skein",
         subtitle=f"{len(skein.all_yarns)} capability yarns discovered",
         columns=[
             Column("Yarn", style="bold cyan", no_wrap=True),
-            Column("Layer", justify="center", no_wrap=True),
+            Column("Layer", style="bold yellow", justify="center", no_wrap=True),
             Column("Enabled", justify="center", no_wrap=True),
             Column("Available", justify="center", no_wrap=True),
             Column("Description", style="dim"),

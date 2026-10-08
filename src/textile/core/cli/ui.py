@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from rich import box
+from rich.panel import Panel
 from rich.table import Table
 
 from textile.core.cli.app import console
@@ -28,18 +29,19 @@ def create_table(
     subtitle: str | None = None,
     columns: Sequence[Column | str] = (),
     rows: Sequence[Sequence[Any]] = (),
+    spacing: bool = True,
 ) -> Table:
-    """Build a unified, sleek, rounded-border Rich Table with consistent typography and styling."""
+    """Build a unified, sleek, borderless-column Rich Table with consistent typography and styling."""
     if header_title:
         sub_str = f" [dim]• {subtitle}[/dim]" if subtitle else ""
         console.print(f"\n  [bold bright_cyan]{header_title}[/bold bright_cyan]{sub_str}\n")
 
     table = Table(
-        box=box.ROUNDED,
+        box=box.SIMPLE_HEAD,
         border_style="dim",
         header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 2, 1, 2),
+        show_edge=False,
+        padding=(0, 2),
     )
 
     for col in columns:
@@ -54,8 +56,11 @@ def create_table(
         else:
             table.add_column(str(col))
 
-    for row in rows:
+    num_rows = len(rows)
+    for idx, row in enumerate(rows):
         table.add_row(*(str(c) if c is not None else "" for c in row))
+        if spacing and idx < num_rows - 1:
+            table.add_row()
 
     return table
 
@@ -65,13 +70,16 @@ def print_table(
     subtitle: str | None = None,
     columns: Sequence[Column | str] = (),
     rows: Sequence[Sequence[Any]] = (),
-) -> Table:
-    """Create and immediately print a unified Rich Table to the console."""
+    spacing: bool = True,
+) -> Panel:
+    """Create and immediately print a unified Rich Panel table to the console."""
     table = create_table(
         header_title=header_title,
         subtitle=subtitle,
         columns=columns,
         rows=rows,
+        spacing=spacing,
     )
-    console.print(table)
-    return table
+    panel = Panel(table, box=box.ROUNDED, border_style="dim", expand=False, padding=(0, 0))
+    console.print(panel)
+    return panel
