@@ -25,20 +25,14 @@ class Column:
 
 
 def create_table(
-    header_title: str | None = None,
-    subtitle: str | None = None,
     columns: Sequence[Column | str] = (),
     rows: Sequence[Sequence[Any]] = (),
-    spacing: bool = True,
+    show_header: bool = False,
 ) -> Table:
-    """Build a unified, sleek, borderless-column Rich Table with consistent typography and styling."""
-    if header_title:
-        sub_str = f" [dim]• {subtitle}[/dim]" if subtitle else ""
-        console.print(f"\n  [bold bright_cyan]{header_title}[/bold bright_cyan]{sub_str}\n")
-
+    """Build a compact, headerless/borderless Rich Table for Typer-style panels."""
     table = Table(
-        box=box.SIMPLE_HEAD,
-        border_style="dim",
+        box=None,
+        show_header=show_header,
         header_style="bold bright_cyan",
         show_edge=False,
         padding=(0, 2),
@@ -56,11 +50,8 @@ def create_table(
         else:
             table.add_column(str(col))
 
-    num_rows = len(rows)
-    for idx, row in enumerate(rows):
+    for row in rows:
         table.add_row(*(str(c) if c is not None else "" for c in row))
-        if spacing and idx < num_rows - 1:
-            table.add_row()
 
     return table
 
@@ -70,16 +61,26 @@ def print_table(
     subtitle: str | None = None,
     columns: Sequence[Column | str] = (),
     rows: Sequence[Sequence[Any]] = (),
-    spacing: bool = True,
+    show_header: bool = False,
 ) -> Panel:
-    """Create and immediately print a unified Rich Panel table to the console."""
+    """Create and immediately print a unified Typer-style Rich Panel table to the console."""
     table = create_table(
-        header_title=header_title,
-        subtitle=subtitle,
         columns=columns,
         rows=rows,
-        spacing=spacing,
+        show_header=show_header,
     )
-    panel = Panel(table, box=box.ROUNDED, border_style="dim", expand=False, padding=(0, 0, 1, 0))
+    title_str = f"[bold bright_cyan]{header_title}[/bold bright_cyan]" if header_title else None
+    if title_str and subtitle:
+        title_str += f" [dim]• {subtitle}[/dim]"
+
+    panel = Panel(
+        table,
+        title=title_str,
+        title_align="left",
+        box=box.ROUNDED,
+        border_style="dim",
+        expand=False,
+        padding=(0, 0),
+    )
     console.print(panel)
     return panel
