@@ -58,7 +58,9 @@ def method_to_weft(_yarn: Any, method: Callable[..., Any]) -> Weft:
     sig = inspect.signature(method)
     weft_name = getattr(method, "_weft_name", method.__name__)
     weft_pattern = getattr(method, "_weft_pattern")
-    weft_desc = getattr(method, "_weft_description", None) or inspect.getdoc(method) or weft_name
+    doc_summary, _ = _extract_docstring_info(inspect.getdoc(method))
+    raw_desc = getattr(method, "_weft_description", None) or doc_summary or weft_name
+    weft_desc = raw_desc.splitlines()[0].strip() if raw_desc else weft_name
     weft_strip = getattr(method, "_weft_strip", True)
     weft_priority = getattr(method, "_weft_priority", 100)
 
@@ -82,7 +84,8 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     """Convert a @strand decorated method into a Strand instance."""
     main_desc, param_docs = _extract_docstring_info(inspect.getdoc(method))
     strand_name = getattr(method, "_strand_name", method.__name__)
-    strand_desc = getattr(method, "_strand_description", None) or main_desc or strand_name
+    raw_desc = getattr(method, "_strand_description", None) or main_desc or strand_name
+    strand_desc = raw_desc.splitlines()[0].strip() if raw_desc else strand_name
     strand_cap = getattr(method, "_strand_capability", None)
     tier_val = _parse_tier(getattr(method, "_strand_tier", CapabilityTier.INTERACT), strand_name)
 

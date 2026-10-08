@@ -138,11 +138,21 @@ def _extract_docstring_info(doc: str | None) -> tuple[str, dict[str, str]]:
     if not doc:
         return "", {}
     desc_lines, param_docs = [], {}
+    in_summary = True
     for line in doc.strip().splitlines():
         s = line.strip()
+        if not s:
+            in_summary = False
+            continue
         m = re.match(r":param\s+([a-zA-Z0-9_]+):\s*(.*)", s) or re.match(r"([a-zA-Z0-9_]+)(?:\s*\([^)]*\))?:\s+(.*)", s)
-        if m and not s.startswith(("http:", "https:", "Note:", "Warning:", "Returns:", "Yields:")):
+        if m and not s.startswith(("http:", "https:", "Note:", "Warning:", "Returns:", "Yields:", "NOTE:", "WARNING:")):
+            in_summary = False
             param_docs[m.group(1)] = m.group(2)
-        elif not param_docs:
-            desc_lines.append(s)
-    return " ".join(desc_lines).strip(), param_docs
+        elif in_summary:
+            if s.startswith(("Note:", "Warning:", "Returns:", "Yields:", "NOTE:", "WARNING:", "Example:", "EXAMPLE:")):
+                in_summary = False
+            else:
+                desc_lines.append(s)
+    summary = " ".join(desc_lines).strip()
+    return summary, param_docs
+

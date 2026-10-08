@@ -90,7 +90,7 @@ class Yarn(ABC):
             self.name = self.__class__.__name__.lower()
 
         if description:
-            self.description = description
+            self.description = description.splitlines()[0].strip()
 
         if layer is not None:
             self.layer = layer
@@ -140,11 +140,11 @@ class Yarn(ABC):
             raw_name = str(project["name"])
             self.name = raw_name.removeprefix("textile-yarn-").removeprefix("yarn-")
         if not description and "description" in project:
-            self.description = str(project["description"])
+            self.description = str(project["description"]).splitlines()[0].strip()
         elif not self.description:
             doc = inspect.getdoc(self.__class__)
             if doc and not doc.startswith("Abstract Base Class"):
-                self.description = doc.splitlines()[0]
+                self.description = doc.splitlines()[0].strip()
             else:
                 self.description = self.name
         if "version" not in kwargs and "version" in project:

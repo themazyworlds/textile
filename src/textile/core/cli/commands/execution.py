@@ -69,27 +69,26 @@ def list_strands(
     strands = loom.get_all_strands()
     query = (filter_query or "").strip().lower()
 
-    matched: list[tuple[str, str, str, str]] = []
+    matched: list[tuple[str, str, str]] = []
     for s in strands:
         s_name = s.name
         s_tier = str(s.tier or "")
-        s_cap = s.capability or "—"
-        s_desc = s.description or ""
+        s_cap = s.capability or ""
+        s_desc = (s.description or "").splitlines()[0].strip() if s.description else ""
 
         if query and query not in s_name.lower() and query not in s_desc.lower() and query not in s_cap.lower():
             continue
         if tier and tier.lower() != s_tier.lower():
             continue
 
-        matched.append((s_name, s_tier, s_cap, s_desc))
+        matched.append((s_name, s_tier, s_desc))
 
     print_table(
         header_title="Textile Strands",
         subtitle=f"{len(matched)} registered strands",
         columns=[
-            Column("Strand", style="bold cyan"),
-            Column("Tier", justify="center"),
-            Column("Capability", style="dim white"),
+            Column("Strand", style="bold cyan", no_wrap=True),
+            Column("Tier", justify="center", no_wrap=True),
             Column("Description", style="dim"),
         ],
         rows=matched,
@@ -105,15 +104,16 @@ def list_yarns():
     rows = []
     for y in yarns:
         status_str = "[green]ACTIVE[/green]" if skein.is_enabled(y.name) else "[red]DISABLED[/red]"
-        rows.append((y.name, str(y.layer), status_str, y.description or ""))
+        desc = (y.description or "").splitlines()[0].strip() if y.description else ""
+        rows.append((y.name, str(y.layer), status_str, desc))
 
     print_table(
         header_title="Textile Yarns",
         subtitle=f"{len(yarns)} capability yarns",
         columns=[
-            Column("Yarn", style="bold cyan"),
-            Column("Layer", justify="center"),
-            Column("Status", justify="center"),
+            Column("Yarn", style="bold cyan", no_wrap=True),
+            Column("Layer", justify="center", no_wrap=True),
+            Column("Status", justify="center", no_wrap=True),
             Column("Description", style="dim"),
         ],
         rows=rows,
