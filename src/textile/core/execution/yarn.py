@@ -62,11 +62,20 @@ class Yarn(ABC):
     name: str = ""
     description: str = ""
     layer: int = 10
-    publisher: str = "textile"
+    tailor: str = "textile"
     version: str = "1.0.0"
     resources: Sequence[str] = ()
     settings_schema: type[BaseModel] | None = None
     dependencies: Sequence[str] = ()
+
+    @property
+    def publisher(self) -> str:
+        """Alias for tailor for backwards compatibility."""
+        return self.tailor
+
+    @publisher.setter
+    def publisher(self, val: str) -> None:
+        self.tailor = val
 
     def __init__(
         self,
@@ -85,8 +94,10 @@ class Yarn(ABC):
 
         if layer is not None:
             self.layer = layer
-        if "publisher" in kwargs and kwargs["publisher"] is not None:
-            self.publisher = str(kwargs["publisher"])
+        if "tailor" in kwargs and kwargs["tailor"] is not None:
+            self.tailor = str(kwargs["tailor"])
+        elif "publisher" in kwargs and kwargs["publisher"] is not None:
+            self.tailor = str(kwargs["publisher"])
         if "version" in kwargs and kwargs["version"] is not None:
             self.version = str(kwargs["version"])
         if "resources" in kwargs and kwargs["resources"] is not None:
@@ -138,12 +149,12 @@ class Yarn(ABC):
                 self.description = self.name
         if "version" not in kwargs and "version" in project:
             self.version = str(project["version"])
-        if "authors" in project and project["authors"] and "publisher" not in kwargs:
+        if "authors" in project and project["authors"] and "publisher" not in kwargs and "tailor" not in kwargs:
             first_author = project["authors"][0]
             if isinstance(first_author, dict):
-                self.publisher = str(first_author.get("name", "textile"))
+                self.tailor = str(first_author.get("name", "textile"))
             else:
-                self.publisher = str(first_author)
+                self.tailor = str(first_author)
         if "dependencies" not in kwargs and not self.dependencies and "dependencies" in project:
             self.dependencies = list(project["dependencies"])
 
@@ -155,6 +166,13 @@ class Yarn(ABC):
     ) -> None:
         if layer is None and "layer" in tool_textile:
             self.layer = int(tool_textile["layer"])
+        if "tailor" in tool_textile and "tailor" not in kwargs and "publisher" not in kwargs:
+            self.tailor = str(tool_textile["tailor"])
+        elif "tailors" in tool_textile and "tailor" not in kwargs and "publisher" not in kwargs:
+            tailors = tool_textile["tailors"]
+            self.tailor = str(tailors[0]) if isinstance(tailors, (list, tuple)) and tailors else str(tailors)
+        elif "publisher" in tool_textile and "tailor" not in kwargs and "publisher" not in kwargs:
+            self.tailor = str(tool_textile["publisher"])
         if "resources" not in kwargs and not self.resources and "resources" in tool_textile:
             self.resources = list(tool_textile["resources"])
         if "settings" in tool_textile and isinstance(tool_textile["settings"], dict):

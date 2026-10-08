@@ -27,7 +27,7 @@ class CoreFabricYarn(Yarn):
     """Native Core Fabric Administration & Health Diagnostics."""
 
     name = "core"
-    publisher = "textile"
+    tailor = "textile"
     version = "1.0.0"
     layer = 0
     description = "Textile Core runtime engine diagnostics and state inspection"

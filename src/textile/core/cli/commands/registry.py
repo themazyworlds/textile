@@ -450,7 +450,7 @@ def cmd_yarn(
         rows.append((
             name,
             str(yarn.layer),
-            yarn.publisher or "textile",
+            yarn.tailor or "textile",
             str(len(yarn.get_strands())),
             yarn.description,
         ))
@@ -461,7 +461,7 @@ def cmd_yarn(
         columns=[
             Column("Yarn", style="bold cyan", width=18),
             Column("Layer", style="bold yellow", justify="center", width=8),
-            Column("Publisher", width=12),
+            Column("Tailor", width=12),
             Column("Strands", justify="right", width=8),
             Column("Description", style="dim"),
         ],
