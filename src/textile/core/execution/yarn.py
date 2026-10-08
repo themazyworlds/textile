@@ -77,7 +77,62 @@ class Yarn(ABC):
             self.resources = list(kwargs["resources"])
         if "dependencies" in kwargs and kwargs["dependencies"] is not None:
             self.dependencies = list(kwargs["dependencies"])
+
+        self._populate_pyproject_metadata(name=name, description=description, layer=layer, kwargs=kwargs)
         self._settings: Any = None
+
+    def _populate_pyproject_metadata(
+        self,
+        name: str | None,
+        description: str | None,
+        layer: int | None,
+        kwargs: dict[str, Any],
+    ) -> None:
+        with contextlib.suppress(*SAFE_EXCEPTIONS):
+            mod_file = inspect.getfile(self.__class__)
+            if not mod_file:
+                return
+            pyproj = Path(mod_file).parent / "pyproject.toml"
+            if not pyproj.exists():
+                return
+            with pyproj.open("rb") as f:
+                data = tomllib.load(f)
+            self._apply_project_table(data.get("project", {}), name, description, kwargs)
+            self._apply_tool_table(data.get("tool", {}).get("textile", {}), layer, kwargs)
+
+    def _apply_project_table(
+        self,
+        project: dict[str, Any],
+        name: str | None,
+        description: str | None,
+        kwargs: dict[str, Any],
+    ) -> None:
+        if not name and "name" in project and (not self.name or self.name == self.__class__.__name__.lower()):
+            raw_name = str(project["name"])
+            self.name = raw_name.removeprefix("textile-yarn-").removeprefix("yarn-")
+        if not description and "description" in project and (not self.description or self.description == self.name):
+            self.description = str(project["description"])
+        if "version" not in kwargs and "version" in project:
+            self.version = str(project["version"])
+        if "authors" in project and project["authors"] and "publisher" not in kwargs:
+            first_author = project["authors"][0]
+            if isinstance(first_author, dict):
+                self.publisher = str(first_author.get("name", "textile"))
+            else:
+                self.publisher = str(first_author)
+        if "dependencies" not in kwargs and not self.dependencies and "dependencies" in project:
+            self.dependencies = list(project["dependencies"])
+
+    def _apply_tool_table(
+        self,
+        tool_textile: dict[str, Any],
+        layer: int | None,
+        kwargs: dict[str, Any],
+    ) -> None:
+        if layer is None and "layer" in tool_textile:
+            self.layer = int(tool_textile["layer"])
+        if "resources" not in kwargs and not self.resources and "resources" in tool_textile:
+            self.resources = list(tool_textile["resources"])
 
     def get_python_dependencies(self) -> list[str]:
         """Return declared external Python package requirements for isolated execution."""
