@@ -8,7 +8,6 @@ import importlib.util
 import os
 import re
 import shutil
-import subprocess
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -111,44 +110,6 @@ def check_python_module(module_name: str, optional: bool = False) -> DependencyC
         )
 
 
-def check_python_dependency(req: str, optional: bool = False) -> DependencyCheck:
-    """Audit a Python package requirement using uv pip compile dry-run resolution."""
-    if uv_bin := shutil.which("uv"):
-        try:
-            res = subprocess.run(
-                [uv_bin, "pip", "compile", "-", "-q"],
-                input=req,
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            if res.returncode == 0:
-                return DependencyCheck(
-                    dep_type=DependencyType.PYTHON_MODULE,
-                    target=req,
-                    is_satisfied=True,
-                    details=f"Package requirement '{req}' resolvable via uv PubGrub resolver",
-                    is_optional=optional,
-                )
-            err = res.stderr.strip().splitlines()[-1] if res.stderr else "Resolution error"
-            return DependencyCheck(
-                dep_type=DependencyType.PYTHON_MODULE,
-                target=req,
-                is_satisfied=False,
-                details=f"uv dependency conflict: {err}",
-                is_optional=optional,
-            )
-        except (subprocess.SubprocessError, OSError, ValueError) as e:
-            logger.debug("seams.uv_dependency_compile_error", error=str(e))
-
-    base_pkg = req
-    for sep in ("==", ">=", "<=", "~="):
-        base_pkg = base_pkg.split(sep, maxsplit=1)[0]
-    base_pkg = base_pkg.strip()
-    return check_python_module(base_pkg, optional=optional)
-
-
 def check_env_variable(var_name: str, optional: bool = False) -> DependencyCheck:
     """Check if an environment variable is set and non-empty."""
     val = os.environ.get(var_name)
@@ -188,9 +149,4 @@ def evaluate_dependencies(yarn: Any) -> list[DependencyCheck]:
         elif dtype == DependencyType.ENV_VARIABLE.value:
             results.append(check_env_variable(target, optional))
 
-    if hasattr(yarn, "get_python_dependencies"):
-        results.extend(
-            check_python_dependency(p_dep)
-            for p_dep in yarn.get_python_dependencies()
-        )
     return results

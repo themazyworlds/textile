@@ -134,25 +134,6 @@ class Yarn(ABC):
         if "resources" not in kwargs and not self.resources and "resources" in tool_textile:
             self.resources = list(tool_textile["resources"])
 
-    def get_python_dependencies(self) -> list[str]:
-        """Return declared external Python package requirements for isolated execution."""
-        if self.dependencies:
-            return list(self.dependencies)
-
-        with contextlib.suppress(TypeError, OSError, ValueError):
-            mod_file = inspect.getfile(self.__class__)
-            if mod_file:
-                pyproj = Path(mod_file).parent / "pyproject.toml"
-                if pyproj.exists():
-                    with pyproj.open("rb") as f:
-                        data = tomllib.load(f)
-                        return list(data.get("project", {}).get("dependencies", []))
-        return []
-
-    @property
-    def python_dependencies(self) -> list[str]:
-        return self.get_python_dependencies()
-
     def get_settings_schema(self) -> type[BaseModel] | None:
         """Return explicit Pydantic settings schema for this yarn."""
         return self.settings_schema
