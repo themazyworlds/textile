@@ -80,6 +80,6 @@ def print_table(
         rows=rows,
         spacing=spacing,
     )
-    panel = Panel(table, box=box.ROUNDED, border_style="dim", expand=False, padding=(0, 0))
+    panel = Panel(table, box=box.ROUNDED, border_style="dim", expand=False, padding=(1, 0))
     console.print(panel)
     return panel
