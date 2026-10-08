@@ -9,6 +9,7 @@ from typing import Any
 
 import platformdirs
 import typer
+from pydantic import BaseModel
 from rich import box
 from rich.table import Table
 from rich.tree import Tree
@@ -147,7 +148,7 @@ def _render_schema_docs(yarn_name: str | None = None) -> None:
     else:
         targets = schemas
 
-    for y_name, schema_cls in sorted(targets.items()):
+    for y_name, schema_or_dict in sorted(targets.items()):
         table = Table(
             title=f"Schema Documentation: yarn '{y_name}'",
             box=box.SIMPLE_HEAD,
@@ -159,11 +160,26 @@ def _render_schema_docs(yarn_name: str | None = None) -> None:
         table.add_column("Default", style="yellow")
         table.add_column("Description", style="dim green")
 
-        for f_name, f_info in schema_cls.model_fields.items():
-            type_str = _format_type_name(f_info.annotation)
-            default_str = str(f_info.default) if f_info.default is not None else "None"
-            desc_str = f_info.description or ""
-            table.add_row(f_name, type_str, default_str, desc_str)
+        if isinstance(schema_or_dict, type) and issubclass(schema_or_dict, BaseModel):
+            for f_name, f_info in schema_or_dict.model_fields.items():
+                type_str = _format_type_name(f_info.annotation)
+                default_str = str(f_info.default) if f_info.default is not None else "None"
+                desc_str = f_info.description or ""
+                table.add_row(f_name, type_str, default_str, desc_str)
+        elif isinstance(schema_or_dict, dict):
+            for f_name, info in sorted(schema_or_dict.items()):
+                if isinstance(info, dict):
+                    default_obj = info.get("default")
+                    fallback_type = type(default_obj).__name__ if default_obj is not None else "str"
+                    type_str = str(info.get("type", fallback_type))
+                    default_str = str(info.get("default", ""))
+                    desc_str = str(info.get("description", ""))
+                    if "choices" in info and isinstance(info["choices"], (list, tuple)):
+                        choices_str = ", ".join(f'"{c}"' for c in info["choices"])
+                        desc_str = f"{desc_str} (choices: [{choices_str}])".strip()
+                    table.add_row(f_name, type_str, default_str, desc_str)
+                else:
+                    table.add_row(f_name, type(info).__name__, str(info), "")
 
         console.print(table)
 

@@ -98,6 +98,7 @@ class Yarn(ABC):
             self.dependencies = list(kwargs["dependencies"])
 
         self._default_settings: dict[str, Any] = {}
+        self._settings_info: dict[str, Any] = {}
         self._populate_pyproject_metadata(name=name, description=description, layer=layer, kwargs=kwargs)
         self._settings: Any = None
 
@@ -154,7 +155,12 @@ class Yarn(ABC):
         if "resources" not in kwargs and not self.resources and "resources" in tool_textile:
             self.resources = list(tool_textile["resources"])
         if "settings" in tool_textile and isinstance(tool_textile["settings"], dict):
-            self._default_settings = dict(tool_textile["settings"])
+            self._settings_info = dict(tool_textile["settings"])
+            for key, val in tool_textile["settings"].items():
+                if isinstance(val, dict) and "default" in val:
+                    self._default_settings[key] = val["default"]
+                else:
+                    self._default_settings[key] = val
 
     def get_settings_schema(self) -> type[BaseModel] | None:
         """Return explicit Pydantic settings schema for this yarn."""

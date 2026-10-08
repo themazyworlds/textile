@@ -329,6 +329,8 @@ class Skein:
                 schema = yarn_obj.get_settings_schema()
                 if schema is not None:
                     schemas[name] = schema
+                elif getattr(yarn_obj, "_settings_info", None):
+                    schemas[name] = yarn_obj._settings_info
                 elif getattr(yarn_obj, "_default_settings", None):
                     schemas[name] = yarn_obj._default_settings
             return schemas

@@ -87,6 +87,62 @@ def _format_toml_literal(val: Any) -> str:
     return f'"{val}"'
 
 
+def _render_schema_section(
+    sections: list[str],
+    schema_cls: type[BaseModel],
+    yarn_current: dict[str, Any],
+) -> None:
+    doc = (schema_cls.__doc__ or "").strip()
+    if doc:
+        sections.append(f"# {doc}")
+    for f_name, f_info in schema_cls.model_fields.items():
+        desc = f_info.description or ""
+        type_str = _format_type_name(f_info.annotation)
+        val = yarn_current.get(f_name, f_info.default)
+
+        if desc:
+            for desc_line in desc.splitlines():
+                sections.append(f"# {desc_line}")
+        sections.append(f"# type: {type_str}")
+
+        if val is not None and val is not PydanticUndefined:
+            sections.append(f"{f_name} = {_format_toml_literal(val)}")
+        else:
+            sections.append(f"# {f_name} = {_format_toml_literal(val)}")
+        sections.append("")
+
+
+def _render_dict_section(
+    sections: list[str],
+    settings_dict: dict[str, Any],
+    yarn_current: dict[str, Any],
+) -> None:
+    for f_name, item_or_val in sorted(settings_dict.items()):
+        if isinstance(item_or_val, dict):
+            desc = item_or_val.get("description", "")
+            choices = item_or_val.get("choices")
+            default_val = item_or_val.get("default")
+            val = yarn_current.get(f_name, default_val)
+            fallback_type = type(default_val).__name__ if default_val is not None else "str"
+            type_str = item_or_val.get("type", fallback_type)
+
+            if desc:
+                for desc_line in str(desc).splitlines():
+                    sections.append(f"# {desc_line}")
+            if choices and isinstance(choices, (list, tuple)):
+                choices_str = ", ".join(f'"{c}"' if isinstance(c, str) else str(c) for c in choices)
+                sections.append(f"# choices: [{choices_str}]")
+            sections.append(f"# type: {type_str}")
+            sections.append(f"{f_name} = {_format_toml_literal(val)}")
+            sections.append("")
+        else:
+            val = yarn_current.get(f_name, item_or_val)
+            type_str = type(item_or_val).__name__ if item_or_val is not None else "str"
+            sections.append(f"# type: {type_str}")
+            sections.append(f"{f_name} = {_format_toml_literal(val)}")
+            sections.append("")
+
+
 def generate_documented_toml(
     yarn_schemas: dict[str, Any],
     current_settings: dict[str, dict[str, Any]] | None = None,
@@ -107,31 +163,9 @@ def generate_documented_toml(
         yarn_current = current.get(yarn_name, {})
 
         if isinstance(schema_or_dict, type) and issubclass(schema_or_dict, BaseModel):
-            doc = (schema_or_dict.__doc__ or "").strip()
-            if doc:
-                sections.append(f"# {doc}")
-            for f_name, f_info in schema_or_dict.model_fields.items():
-                desc = f_info.description or ""
-                type_str = _format_type_name(f_info.annotation)
-                val = yarn_current.get(f_name, f_info.default)
-
-                if desc:
-                    for desc_line in desc.splitlines():
-                        sections.append(f"# {desc_line}")
-                sections.append(f"# type: {type_str}")
-
-                if val is not None and val is not PydanticUndefined:
-                    sections.append(f"{f_name} = {_format_toml_literal(val)}")
-                else:
-                    sections.append(f"# {f_name} = {_format_toml_literal(val)}")
-                sections.append("")
+            _render_schema_section(sections, schema_or_dict, yarn_current)
         elif isinstance(schema_or_dict, dict):
-            for f_name, default_val in sorted(schema_or_dict.items()):
-                val = yarn_current.get(f_name, default_val)
-                type_str = type(default_val).__name__ if default_val is not None else "str"
-                sections.append(f"# type: {type_str}")
-                sections.append(f"{f_name} = {_format_toml_literal(val)}")
-                sections.append("")
+            _render_dict_section(sections, schema_or_dict, yarn_current)
 
     return "\n".join(sections).strip() + "\n"
 
