@@ -58,11 +58,16 @@ def cmd_skein(
         )
         return
 
+    console.print(
+        f"\n  [bold bright_cyan]Textile Skein[/bold bright_cyan] "
+        f"[dim]• {len(skein.all_yarns)} capability yarns discovered[/dim]\n"
+    )
     table = Table(
-        title=f"Textile Skein Yarn Registry ({len(skein.all_yarns)} discovered yarns)",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
+        box=box.ROUNDED,
+        border_style="dim",
+        header_style="bold bright_cyan",
+        show_edge=True,
+        padding=(0, 1),
     )
     table.add_column("Yarn", style="bold cyan")
     table.add_column("Layer", justify="center")
@@ -102,13 +107,17 @@ def _parse_cli_setting_val(raw: str) -> Any:
 
 
 def _render_yarn_settings_table(yarn_name: str, settings: dict[str, Any]) -> None:
-    table = Table(
-        title=f"Settings for yarn '{yarn_name}'",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
+    console.print(
+        f"\n  [bold bright_cyan]User Settings[/bold bright_cyan] [dim]•[/dim] [bold white]{yarn_name}[/bold white]\n"
     )
-    table.add_column("Setting Key", style="bold white")
+    table = Table(
+        box=box.ROUNDED,
+        border_style="dim",
+        header_style="bold bright_cyan",
+        show_edge=True,
+        padding=(0, 1),
+    )
+    table.add_column("Setting Key", style="bold cyan")
     table.add_column("Value", style="green")
     for k, v in sorted(settings.items()):
         table.add_row(k, str(v))
@@ -117,14 +126,19 @@ def _render_yarn_settings_table(yarn_name: str, settings: dict[str, Any]) -> Non
 
 def _render_all_settings_table(all_settings: dict[str, Any]) -> None:
     if not all_settings:
-        console.print("[dim]No user overrides found in ~/.config/textile/settings.toml.[/dim]")
+        console.print("\n  [dim]No user overrides found in ~/.config/textile/settings.toml.[/dim]\n")
         return
 
+    console.print(
+        "\n  [bold bright_cyan]Textile User Settings[/bold bright_cyan] "
+        "[dim](~/.config/textile/settings.toml)[/dim]\n"
+    )
     table = Table(
-        title="Textile User Settings (~/.config/textile/settings.toml)",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
+        box=box.ROUNDED,
+        border_style="dim",
+        header_style="bold bright_cyan",
+        show_edge=True,
+        padding=(0, 1),
     )
     table.add_column("Yarn", style="bold cyan")
     table.add_column("Key", style="bold white")
@@ -143,27 +157,32 @@ def _render_schema_docs(yarn_name: str | None = None) -> None:
     if yarn_name and yarn_name in schemas:
         targets = {yarn_name: schemas[yarn_name]}
     elif yarn_name:
-        console.print(f"[bold red]Yarn '{yarn_name}' has no declared settings schema.[/bold red]")
+        console.print(f"  [bold red]Error:[/bold red] Yarn '{yarn_name}' has no declared settings schema.")
         return
     else:
         targets = schemas
 
     for y_name, schema_or_dict in sorted(targets.items()):
-        table = Table(
-            title=f"Schema Documentation: yarn '{y_name}'",
-            box=box.SIMPLE_HEAD,
-            show_edge=False,
-            header_style="bold cyan",
+        console.print(
+            f"\n  [bold bright_cyan]Settings Schema[/bold bright_cyan] "
+            f"[dim]•[/dim] [bold white]{y_name}[/bold white]\n"
         )
-        table.add_column("Field", style="bold white")
-        table.add_column("Type", style="cyan")
-        table.add_column("Default", style="yellow")
-        table.add_column("Description", style="dim green")
+        table = Table(
+            box=box.ROUNDED,
+            border_style="dim",
+            header_style="bold bright_cyan",
+            show_edge=True,
+            padding=(0, 1),
+        )
+        table.add_column("Setting", style="bold cyan")
+        table.add_column("Type", style="dim", justify="center")
+        table.add_column("Default", style="green")
+        table.add_column("Description & Options", style="white")
 
         if isinstance(schema_or_dict, type) and issubclass(schema_or_dict, BaseModel):
             for f_name, f_info in schema_or_dict.model_fields.items():
                 type_str = _format_type_name(f_info.annotation)
-                default_str = str(f_info.default) if f_info.default is not None else "None"
+                default_str = str(f_info.default) if f_info.default is not None else "[dim]none[/dim]"
                 desc_str = f_info.description or ""
                 table.add_row(f_name, type_str, default_str, desc_str)
         elif isinstance(schema_or_dict, dict):
@@ -172,12 +191,15 @@ def _render_schema_docs(yarn_name: str | None = None) -> None:
                     default_obj = info.get("default")
                     fallback_type = type(default_obj).__name__ if default_obj is not None else "str"
                     type_str = str(info.get("type", fallback_type))
-                    default_str = str(info.get("default", ""))
+                    default_str = str(default_obj) if default_obj is not None else "[dim]none[/dim]"
                     desc_str = str(info.get("description", ""))
                     if "choices" in info and isinstance(info["choices"], (list, tuple)):
-                        choices_str = ", ".join(f'"{c}"' for c in info["choices"])
-                        desc_str = f"{desc_str} (choices: [{choices_str}])".strip()
-                    table.add_row(f_name, type_str, default_str, desc_str)
+                        choices_str = ", ".join(f"[cyan]{c}[/cyan]" for c in info["choices"])
+                        opt_note = f"[dim]options:[/dim] {choices_str}"
+                        desc_block = f"{desc_str}\n{opt_note}" if desc_str else opt_note
+                    else:
+                        desc_block = desc_str
+                    table.add_row(f_name, type_str, default_str, desc_block)
                 else:
                     table.add_row(f_name, type(info).__name__, str(info), "")
 
@@ -311,20 +333,33 @@ def cmd_seams(
         f"• {summary_model.total_active_strands} strands[/dim]\n"
     )
 
-    table = Table(box=box.SIMPLE_HEAD, show_edge=False, header_style="bold cyan")
+    table = Table(
+        box=box.ROUNDED,
+        border_style="dim",
+        header_style="bold bright_cyan",
+        show_edge=True,
+        padding=(0, 1),
+    )
     table.add_column("Yarn", style="bold cyan")
     table.add_column("Layer", justify="center")
     table.add_column("Status", justify="center")
     table.add_column("Strands", justify="right")
 
     for p in audit_report.yarns:
-        p_health = p.get("health", "healthy").upper()
+        yarn_name = str(p.get("yarn_name") or p.get("name") or "")
+        p_health = str(p.get("health_status") or p.get("health") or "healthy").upper()
         p_color = "green" if p_health == "HEALTHY" else ("yellow" if p_health == "DEGRADED" else "red")
+        strands_list = p.get("strands_report") or []
+        strands_count = (
+            len(strands_list)
+            if isinstance(strands_list, list) and strands_list
+            else p.get("strands_count", 0)
+        )
         table.add_row(
-            p.get("name", ""),
+            yarn_name,
             str(p.get("layer", 10)),
             f"[{p_color}]{p_health}[/{p_color}]",
-            str(p.get("strands_count", 0)),
+            str(strands_count),
         )
 
     console.print(table)
@@ -346,11 +381,16 @@ def cmd_tapestry(
     active = core_tapestry.get_active_tasks()
     history = core_tapestry.get_task_history(limit=15)
 
+    console.print(
+        f"\n  [bold bright_cyan]Core Task Ledger[/bold bright_cyan] "
+        f"[dim]• {len(active)} active tasks[/dim]\n"
+    )
     table = Table(
-        title=f"Core Task Ledger ({len(active)} active tasks)",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
+        box=box.ROUNDED,
+        border_style="dim",
+        header_style="bold bright_cyan",
+        show_edge=True,
+        padding=(0, 1),
     )
     table.add_column("Task ID", style="bold yellow", width=10)
     table.add_column("Strand", style="bold white", width=28)
@@ -434,11 +474,16 @@ def cmd_yarn(
         return
 
     # Default action: list
+    console.print(
+        f"\n  [bold bright_cyan]Discovered Capability Yarns[/bold bright_cyan] "
+        f"[dim]• {len(skein.all_yarns)} active[/dim]\n"
+    )
     table = Table(
-        title=f"Discovered Capability Yarns ({len(skein.all_yarns)} active)",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
+        box=box.ROUNDED,
+        border_style="dim",
+        header_style="bold bright_cyan",
+        show_edge=True,
+        padding=(0, 1),
     )
     table.add_column("Yarn", style="bold cyan", width=18)
     table.add_column("Layer", style="bold yellow", width=8)

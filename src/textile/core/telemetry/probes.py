@@ -128,25 +128,54 @@ def check_env_variable(var_name: str, optional: bool = False) -> DependencyCheck
     )
 
 
-def evaluate_dependencies(yarn: Any) -> list[DependencyCheck]:
-    """Evaluate all system binary, device, socket, module, and env dependencies declared by a Yarn."""
-    results: list[DependencyCheck] = []
-    for dep in yarn.get_dependencies():
-        dtype = dep.get("type")
-        target = dep.get("target", "")
-        optional = dep.get("optional", False)
+def _check_string_dep(dep: str) -> DependencyCheck | None:
+    if dep.startswith("socket:"):
+        return check_socket(dep.removeprefix("socket:"))
+    if dep.startswith("device:"):
+        return check_device_node(dep.removeprefix("device:"))
+    if dep.startswith(("bin:", "binary:")):
+        binary_name = dep.removeprefix("binary:").removeprefix("bin:")
+        return check_binary(binary_name)
+    if dep.startswith("env:"):
+        return check_env_variable(dep.removeprefix("env:"))
+    return None
 
-        if dtype == DependencyType.SYSTEM_BINARY.value:
-            results.append(check_binary(target, optional))
-        elif dtype == DependencyType.DEVICE_NODE.value:
-            results.append(
-                check_device_node(target, write_access=dep.get("writable", False), optional=optional)
-            )
-        elif dtype == DependencyType.SOCKET_PATH.value:
-            results.append(check_socket(target, optional))
-        elif dtype == DependencyType.PYTHON_MODULE.value:
-            results.append(check_python_module(target, optional))
-        elif dtype == DependencyType.ENV_VARIABLE.value:
-            results.append(check_env_variable(target, optional))
+
+def _check_dict_dep(dep: dict[str, Any]) -> DependencyCheck | None:
+    dtype = dep.get("type")
+    target = dep.get("target", "")
+    optional = dep.get("optional", False)
+
+    if dtype == DependencyType.SYSTEM_BINARY.value:
+        return check_binary(target, optional)
+    if dtype == DependencyType.DEVICE_NODE.value:
+        return check_device_node(target, write_access=dep.get("writable", False), optional=optional)
+    if dtype == DependencyType.SOCKET_PATH.value:
+        return check_socket(target, optional)
+    if dtype == DependencyType.PYTHON_MODULE.value:
+        return check_python_module(target, optional)
+    if dtype == DependencyType.ENV_VARIABLE.value:
+        return check_env_variable(target, optional)
+    return None
+
+
+def evaluate_dependencies(yarn: Any) -> list[DependencyCheck]:
+    """Evaluate system binary, device, socket, and env dependencies declared by a Yarn."""
+    results: list[DependencyCheck] = []
+    declared = list(yarn.get_dependencies())
+    if hasattr(yarn, "resources") and yarn.resources:
+        for res in yarn.resources:
+            if res not in declared:
+                declared.append(res)
+
+    for dep in declared:
+        if isinstance(dep, str):
+            check = _check_string_dep(dep)
+            if check is not None:
+                results.append(check)
+        elif isinstance(dep, dict):
+            check = _check_dict_dep(dep)
+            if check is not None:
+                results.append(check)
 
     return results
