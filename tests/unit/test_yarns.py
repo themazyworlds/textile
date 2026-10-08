@@ -316,7 +316,7 @@ class TestYarnArchitecture(unittest.TestCase):
         import time
 
         from canvas.canvas import Canvas
-        from weave.weave import WeaveAgent
+        from weave.agent import WeaveAgent
 
         from textile.core.orchestration.loom import loom
         from textile.core.orchestration.skein import skein
