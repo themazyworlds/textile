@@ -10,8 +10,6 @@ from typing import Any
 import platformdirs
 import typer
 from pydantic import BaseModel
-from rich import box
-from rich.table import Table
 from rich.tree import Tree
 
 from textile.core.cli.app import (
@@ -22,6 +20,7 @@ from textile.core.cli.app import (
     console,
     ensure_initialized,
 )
+from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.layers import get_layer_info
 from textile.core.definitions.settings import _format_type_name
 from textile.core.orchestration.loom import loom
@@ -58,23 +57,7 @@ def cmd_skein(
         )
         return
 
-    console.print(
-        f"\n  [bold bright_cyan]Textile Skein[/bold bright_cyan] "
-        f"[dim]• {len(skein.all_yarns)} capability yarns discovered[/dim]\n"
-    )
-    table = Table(
-        box=box.ROUNDED,
-        border_style="dim",
-        header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 1),
-    )
-    table.add_column("Yarn", style="bold cyan")
-    table.add_column("Layer", justify="center")
-    table.add_column("Enabled", justify="center")
-    table.add_column("Available", justify="center")
-    table.add_column("Description", style="dim")
-
+    rows = []
     for name, yarn in sorted(skein.all_yarns.items(), key=lambda x: (-x[1].layer, x[1].name)):
         is_en = skein.is_enabled(name)
         en_str = "[green]YES[/green]" if is_en else "[red]NO[/red]"
@@ -85,9 +68,20 @@ def cmd_skein(
             av_str = "[red]ERR[/red]"
 
         layer_name = get_layer_info(yarn.layer).name
-        table.add_row(yarn.name, f"{yarn.layer} ({layer_name})", en_str, av_str, yarn.description or "")
+        rows.append((yarn.name, f"{yarn.layer} ({layer_name})", en_str, av_str, yarn.description or ""))
 
-    console.print(table)
+    print_table(
+        header_title="Textile Skein",
+        subtitle=f"{len(skein.all_yarns)} capability yarns discovered",
+        columns=[
+            Column("Yarn", style="bold cyan"),
+            Column("Layer", justify="center"),
+            Column("Enabled", justify="center"),
+            Column("Available", justify="center"),
+            Column("Description", style="dim"),
+        ],
+        rows=rows,
+    )
 
 
 def _parse_cli_setting_val(raw: str) -> Any:
@@ -107,21 +101,16 @@ def _parse_cli_setting_val(raw: str) -> Any:
 
 
 def _render_yarn_settings_table(yarn_name: str, settings: dict[str, Any]) -> None:
-    console.print(
-        f"\n  [bold bright_cyan]User Settings[/bold bright_cyan] [dim]•[/dim] [bold white]{yarn_name}[/bold white]\n"
+    rows = [(k, str(v)) for k, v in sorted(settings.items())]
+    print_table(
+        header_title="User Settings",
+        subtitle=yarn_name,
+        columns=[
+            Column("Setting Key", style="bold cyan"),
+            Column("Value", style="green"),
+        ],
+        rows=rows,
     )
-    table = Table(
-        box=box.ROUNDED,
-        border_style="dim",
-        header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 1),
-    )
-    table.add_column("Setting Key", style="bold cyan")
-    table.add_column("Value", style="green")
-    for k, v in sorted(settings.items()):
-        table.add_row(k, str(v))
-    console.print(table)
 
 
 def _render_all_settings_table(all_settings: dict[str, Any]) -> None:
@@ -129,27 +118,22 @@ def _render_all_settings_table(all_settings: dict[str, Any]) -> None:
         console.print("\n  [dim]No user overrides found in ~/.config/textile/settings.toml.[/dim]\n")
         return
 
-    console.print(
-        "\n  [bold bright_cyan]Textile User Settings[/bold bright_cyan] "
-        "[dim](~/.config/textile/settings.toml)[/dim]\n"
-    )
-    table = Table(
-        box=box.ROUNDED,
-        border_style="dim",
-        header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 1),
-    )
-    table.add_column("Yarn", style="bold cyan")
-    table.add_column("Key", style="bold white")
-    table.add_column("Value", style="green")
-
+    rows = []
     for y_name, s_dict in sorted(all_settings.items()):
         if isinstance(s_dict, dict):
             for k, v in sorted(s_dict.items()):
-                table.add_row(y_name, k, str(v))
+                rows.append((y_name, k, str(v)))
 
-    console.print(table)
+    print_table(
+        header_title="Textile User Settings",
+        subtitle="(~/.config/textile/settings.toml)",
+        columns=[
+            Column("Yarn", style="bold cyan"),
+            Column("Key", style="bold white"),
+            Column("Value", style="green"),
+        ],
+        rows=rows,
+    )
 
 
 def _render_schema_docs(yarn_name: str | None = None) -> None:
@@ -163,28 +147,13 @@ def _render_schema_docs(yarn_name: str | None = None) -> None:
         targets = schemas
 
     for y_name, schema_or_dict in sorted(targets.items()):
-        console.print(
-            f"\n  [bold bright_cyan]Settings Schema[/bold bright_cyan] "
-            f"[dim]•[/dim] [bold white]{y_name}[/bold white]\n"
-        )
-        table = Table(
-            box=box.ROUNDED,
-            border_style="dim",
-            header_style="bold bright_cyan",
-            show_edge=True,
-            padding=(0, 1),
-        )
-        table.add_column("Setting", style="bold cyan")
-        table.add_column("Type", style="dim", justify="center")
-        table.add_column("Default", style="green")
-        table.add_column("Description & Options", style="white")
-
+        rows = []
         if isinstance(schema_or_dict, type) and issubclass(schema_or_dict, BaseModel):
             for f_name, f_info in schema_or_dict.model_fields.items():
                 type_str = _format_type_name(f_info.annotation)
                 default_str = str(f_info.default) if f_info.default is not None else "[dim]none[/dim]"
                 desc_str = f_info.description or ""
-                table.add_row(f_name, type_str, default_str, desc_str)
+                rows.append((f_name, type_str, default_str, desc_str))
         elif isinstance(schema_or_dict, dict):
             for f_name, info in sorted(schema_or_dict.items()):
                 if isinstance(info, dict):
@@ -199,11 +168,21 @@ def _render_schema_docs(yarn_name: str | None = None) -> None:
                         desc_block = f"{desc_str}\n{opt_note}" if desc_str else opt_note
                     else:
                         desc_block = desc_str
-                    table.add_row(f_name, type_str, default_str, desc_block)
+                    rows.append((f_name, type_str, default_str, desc_block))
                 else:
-                    table.add_row(f_name, type(info).__name__, str(info), "")
+                    rows.append((f_name, type(info).__name__, str(info), ""))
 
-        console.print(table)
+        print_table(
+            header_title="Settings Schema",
+            subtitle=y_name,
+            columns=[
+                Column("Setting", style="bold cyan"),
+                Column("Type", style="dim", justify="center"),
+                Column("Default", style="green"),
+                Column("Description & Options", style="white"),
+            ],
+            rows=rows,
+        )
 
 
 def _handle_settings_init() -> None:
@@ -325,26 +304,13 @@ def cmd_seams(
 
     health = audit_report.overall_health.upper()
     color = "green" if health == "HEALTHY" else ("yellow" if health == "DEGRADED" else "red")
-
-    console.print(
-        f"\n  [bold bright_cyan]textile seams[/bold bright_cyan] [dim]•[/dim] "
+    sub_title = (
         f"[bold {color}]{health}[/bold {color}] "
         f"[dim]• {summary_model.healthy_yarns}/{summary_model.total_yarns} yarns active "
-        f"• {summary_model.total_active_strands} strands[/dim]\n"
+        f"• {summary_model.total_active_strands} strands[/dim]"
     )
 
-    table = Table(
-        box=box.ROUNDED,
-        border_style="dim",
-        header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 1),
-    )
-    table.add_column("Yarn", style="bold cyan")
-    table.add_column("Layer", justify="center")
-    table.add_column("Status", justify="center")
-    table.add_column("Strands", justify="right")
-
+    rows = []
     for p in audit_report.yarns:
         yarn_name = str(p.get("yarn_name") or p.get("name") or "")
         p_health = str(p.get("health_status") or p.get("health") or "healthy").upper()
@@ -355,14 +321,24 @@ def cmd_seams(
             if isinstance(strands_list, list) and strands_list
             else p.get("strands_count", 0)
         )
-        table.add_row(
+        rows.append((
             yarn_name,
             str(p.get("layer", 10)),
             f"[{p_color}]{p_health}[/{p_color}]",
             str(strands_count),
-        )
+        ))
 
-    console.print(table)
+    print_table(
+        header_title="textile seams",
+        subtitle=sub_title,
+        columns=[
+            Column("Yarn", style="bold cyan"),
+            Column("Layer", justify="center"),
+            Column("Status", justify="center"),
+            Column("Strands", justify="right"),
+        ],
+        rows=rows,
+    )
 
 
 @app.command("tapestry")
@@ -381,29 +357,24 @@ def cmd_tapestry(
     active = core_tapestry.get_active_tasks()
     history = core_tapestry.get_task_history(limit=15)
 
-    console.print(
-        f"\n  [bold bright_cyan]Core Task Ledger[/bold bright_cyan] "
-        f"[dim]• {len(active)} active tasks[/dim]\n"
-    )
-    table = Table(
-        box=box.ROUNDED,
-        border_style="dim",
-        header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 1),
-    )
-    table.add_column("Task ID", style="bold yellow", width=10)
-    table.add_column("Strand", style="bold white", width=28)
-    table.add_column("Tier", width=12)
-    table.add_column("Status", width=12)
-
+    rows = []
     for t in active:
-        table.add_row(t["task_id"][:8], t["strand_name"], str(t.get("tier", "-")), "[bold green]RUNNING[/bold green]")
+        rows.append((t["task_id"][:8], t["strand_name"], str(t.get("tier", "-")), "[bold green]RUNNING[/bold green]"))
     for t in reversed(history):
         status_str = "[green]SUCCESS[/green]" if t.get("success") else "[red]FAILED[/red]"
-        table.add_row(t["task_id"][:8], t["strand_name"], str(t.get("tier", "-")), status_str)
+        rows.append((t["task_id"][:8], t["strand_name"], str(t.get("tier", "-")), status_str))
 
-    console.print(table)
+    print_table(
+        header_title="Core Task Ledger",
+        subtitle=f"{len(active)} active tasks",
+        columns=[
+            Column("Task ID", style="bold yellow", width=10),
+            Column("Strand", style="bold white", width=28),
+            Column("Tier", width=12),
+            Column("Status", width=12),
+        ],
+        rows=rows,
+    )
 
 
 @app.command("yarn")
@@ -474,30 +445,26 @@ def cmd_yarn(
         return
 
     # Default action: list
-    console.print(
-        f"\n  [bold bright_cyan]Discovered Capability Yarns[/bold bright_cyan] "
-        f"[dim]• {len(skein.all_yarns)} active[/dim]\n"
-    )
-    table = Table(
-        box=box.ROUNDED,
-        border_style="dim",
-        header_style="bold bright_cyan",
-        show_edge=True,
-        padding=(0, 1),
-    )
-    table.add_column("Yarn", style="bold cyan", width=18)
-    table.add_column("Layer", style="bold yellow", width=8)
-    table.add_column("Publisher", width=12)
-    table.add_column("Strands", justify="right", width=8)
-    table.add_column("Description", style="dim")
-
+    rows = []
     for name, yarn in sorted(skein.all_yarns.items()):
-        table.add_row(
+        rows.append((
             name,
             str(yarn.layer),
             yarn.publisher or "textile",
             str(len(yarn.get_strands())),
             yarn.description,
-        )
-    console.print(table)
+        ))
+
+    print_table(
+        header_title="Discovered Capability Yarns",
+        subtitle=f"{len(skein.all_yarns)} active",
+        columns=[
+            Column("Yarn", style="bold cyan", width=18),
+            Column("Layer", style="bold yellow", justify="center", width=8),
+            Column("Publisher", width=12),
+            Column("Strands", justify="right", width=8),
+            Column("Description", style="dim"),
+        ],
+        rows=rows,
+    )
 

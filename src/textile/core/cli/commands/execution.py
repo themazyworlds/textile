@@ -6,10 +6,9 @@ import json
 from typing import Any
 
 import typer
-from rich import box
-from rich.table import Table
 
 from textile.core.cli.app import app, console, ensure_initialized
+from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.errors import StrandNotFoundError, TextileError
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
@@ -70,18 +69,7 @@ def list_strands(
     strands = loom.get_all_strands()
     query = (filter_query or "").strip().lower()
 
-    table = Table(
-        title="[bold cyan]Textile Registered Strands[/bold cyan]",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
-    )
-    table.add_column("Strand Name", style="bold white")
-    table.add_column("Tier", style="yellow")
-    table.add_column("Capability", style="dim white")
-    table.add_column("Description", style="dim green")
-
-    count = 0
+    matched: list[tuple[str, str, str, str]] = []
     for s in strands:
         s_name = s.name
         s_tier = str(s.tier or "")
@@ -93,34 +81,43 @@ def list_strands(
         if tier and tier.lower() != s_tier.lower():
             continue
 
-        table.add_row(s_name, s_tier, s_cap, s_desc)
-        count += 1
+        matched.append((s_name, s_tier, s_cap, s_desc))
 
-    console.print(table)
-    console.print(f"\n[bold green]Total Strands Matched:[/bold green] {count}")
+    print_table(
+        header_title="Textile Strands",
+        subtitle=f"{len(matched)} registered strands",
+        columns=[
+            Column("Strand", style="bold cyan"),
+            Column("Tier", justify="center"),
+            Column("Capability", style="dim white"),
+            Column("Description", style="dim"),
+        ],
+        rows=matched,
+    )
 
 
 @app.command("yarns")
 def list_yarns():
     """Inspect registered Yarn modules and layer hierarchy."""
     ensure_initialized()
-    yarns = sorted(skein.all_yarns.values(), key=lambda item: item.layer)
+    yarns = sorted(skein.all_yarns.values(), key=lambda item: (-item.layer, item.name))
 
-    table = Table(
-        title="[bold cyan]Registered Textile Capability Yarns[/bold cyan]",
-        box=box.SIMPLE_HEAD,
-        show_edge=False,
-        header_style="bold cyan",
-    )
-    table.add_column("Yarn Name", style="bold white")
-    table.add_column("Layer", style="magenta")
-    table.add_column("Status", style="green")
-
+    rows = []
     for y in yarns:
-        status_str = "[bold green]Active[/bold green]" if skein.is_enabled(y.name) else "[bold red]Disabled[/bold red]"
-        table.add_row(y.name, str(y.layer), status_str)
+        status_str = "[green]ACTIVE[/green]" if skein.is_enabled(y.name) else "[red]DISABLED[/red]"
+        rows.append((y.name, str(y.layer), status_str, y.description or ""))
 
-    console.print(table)
+    print_table(
+        header_title="Textile Yarns",
+        subtitle=f"{len(yarns)} capability yarns",
+        columns=[
+            Column("Yarn", style="bold cyan"),
+            Column("Layer", justify="center"),
+            Column("Status", justify="center"),
+            Column("Description", style="dim"),
+        ],
+        rows=rows,
+    )
 
 
 @app.command("call")
@@ -170,15 +167,23 @@ def inspect_strand(
         console.print(f"[dim yellow]{err.hint}[/dim yellow]")
         raise typer.Exit(code=1)
 
-    console.print(f"[bold cyan]Strand:[/bold cyan] {target.name}")
-    console.print(f"[bold white]Tier:[/bold white] {target.tier}")
-    console.print(f"[bold white]Description:[/bold white] {target.description}")
+    console.print(
+        f"\n  [bold bright_cyan]Strand Details[/bold bright_cyan] "
+        f"[dim]•[/dim] [bold white]{target.name}[/bold white]\n"
+    )
+    console.print(f"  [bold white]Tier:[/bold white] {target.tier}")
+    console.print(f"  [bold white]Description:[/bold white] {target.description or '—'}\n")
 
     if params := target.parameters or {}:
-        table = Table(title="Parameters", box=box.SIMPLE)
-        table.add_column("Parameter", style="bold white")
-        table.add_column("Type", style="cyan")
-        table.add_column("Description", style="dim green")
-        for p_name, p_info in params.items():
-            table.add_row(p_name, str(p_info.get("type", "any")), p_info.get("description", ""))
-        console.print(table)
+        rows = [
+            (p_name, str(p_info.get("type", "any")), str(p_info.get("description", "")))
+            for p_name, p_info in sorted(params.items())
+        ]
+        print_table(
+            columns=[
+                Column("Parameter", style="bold cyan"),
+                Column("Type", style="green"),
+                Column("Description", style="dim"),
+            ],
+            rows=rows,
+        )
