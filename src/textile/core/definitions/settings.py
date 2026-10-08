@@ -88,44 +88,50 @@ def _format_toml_literal(val: Any) -> str:
 
 
 def generate_documented_toml(
-    yarn_schemas: dict[str, type[BaseModel]],
+    yarn_schemas: dict[str, Any],
     current_settings: dict[str, dict[str, Any]] | None = None,
 ) -> str:
-    """Generate a fully self-documented ~/.config/textile/settings.toml template from Pydantic schemas."""
+    """Generate a fully self-documented ~/.config/textile/settings.toml template from schemas and pyproject defaults."""
     sections: list[str] = [
         "# =============================================================================",
         "# Textile Desktop Intelligence Fabric — User Configuration",
         "# Location: ~/.config/textile/settings.toml",
-        "# Generated automatically from Yarn Manifests and Pydantic Schemas.",
+        "# Generated automatically from Yarn pyproject.toml settings and Pydantic schemas.",
         "# =============================================================================",
         "",
     ]
     current = current_settings or {}
 
-    for yarn_name, schema_cls in sorted(yarn_schemas.items()):
-        doc = (schema_cls.__doc__ or "").strip()
+    for yarn_name, schema_or_dict in sorted(yarn_schemas.items()):
         sections.append(f"[{yarn_name}]")
-        if doc:
-            sections.append(f"# {doc}")
-
         yarn_current = current.get(yarn_name, {})
 
-        for f_name, f_info in schema_cls.model_fields.items():
-            desc = f_info.description or ""
-            type_str = _format_type_name(f_info.annotation)
+        if isinstance(schema_or_dict, type) and issubclass(schema_or_dict, BaseModel):
+            doc = (schema_or_dict.__doc__ or "").strip()
+            if doc:
+                sections.append(f"# {doc}")
+            for f_name, f_info in schema_or_dict.model_fields.items():
+                desc = f_info.description or ""
+                type_str = _format_type_name(f_info.annotation)
+                val = yarn_current.get(f_name, f_info.default)
 
-            val = yarn_current.get(f_name, f_info.default)
+                if desc:
+                    for desc_line in desc.splitlines():
+                        sections.append(f"# {desc_line}")
+                sections.append(f"# type: {type_str}")
 
-            if desc:
-                for desc_line in desc.splitlines():
-                    sections.append(f"# {desc_line}")
-            sections.append(f"# type: {type_str}")
-
-            if val is not None and val is not PydanticUndefined:
+                if val is not None and val is not PydanticUndefined:
+                    sections.append(f"{f_name} = {_format_toml_literal(val)}")
+                else:
+                    sections.append(f"# {f_name} = {_format_toml_literal(val)}")
+                sections.append("")
+        elif isinstance(schema_or_dict, dict):
+            for f_name, default_val in sorted(schema_or_dict.items()):
+                val = yarn_current.get(f_name, default_val)
+                type_str = type(default_val).__name__ if default_val is not None else "str"
+                sections.append(f"# type: {type_str}")
                 sections.append(f"{f_name} = {_format_toml_literal(val)}")
-            else:
-                sections.append(f"# {f_name} = {_format_toml_literal(val)}")
-            sections.append("")
+                sections.append("")
 
     return "\n".join(sections).strip() + "\n"
 

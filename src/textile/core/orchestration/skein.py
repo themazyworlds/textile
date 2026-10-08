@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 import platformdirs
-from pydantic import BaseModel
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.definitions.settings import generate_documented_toml
@@ -322,14 +321,16 @@ class Skein:
         with self._lock:
             return {k: dict(v) if isinstance(v, dict) else v for k, v in self._settings.items()}
 
-    def get_all_yarn_schemas(self) -> dict[str, type[BaseModel]]:
+    def get_all_yarn_schemas(self) -> dict[str, Any]:
         self.initialize()
         with self._lock:
-            schemas: dict[str, type[BaseModel]] = {}
+            schemas: dict[str, Any] = {}
             for name, yarn_obj in self.all_yarns.items():
                 schema = yarn_obj.get_settings_schema()
                 if schema is not None:
                     schemas[name] = schema
+                elif getattr(yarn_obj, "_default_settings", None):
+                    schemas[name] = yarn_obj._default_settings
             return schemas
 
     def generate_settings_template(self) -> str:
