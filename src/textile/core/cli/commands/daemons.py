@@ -20,21 +20,13 @@ def cmd_twill():
 
 
 def _resolve_yarn_venv(agent_dir: Path) -> Path | None:
-    """Locate the nearest or sibling virtualenv for a yarn agent."""
-    curr = agent_dir
-    while curr != curr.parent:
-        if (curr / ".venv").exists():
-            return curr / ".venv"
-        curr = curr.parent
-
-    candidates = (
-        agent_dir / ".venv",
-        Path.home() / "Projects" / "textile-yarns" / ".venv",
-        Path.home() / ".config" / "textile" / "yarns" / ".venv",
-    )
-    for candidate in candidates:
-        if candidate.exists():
+    """Locate the nearest or dedicated virtualenv for a yarn agent."""
+    curr: Path | None = agent_dir
+    while curr and curr != curr.parent:
+        candidate = curr / ".venv"
+        if candidate.is_dir():
             return candidate
+        curr = curr.parent
     return None
 
 
