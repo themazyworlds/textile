@@ -13,7 +13,6 @@ import subprocess
 import sys
 import threading
 import tomllib
-from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
@@ -214,20 +213,10 @@ class Skein:
                 logger.debug("skein.yarn_load_failed", path=str(py_file), error=str(e))
 
     def load_yarns(self) -> None:
-        """Discover and register all Yarns across XDG search paths and entrypoints."""
-        # 1. Scan all standard search paths (in reverse order so higher-priority paths override lower-priority)
+        """Discover and register all Yarns across XDG search paths."""
+        # Scan all standard search paths (in reverse order so higher-priority paths override lower-priority)
         for search_path in reversed(self.get_search_paths()):
             self.load_yarns_from_dir(search_path, override=True)
-
-        # 2. PEP 621 Entry Point Yarns
-        with contextlib.suppress(*SAFE_EXCEPTIONS):
-            for ep in entry_points(group="textile.yarns"):
-                with contextlib.suppress(*SAFE_EXCEPTIONS):
-                    yarn_cls = ep.load()
-                    if issubclass(yarn_cls, Yarn) and yarn_cls is not Yarn:
-                        instance = yarn_cls()
-                        with self._lock:
-                            self.all_yarns[instance.name] = instance
 
     def initialize(self) -> None:
         with self._lock:
