@@ -149,8 +149,9 @@ from textile.core.telemetry.elastic import EventUrgency, elastic
 
 
 class MediaControlYarn(Yarn):
-    @strand(description="Play or pause media playback", tier="interact")
+    @strand(tier="interact")
     async def media_play_pause(self, target: str | None = None) -> str:
+        """Play or pause media playback."""
         player = target or self.settings.default_player
         # Implementation...
         return f"Toggled media play/pause on {player}"
