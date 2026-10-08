@@ -5,7 +5,7 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, Field
 
-from textile import Strand, Yarn, YarnManifest
+from textile import Strand, Yarn
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
 
@@ -15,9 +15,53 @@ class CustomPydanticModel(BaseModel):
     priority: Literal["low", "high"] = Field("low", description="Priority")
 
 
+class LowCapYarn(Yarn):
+    def __init__(self):
+        super().__init__(name="low_cap_yarn", layer=10)
+
+    def is_available(self):
+        return True
+
+    def get_strands(self):
+        return [self.build_strand("low_app", "Low App", lambda args: "low_out", capability="test.launcher")]
+
+
+class HighCapYarn(Yarn):
+    def __init__(self):
+        super().__init__(name="high_cap_yarn", layer=100)
+
+    def is_available(self):
+        return True
+
+    def get_strands(self):
+        return [self.build_strand("high_app", "High App", lambda args: "high_out", capability="test.launcher")]
+
+
+class YarnNoCapA(Yarn):
+    def __init__(self):
+        super().__init__(name="nocap_a", layer=10)
+
+    def is_available(self):
+        return True
+
+    def get_strands(self):
+        return [self.build_strand("same_name", "Same Name A", lambda args: "a")]
+
+
+class YarnNoCapB(Yarn):
+    def __init__(self):
+        super().__init__(name="nocap_b", layer=100)
+
+    def is_available(self):
+        return True
+
+    def get_strands(self):
+        return [self.build_strand("same_name", "Same Name B", lambda args: "b")]
+
+
 class DummyYarn(Yarn):
     def __init__(self):
-        super().__init__(manifest=YarnManifest(name="dummy", layer=50))
+        super().__init__(name="dummy", layer=50)
 
     def is_available(self) -> bool:
         return True
@@ -111,26 +155,6 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertIn("message", mcp_def["inputSchema"]["properties"])
 
     def test_capability_based_overrides(self):
-        class LowCapYarn(Yarn):
-            def __init__(self):
-                super().__init__(manifest=YarnManifest(name="low_cap_yarn", layer=10))
-
-            def is_available(self):
-                return True
-
-            def get_strands(self):
-                return [self.build_strand("low_app", "Low App", lambda args: "low_out", capability="test.launcher")]
-
-        class HighCapYarn(Yarn):
-            def __init__(self):
-                super().__init__(manifest=YarnManifest(name="high_cap_yarn", layer=100))
-
-            def is_available(self):
-                return True
-
-            def get_strands(self):
-                return [self.build_strand("high_app", "High App", lambda args: "high_out", capability="test.launcher")]
-
         p_low = LowCapYarn()
         p_high = HighCapYarn()
         skein.register_yarn(p_low)
@@ -157,26 +181,6 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_name_collision_without_capability_not_overridden(self):
         from textile.core.definitions.errors import StrandCollisionError
-
-        class YarnNoCapA(Yarn):
-            def __init__(self):
-                super().__init__(manifest=YarnManifest(name="nocap_a", layer=10))
-
-            def is_available(self):
-                return True
-
-            def get_strands(self):
-                return [self.build_strand("same_name", "Same Name A", lambda args: "a")]
-
-        class YarnNoCapB(Yarn):
-            def __init__(self):
-                super().__init__(manifest=YarnManifest(name="nocap_b", layer=100))
-
-            def is_available(self):
-                return True
-
-            def get_strands(self):
-                return [self.build_strand("same_name", "Same Name B", lambda args: "b")]
 
         pa = YarnNoCapA()
         pb = YarnNoCapB()
@@ -220,7 +224,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         class TierTestYarn(Yarn):
             def __init__(self):
-                super().__init__(manifest=YarnManifest(name="tier_test", layer=50))
+                super().__init__(name="tier_test", layer=50)
 
             def is_available(self):
                 return True
@@ -240,16 +244,9 @@ class TestYarnArchitecture(unittest.TestCase):
         yarn = TierTestYarn()
         strands = {s.name: s for s in yarn.get_strands()}
 
-        from textile.core.execution.reflector import determine_isolation
-
         self.assertEqual(strands["read_stat"].tier, "observe")
-        self.assertFalse(determine_isolation(yarn, strands["read_stat"].tier))
-
         self.assertEqual(strands["admin_task"].tier, "privileged")
-        self.assertTrue(determine_isolation(yarn, strands["admin_task"].tier))
-
         self.assertEqual(strands["exec_task"].tier, "system_exec")
-        self.assertTrue(determine_isolation(yarn, strands["exec_task"].tier))
 
     def test_weft_attunements_and_pydantic_coercion(self):
         from textile import weft
@@ -258,7 +255,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         class WeftTestYarn(Yarn):
             def __init__(self):
-                super().__init__(manifest=YarnManifest(name="weft_test", layer=50))
+                super().__init__(name="weft_test", layer=50)
 
             def is_available(self):
                 return True
@@ -408,34 +405,6 @@ class TestYarnArchitecture(unittest.TestCase):
                 get_res = cb.execute_sync("clipboard_get", {})
                 self.assertEqual(get_res, "Textile Pyxclip Test")
 
-    def test_toml_manifest_pydantic_validation(self):
-        import tempfile
-        from pathlib import Path
-
-        from textile import YarnManifest
-
-        # Test valid TOML manifest
-        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
-            f.write('[yarn]\nname = "test_manifest"\nversion = "1.0.0"\nmanifest_version = 1\nlayer = 50\n')
-            temp_path = Path(f.name)
-        try:
-            m = YarnManifest.from_toml(temp_path)
-            self.assertEqual(m.name, "test_manifest")
-            self.assertEqual(m.manifest_version, 1)
-        finally:
-            temp_path.unlink()
-
-        # Test malformed TOML manifest (e.g. invalid layer type)
-        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
-            f.write('[yarn]\nname = "invalid"\nlayer = "invalid_int_string"\n')
-            temp_path2 = Path(f.name)
-        try:
-            with self.assertRaises(ValueError) as ctx:
-                YarnManifest.from_toml(temp_path2)
-            self.assertIn("Validation Hint:", str(ctx.exception))
-        finally:
-            temp_path2.unlink()
-
     def test_app_launching_terminal_e_flag(self):
         from unittest.mock import MagicMock, patch
 
@@ -568,7 +537,7 @@ class TestYarnArchitecture(unittest.TestCase):
             settings_schema = SampleSettings
 
             def __init__(self):
-                super().__init__(manifest=YarnManifest(name="configurable_dummy", layer=50))
+                super().__init__(name="configurable_dummy", layer=50)
 
         # Ensure clean state
         skein.set_yarn_settings("configurable_dummy", {})
@@ -595,43 +564,6 @@ class TestYarnArchitecture(unittest.TestCase):
         # 4. Clean up test settings
         skein.set_yarn_settings("configurable_dummy", {})
         skein.unregister_yarn("configurable_dummy")
-
-    def test_pure_manifest_driven_settings(self):
-        from textile.core.definitions.manifest import SettingFieldManifest
-
-        manifest = YarnManifest(
-            name="manifest_pure_dummy",
-            layer=50,
-            settings={
-                "retries": SettingFieldManifest(type="int", default=3, description="Number of retries"),
-                "mode": SettingFieldManifest(type="string", default="fast", options=["fast", "safe"]),
-            },
-        )
-
-        class PureManifestYarn(Yarn):
-            def __init__(self):
-                super().__init__(manifest=manifest)
-
-        yarn = PureManifestYarn()
-        skein.register_yarn(yarn)
-
-        # 1. Access settings property directly on yarn
-        self.assertEqual(yarn.settings.retries, 3)
-        self.assertEqual(yarn.settings.mode, "fast")
-
-        # 2. Access via loom.get_settings("manifest_pure_dummy")
-        loom_settings = loom.get_settings("manifest_pure_dummy")
-        self.assertEqual(loom_settings.retries, 3)
-        self.assertEqual(loom_settings.mode, "fast")
-
-        # 3. Modify setting in skein
-        skein.set_yarn_settings("manifest_pure_dummy", {"retries": 10, "mode": "safe"})
-        self.assertEqual(yarn.settings.retries, 10)
-        self.assertEqual(yarn.settings.mode, "safe")
-
-        # 4. Cleanup
-        skein.set_yarn_settings("manifest_pure_dummy", {})
-        skein.unregister_yarn("manifest_pure_dummy")
 
 
 if __name__ == "__main__":

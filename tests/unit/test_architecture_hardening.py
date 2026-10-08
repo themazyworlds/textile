@@ -6,7 +6,6 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
-from textile import YarnManifest
 from textile.core.definitions.errors import SandboxUnavailableError, StrandCollisionError
 from textile.core.execution.invoker import execute_direct
 from textile.core.execution.yarn import Yarn
@@ -41,7 +40,7 @@ class TestArchitectureHardening(unittest.TestCase):
     def test_execute_direct_async_handler_support(self):
         class AsyncYarn(Yarn):
             def __init__(self):
-                super().__init__(manifest=YarnManifest(name="async_yarn", layer=50))
+                super().__init__(name="async_yarn", layer=50)
 
             def is_available(self):
                 return True
@@ -71,7 +70,7 @@ class TestArchitectureHardening(unittest.TestCase):
 
         class YarnA(Yarn):
             def __init__(self):
-                super().__init__(manifest=YarnManifest(name="y1", layer=10))
+                super().__init__(name="y1", layer=10)
 
             def is_available(self):
                 return True
@@ -81,7 +80,7 @@ class TestArchitectureHardening(unittest.TestCase):
 
         class YarnB(Yarn):
             def __init__(self):
-                super().__init__(manifest=YarnManifest(name="y2", layer=50))
+                super().__init__(name="y2", layer=50)
 
             def is_available(self):
                 return True

@@ -92,14 +92,13 @@ class TestSecurityPolicyGate:
 
     @pytest.mark.asyncio
     async def test_loom_unmasked_error_propagation(self):
-        from textile import Strand, Yarn, YarnManifest
+        from textile import Strand, Yarn
         from textile.core.orchestration.loom import loom
         from textile.core.orchestration.skein import skein
 
         class MockElevatedYarn(Yarn):
             def __init__(self):
-                manifest = YarnManifest(name="mock_elevated", layer=10, description="Mock Yarn")
-                super().__init__(manifest=manifest)
+                super().__init__(name="mock_elevated", layer=10, description="Mock Yarn")
 
             def get_strands(self):
                 async def _dummy_install(args: Any):

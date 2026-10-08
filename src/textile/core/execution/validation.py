@@ -35,7 +35,8 @@ def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list
         desc = p_spec.get("description", "")
         enum_vals = p_spec.get("enum")
         t_str = str(p_spec.get("type", "string")).lower()
-        field_type: Any = Literal[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)  # type: ignore
+        _literal_maker: Any = Literal
+        field_type: Any = _literal_maker[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)
         if p_name in required:
             fields[p_name] = (field_type, Field(..., description=desc))
         else:

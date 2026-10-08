@@ -4,14 +4,11 @@ Converts @strand and @weft decorated methods on Yarn instances into Strand and W
 """
 
 import asyncio
-import importlib.util
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-import platformdirs
 from pydantic import BaseModel
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
@@ -20,14 +17,12 @@ from textile.core.execution.invoker import (
     InvokerConfig,
     _build_args_model,
     _create_invoker,
-    _format_handler_result,
     execute_direct,
 )
 from textile.core.execution.isolated_runner import execute_isolated_strand
 from textile.core.execution.strands import CapabilityTier, Strand, Weft
 from textile.core.execution.validation import (
     _extract_docstring_info,
-    detects_native_ffi,
     schema_to_model,
     validate_strand_arguments,
 )
@@ -50,36 +45,12 @@ class StrandConfig:
 __all__ = [
     "StrandConfig",
     "build_dynamic_strand",
-    "determine_isolation",
     "execute_direct",
     "method_to_strand",
     "method_to_weft",
     "reflect_strands",
     "reflect_wefts",
 ]
-
-
-def determine_isolation(yarn: Any, tier_val: CapabilityTier) -> bool:
-    """Determine whether a strand requires process isolation based on yarn dependencies or system tier."""
-    if tier_val in (CapabilityTier.PRIVILEGED, CapabilityTier.SYSTEM_EXEC) or detects_native_ffi(yarn):
-        return True
-
-    deps = getattr(yarn, "get_python_dependencies", list)()
-    if not deps:
-        return False
-
-    yarn_name = getattr(yarn, "name", None) or getattr(getattr(yarn, "manifest", None), "name", None)
-    if yarn_name:
-        venv_dir = Path(platformdirs.user_data_dir("textile")) / "yarns" / yarn_name / ".venv"
-        if venv_dir.exists():
-            return True
-
-    for dep in deps:
-        pkg_name = dep.split(">=")[0].split("==")[0].split("<=")[0].strip().replace("-", "_")
-        if importlib.util.find_spec(pkg_name) is None:
-            return True
-
-    return False
 
 
 def method_to_weft(_yarn: Any, method: Callable[..., Any]) -> Weft:
@@ -115,8 +86,8 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     strand_cap = getattr(method, "_strand_capability", None)
     tier_val = _parse_tier(getattr(method, "_strand_tier", CapabilityTier.INTERACT), strand_name)
 
-    manifest_res = getattr(getattr(yarn, "manifest", None), "resources", [])
-    strand_resources = getattr(method, "_strand_resources", None) or manifest_res
+    yarn_resources = getattr(yarn, "resources", [])
+    strand_resources = getattr(method, "_strand_resources", None) or yarn_resources
 
     no_timeout = getattr(method, "_strand_no_timeout", False)
     timeout = None if no_timeout else getattr(method, "_strand_timeout", 30.0)
@@ -136,7 +107,7 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
             timeout=timeout,
             tier=tier_val,
         ),
-        runner=execute_isolated_strand if determine_isolation(yarn, tier_val) else None,
+        runner=execute_isolated_strand,
     )
 
     return Strand(
@@ -209,11 +180,8 @@ def build_dynamic_strand(
     )
     params = schema.get("properties", {})
     req_list = schema.get("required", []) if schema_model else (cfg.required or [])
-    manifest_res = getattr(getattr(yarn, "manifest", None), "resources", [])
-    res_list = cfg.resources or manifest_res
-
-    use_isolation = determine_isolation(yarn, tier_val)
-    is_coro = inspect.iscoroutinefunction(handler)
+    yarn_resources = getattr(yarn, "resources", [])
+    res_list = cfg.resources or yarn_resources
 
     async def _safe_handler(args: dict[str, Any]) -> str:
         val_err, coerced = validate_strand_arguments(
@@ -221,18 +189,9 @@ def build_dynamic_strand(
         )
         if val_err:
             return val_err
-        if use_isolation:
-            return await asyncio.to_thread(
-                execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val
-            )
-        try:
-            if is_coro:
-                res = await handler(coerced)
-            else:
-                res = await asyncio.to_thread(handler, coerced)
-            return _format_handler_result(res)
-        except SAFE_EXCEPTIONS as e:
-            return f"[Operational Failure] Strand '{name}' error: {e}"
+        return await asyncio.to_thread(
+            execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val
+        )
 
     return Strand(
         name=name,

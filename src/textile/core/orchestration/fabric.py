@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.decorators import strand
 from textile.core.execution.strands import CapabilityTier
 from textile.core.execution.yarn import Yarn
@@ -27,15 +26,11 @@ logger = logging.getLogger(__name__)
 class CoreFabricYarn(Yarn):
     """Native Core Fabric Administration & Health Diagnostics."""
 
-    def __init__(self):
-        manifest = YarnManifest(
-            name="core",
-            publisher="textile",
-            version="1.0.0",
-            layer=0,
-            description="Textile Core runtime engine diagnostics and state inspection",
-        )
-        super().__init__(manifest=manifest)
+    name = "core"
+    publisher = "textile"
+    version = "1.0.0"
+    layer = 0
+    description = "Textile Core runtime engine diagnostics and state inspection"
 
     def is_available(self) -> bool:
         return True

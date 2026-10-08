@@ -69,7 +69,7 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
 
     if BubblewrapSandbox.is_available() and spec.tier_str.upper() != "PRIVILEGED":
         matching_strand = next((s for s in spec.yarn.get_strands() if s.name == spec.strand_name), None)
-        res_list = matching_strand.resources if matching_strand else getattr(spec.yarn.manifest, "resources", [])
+        res_list = matching_strand.resources if matching_strand else getattr(spec.yarn, "resources", [])
         cmd = BubblewrapSandbox.wrap_command(
             cmd, tier=spec.tier_str, env=env, workspace_root=spec.cwd, resources=res_list
         )

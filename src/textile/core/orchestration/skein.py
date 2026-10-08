@@ -21,7 +21,6 @@ import platformdirs
 from pydantic import BaseModel
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
-from textile.core.definitions.manifest import YarnManifest
 from textile.core.definitions.settings import generate_documented_toml
 from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
@@ -198,8 +197,7 @@ class Skein:
             if (
                 py_file.parent != target_dir
                 and py_file.stem != py_file.parent.name
-                and not (py_file.parent / f"{py_file.stem}.toml").exists()
-                and not (py_file.parent / "yarn.toml").exists()
+                and not (py_file.parent / "pyproject.toml").exists()
             ):
                 continue
 
@@ -312,25 +310,11 @@ class Skein:
             return dict(data) if isinstance(data, dict) else {}
 
     def get_yarn_settings_model(self, name: str) -> Any:
-        """Retrieve validated Pydantic settings model for a yarn from active instances or static manifest."""
+        """Retrieve validated Pydantic settings model for a yarn from active instances."""
         self.initialize()
         with self._lock:
             if name in self.all_yarns:
                 return self.all_yarns[name].settings
-
-        manifests = self.get_static_manifests()
-        manifest = manifests.get(name)
-        if manifest:
-            schema = manifest.create_settings_model()
-            if schema:
-                raw = self.get_yarn_settings(name)
-                defaults = manifest.get_default_settings()
-                try:
-                    return schema.model_validate({**defaults, **raw})
-                except SAFE_EXCEPTIONS:
-                    with contextlib.suppress(*SAFE_EXCEPTIONS):
-                        return schema()
-                    return {**defaults, **raw}
         return self.get_yarn_settings(name)
 
     def set_yarn_settings(self, name: str, settings: dict[str, Any]) -> None:
@@ -361,19 +345,6 @@ class Skein:
 
     def generate_settings_template(self) -> str:
         return generate_documented_toml(self.get_all_yarn_schemas())
-
-    def get_static_manifests(self) -> dict[str, YarnManifest]:
-        """Statically inspect all TOML manifests without importing Python modules."""
-        manifests: dict[str, YarnManifest] = {}
-        for search_path in reversed(self.get_search_paths()):
-            if not search_path.exists():
-                continue
-            for toml_file in search_path.rglob("*.toml"):
-                with contextlib.suppress(*SAFE_EXCEPTIONS):
-                    m = YarnManifest.from_toml(toml_file)
-                    if m.name:
-                        manifests[m.name] = m
-        return manifests
 
     def _save_config(self) -> None:
         try:

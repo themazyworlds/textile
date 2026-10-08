@@ -2,8 +2,7 @@
 Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 """
 
-
-import textile.core.definitions.shims as _shims  # noqa: F401
+from textile.core.definitions import shims
 from textile.core.definitions.errors import (
     SandboxUnavailableError,
     StrandCollisionError,
@@ -27,7 +26,6 @@ from textile.core.definitions.layers import (
 from textile.core.definitions.layers import (
     LAYER_USER_OVERRIDE_THRESHOLD as LAYER_USER_OVERRIDE,
 )
-from textile.core.definitions.manifest import YarnManifest
 from textile.core.definitions.sys_detect import detect_shell, detect_terminal, detect_terminal_and_shell
 from textile.core.execution.decorators import strand, weft
 from textile.core.execution.strands import CapabilityTier, Strand, Weft
@@ -59,7 +57,6 @@ __all__ = [
     "TextileError",
     "Weft",
     "Yarn",
-    "YarnManifest",
     "YarnNotFoundError",
     "__version__",
     "core_tapestry",
@@ -70,6 +67,7 @@ __all__ = [
     "fabric_instructions",
     "loom",
     "sensory_tapestry",
+    "shims",
     "skein",
     "strand",
     "stream_engine",

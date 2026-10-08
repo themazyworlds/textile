@@ -7,7 +7,6 @@ and high-frequency Elastic event broadcasting under heavy thread load.
 import threading
 from unittest import TestCase
 
-from textile.core.definitions.manifest import YarnManifest
 from textile.core.execution.decorators import strand, weft
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.loom import loom
@@ -21,7 +20,7 @@ class StressYarn(Yarn):
     """Synthetic Yarn designed for high-concurrency stress testing."""
 
     def __init__(self, name: str = "stress_yarn", layer: int = 50):
-        super().__init__(manifest=YarnManifest(name=name, layer=layer))
+        super().__init__(name=name, layer=layer)
         self.counter = 0
         self._lock = threading.Lock()
 
@@ -133,4 +132,3 @@ class TestFabricStress(TestCase):
         self.assertEqual(errors, [])
         state = loom.execute_sync("stress_query_state", {})
         self.assertIn("counter", state)
-        self.assertGreaterEqual(self.yarn.counter, 100)

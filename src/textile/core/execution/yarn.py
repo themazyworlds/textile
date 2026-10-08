@@ -3,9 +3,9 @@ import concurrent.futures
 import contextlib
 import inspect
 import logging
-import sys
+import tomllib
 from abc import ABC
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from textile.core.definitions.manifest import YarnManifest
+from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.definitions.settings import get_user_yarn_settings
 from textile.core.execution.reflector import (
     StrandConfig,
@@ -40,67 +40,67 @@ class EventOptions:
 class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
-    manifest: YarnManifest
+    name: str = ""
+    description: str = ""
+    layer: int = 10
+    publisher: str = "textile"
+    version: str = "1.0.0"
+    resources: Sequence[str] = ()
     settings_schema: type[BaseModel] | None = None
+    dependencies: Sequence[str] = ()
 
-    def __init__(self, manifest: YarnManifest | None = None) -> None:
+    def __init__(
+        self,
+        name: str | None = None,
+        description: str | None = None,
+        layer: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if name:
+            self.name = name
+        elif not self.name:
+            self.name = self.__class__.__name__.lower()
+
+        if description:
+            self.description = description
+        elif not self.description:
+            doc = inspect.getdoc(self.__class__)
+            self.description = doc.splitlines()[0] if doc else self.name
+
+        if layer is not None:
+            self.layer = layer
+        if "publisher" in kwargs and kwargs["publisher"] is not None:
+            self.publisher = str(kwargs["publisher"])
+        if "version" in kwargs and kwargs["version"] is not None:
+            self.version = str(kwargs["version"])
+        if "resources" in kwargs and kwargs["resources"] is not None:
+            self.resources = list(kwargs["resources"])
+        if "dependencies" in kwargs and kwargs["dependencies"] is not None:
+            self.dependencies = list(kwargs["dependencies"])
         self._settings: Any = None
-        if manifest is not None:
-            self.manifest = manifest
-            return
 
-        mod_file = getattr(
-            sys.modules.get(self.__class__.__module__), "__file__", None
-        )
-        if not mod_file:
-            with contextlib.suppress(TypeError, OSError):
-                mod_file = inspect.getfile(self.__class__)
+    def get_python_dependencies(self) -> list[str]:
+        """Return declared external Python package requirements for isolated execution."""
+        if self.dependencies:
+            return list(self.dependencies)
 
-        if mod_file:
-            p = Path(mod_file)
-            toml_file = p.with_suffix(".toml")
-            if not toml_file.exists():
-                toml_file = p.parent / "yarn.toml"
-            if toml_file.exists():
-                self.manifest = YarnManifest.from_toml(toml_file)
-                return
-
-        raise FileNotFoundError(
-            f"Validation Hint: Yarn '{self.__class__.__name__}' requires a valid TOML manifest file "
-            "(<name>.toml or yarn.toml)."
-        )
-
-    @property
-    def name(self) -> str:
-        return self.manifest.name
-
-    @property
-    def description(self) -> str:
-        return self.manifest.description
-
-    @property
-    def layer(self) -> int:
-        return self.manifest.layer
-
-    @property
-    def publisher(self) -> str:
-        return self.manifest.publisher
+        with contextlib.suppress(TypeError, OSError, ValueError):
+            mod_file = inspect.getfile(self.__class__)
+            if mod_file:
+                pyproj = Path(mod_file).parent / "pyproject.toml"
+                if pyproj.exists():
+                    with pyproj.open("rb") as f:
+                        data = tomllib.load(f)
+                        return list(data.get("project", {}).get("dependencies", []))
+        return []
 
     @property
     def python_dependencies(self) -> list[str]:
-        return list(self.manifest.python_dependencies)
-
-    def get_python_dependencies(self) -> list[str]:
-        """Return declared external Python package requirements for isolated uv execution."""
-        return list(self.manifest.python_dependencies)
+        return self.get_python_dependencies()
 
     def get_settings_schema(self) -> type[BaseModel] | None:
-        """Return explicit or dynamically-generated Pydantic settings schema for this yarn."""
-        if self.settings_schema is not None:
-            return self.settings_schema
-        if hasattr(self, "manifest") and self.manifest.settings:
-            return self.manifest.create_settings_model()
-        return None
+        """Return explicit Pydantic settings schema for this yarn."""
+        return self.settings_schema
 
     @property
     def settings(self) -> Any:
@@ -108,14 +108,11 @@ class Yarn(ABC):
         if self._settings is not None:
             return self._settings
 
-        manifest_defaults = self.manifest.get_default_settings() if hasattr(self, "manifest") else {}
         user_config = get_user_yarn_settings(self.name)
-        merged_config = {**manifest_defaults, **user_config}
-
         schema = self.get_settings_schema()
         if schema is not None and isinstance(schema, type) and issubclass(schema, BaseModel):
             try:
-                self._settings = schema.model_validate(merged_config)
+                self._settings = schema.model_validate(user_config)
             except ValidationError as e:
                 logger.warning(
                     "yarn.settings_validation_failed: %s (error: %s). Falling back to schema defaults.",
@@ -124,10 +121,10 @@ class Yarn(ABC):
                 )
                 try:
                     self._settings = schema()
-                except (ValidationError, TypeError, ValueError):
-                    self._settings = merged_config
+                except SAFE_EXCEPTIONS:
+                    self._settings = user_config
         else:
-            self._settings = merged_config
+            self._settings = user_config
 
         return self._settings
 
@@ -180,9 +177,9 @@ class Yarn(ABC):
         """Get a retained domain state slot from Elastic."""
         return self.elastic.get_slot(key, default)
 
-    def get_dependencies(self) -> list[dict[str, Any]]:
-        """Return system dependency manifests declared for this yarn."""
-        return getattr(self, "dependencies", [])
+    def get_dependencies(self) -> list[str]:
+        """Return system dependencies declared for this yarn."""
+        return list(getattr(self, "dependencies", []))
 
     def is_available(self) -> bool:
         """Check if runtime dependencies and environment are met. Defaults to True."""
