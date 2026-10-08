@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/themazyworlds/textile/actions/workflows/ci.yml/badge.svg)](https://github.com/themazyworlds/textile/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/themazyworlds/textile.svg)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type checked: Pyright](https://img.shields.io/badge/type%20checked-pyright-blue.svg)](https://github.com/microsoft/pyright)
 [![Last Commit](https://img.shields.io/github/last-commit/themazyworlds/textile.svg)](https://github.com/themazyworlds/textile/commits/main)
@@ -19,8 +19,9 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 - **Model Context Protocol (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, and any MCP client over stdio.
 - **Autonomous Voice Companion (`Weave`)**: Full-duplex conversational voice interface using LiveKit and Gemini Realtime with streaming semantic attunements.
 - **Event & Sensory Fabric (`Elastic`)**: Unified cross-process event bus with urgency tiers, retained slot management, and SQLite WAL IPC synchronization.
-- **Capability Plugins (`Yarns`, `@strand` & `@weft`)**: Decorate Python methods with `@strand` for tools and `@weft` for real-time streaming token interception with Pydantic v2 validation.
-- **Layered Dispatch (`Loom`)**: Prioritized layer dispatch (0 to 1000) allowing specialized compositors, session managers, and user overrides to override lower OS fallbacks cleanly.
+- **Capability Yarns (`@strand` & `@weft`)**: Decorate Python methods with `@strand` for tools and `@weft` for real-time streaming token interception with Pydantic v2 validation.
+- **Directory-Isolated Packaging**: Every capability yarn is a self-contained directory governed by standard `pyproject.toml` metadata and dedicated virtual environments.
+- **Layered Dispatch (`Loom`)**: Prioritized layer hierarchy (0 to 1000) allowing specialized compositors, session managers, and user overrides to override lower OS fallbacks cleanly.
 - **Subprocess & Visual OTP Security**: Single-use 4-digit Visual OTP confirmation for state-mutating and privileged operations.
 - **Canvas UI**: Quickshell Wayland overlay for dynamic emotive expressions, mood animations, and visual presence.
 
@@ -28,7 +29,7 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 
 ## Prerequisites
 
-- **Python 3.12+** and [**`uv`**](https://github.com/astral-sh/uv)
+- **Python 3.14+** and [**`uv`**](https://github.com/astral-sh/uv)
 
 - **Google Gemini API Key** (required for Weave voice agent):
   ```bash
@@ -89,8 +90,19 @@ uv run textile canvas close
 
 ### 4. Direct CLI Execution & Inspection
 ```bash
-# List all active capability modules and tools
-uv run textile loom
+# List all active capability yarns and layer status
+uv run textile skein
+uv run textile yarns
+
+# List and filter registered strands
+uv run textile strands
+uv run textile strands --tier observe
+
+# Inspect detailed schema and documentation for a strand
+uv run textile inspect hyprland_get_windows
+
+# Inspect and document yarn settings schema
+uv run textile settings docs weave
 
 # Run automated dependency validation and health audit
 uv run textile seams
@@ -102,27 +114,35 @@ uv run textile call clipboard_get
 
 ---
 
-## Authoring Plugins (`Yarns`, `@strand` & `@weft`)
+## Authoring Capability Yarns
 
-Subclass `Yarn` alongside a declarative static `.toml` manifest to create modular capability plugins. Functions decorated with `@strand` are automatically validated by Pydantic v2 and registered as callable tools; methods decorated with `@weft` intercept streaming speech tokens in real time:
+Each capability yarn is a self-contained directory containing a standard `pyproject.toml` and an entry point Python class inheriting from `textile.Yarn`:
 
-### 1. `media_control.toml` (Manifest)
+### 1. `pyproject.toml`
 ```toml
-[yarn]
-name = "media_control"           # Unique identifier for the capability yarn
-publisher = "community"          # Author or organization
-version = "1.0.0"                # Semantic version
-manifest_version = 1
-layer = 50                       # Priority layer: 0 (Core), 10 (POSIX), 50 (Protocol), 100 (Compositor), 150 (Session), 1000 (User)
+[project]
+name = "textile-yarn-media_control"
+version = "1.0.0"
 description = "Media player control integration"
-resources = ["dbus-session"]     # Optional sandbox permissions: "display", "dbus-session", "dbus-system", "sound"
+authors = [{ name = "community" }]
+requires-python = ">=3.14"
+dependencies = [
+    "mpris2>=1.0.2",
+]
 
-[dependencies]
-python = ["mpris2>=1.0.2"]       # PyPI packages (installed in isolated execution)
-system = ["playerctl"]           # System packages/binaries required on the host
+[tool.textile]
+tailor = "community"
+layer = 50                       # 0 (Core), 10 (POSIX), 50 (Protocol), 100 (Compositor), 150 (Session), 1000 (User)
+resources = ["bin:playerctl", "socket:/run/user/1000/bus"]
+
+[tool.textile.settings.default_player]
+default = "spotify"
+type = "str"
+description = "Default media player client"
+choices = ["spotify", "vlc", "firefox", "chromium"]
 ```
 
-### 2. `media_control.py` (Implementation)
+### 2. `media_control.py`
 ```python
 from textile import Yarn, strand, weft
 from textile.core.telemetry.elastic import EventUrgency, elastic
@@ -130,7 +150,33 @@ from textile.core.telemetry.elastic import EventUrgency, elastic
 
 class MediaControlYarn(Yarn):
     @strand(description="Play or pause media playback", tier="interact")
-    async def media_play_pause(self, args: dict) -> str:
+    async def media_play_pause(self, target: str | None = None) -> str:
+        player = target or self.settings.default_player
         # Implementation...
-        return "Toggled media play/pause"
+        return f"Toggled media play/pause on {player}"
+```
+
+---
+
+## User Settings Configuration
+
+User settings and overrides are stored in `~/.config/textile/settings.toml`:
+
+```toml
+# Textile settings
+# Edit any setting below to customize per-yarn configuration.
+
+[weave]
+model = "gemini-3.8-live"
+voice = "Puck"
+instructions = "You are Textile Weave, an ultra-fast, friendly, intelligent voice companion embedded into Linux desktop."
+```
+
+To scaffold or view setting schemas:
+```bash
+# Generate settings template with descriptions and choices
+uv run textile settings init
+
+# View settings documentation for any yarn
+uv run textile settings docs weave
 ```
