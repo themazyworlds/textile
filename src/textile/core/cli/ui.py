@@ -39,7 +39,7 @@ def create_table(
         border_style="dim",
         header_style="bold bright_cyan",
         show_edge=True,
-        padding=(0, 1),
+        padding=(0, 2, 1, 2),
     )
 
     for col in columns:
