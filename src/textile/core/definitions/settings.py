@@ -3,11 +3,11 @@ Textile Core Settings Subsystem & Auto-Documented Configuration Generator.
 Powered by Pydantic v2 and pydantic-settings.
 """
 
+import os
 import tomllib
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
-import platformdirs
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,15 +23,26 @@ class YarnSettings(BaseSettings):
     )
 
 
-def get_user_yarn_settings(yarn_name: str) -> dict[str, Any]:
-    """Retrieve raw user settings dictionary for a specific yarn from ~/.config/textile/settings.toml."""
-    settings_file = Path(platformdirs.user_config_dir("textile")) / "settings.toml"
-    if not settings_file.exists():
+def get_settings_file_path() -> Path:
+    """Return the active settings.toml path respecting TEXTILE_CONFIG_DIR environment override."""
+    config_dir = os.environ.get("TEXTILE_CONFIG_DIR")
+    if config_dir:
+        return Path(config_dir) / "settings.toml"
+    return Path.home() / ".config" / "textile" / "settings.toml"
+
+
+def get_user_yarn_settings(yarn_name: str, settings_file: Path | None = None) -> dict[str, Any]:
+    """Retrieve raw user settings dictionary for a specific yarn from settings.toml."""
+    target_file = settings_file or get_settings_file_path()
+    if not target_file.exists():
         return {}
     try:
-        with settings_file.open("rb") as f:
+        with target_file.open("rb") as f:
             data = tomllib.load(f)
-            return data.get(yarn_name, {})
+            if isinstance(data, dict):
+                yarn_data = data.get(yarn_name, {})
+                return dict(yarn_data) if isinstance(yarn_data, dict) else {}
+            return {}
     except (OSError, tomllib.TOMLDecodeError):
         return {}
 
@@ -149,11 +160,8 @@ def generate_documented_toml(
 ) -> str:
     """Generate a fully self-documented ~/.config/textile/settings.toml template from schemas and pyproject defaults."""
     sections: list[str] = [
-        "# =============================================================================",
-        "# Textile Desktop Intelligence Fabric — User Configuration",
-        "# Location: ~/.config/textile/settings.toml",
-        "# Generated automatically from Yarn pyproject.toml settings and Pydantic schemas.",
-        "# =============================================================================",
+        "# Textile settings",
+        "# Edit any setting below to customize per-yarn configuration.",
         "",
     ]
     current = current_settings or {}

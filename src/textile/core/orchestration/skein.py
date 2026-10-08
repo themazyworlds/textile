@@ -49,8 +49,8 @@ def _format_toml_val(val: Any) -> str:
 
 def _dumps_toml(data: dict[str, Any]) -> str:
     lines: list[str] = [
-        "# Textile User Configuration & Yarn Overrides",
-        "# Location: ~/.config/textile/settings.toml",
+        "# Textile settings",
+        "# Edit any setting below to customize per-yarn configuration.",
         "",
     ]
     top_level = [f"{k} = {_format_toml_val(v)}" for k, v in data.items() if not isinstance(v, dict)]
