@@ -8,8 +8,6 @@ import importlib.util
 import inspect
 import json
 import os
-import shutil
-import subprocess
 import sys
 import threading
 import tomllib
@@ -27,7 +25,7 @@ from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
 
-__all__ = ["PolicyViolationError", "Skein", "YarnVenvManager", "skein", "yarn_venv_manager"]
+__all__ = ["PolicyViolationError", "Skein", "skein"]
 
 
 def _format_toml_val(val: Any) -> str:
@@ -67,46 +65,6 @@ def _dumps_toml(data: dict[str, Any]) -> str:
             lines.append("")
 
     return "\n".join(lines).strip() + "\n"
-
-
-class YarnVenvManager:
-    """Manages isolated virtual environments for individual Yarns using platformdirs and uv."""
-
-    def __init__(self, base_dir: Path | None = None):
-        self.base_dir = base_dir or (Path(platformdirs.user_data_dir("textile")) / "yarns")
-
-    def get_venv_path(self, yarn_name: str) -> Path:
-        """Get the isolated virtual environment path for a yarn."""
-        return self.base_dir / yarn_name / ".venv"
-
-    def get_python_executable(self, yarn_name: str) -> Path:
-        """Get path to the python interpreter in the yarn's venv."""
-        venv_dir = self.get_venv_path(yarn_name)
-        python_bin = venv_dir / "bin" / "python"
-        if python_bin.exists():
-            return python_bin
-        return Path(sys.executable)
-
-    def provision_venv(self, yarn_name: str, dependencies: list[str] | None = None) -> Path:
-        """Provision a micro-venv for a yarn using uv venv and install dependencies."""
-        venv_dir = self.get_venv_path(yarn_name)
-        if not venv_dir.exists():
-            venv_dir.parent.mkdir(parents=True, exist_ok=True)
-            uv_bin = shutil.which("uv")
-            if uv_bin:
-                subprocess.run([uv_bin, "venv", str(venv_dir)], check=True, capture_output=True)
-
-        if dependencies and venv_dir.exists():
-            uv_bin = shutil.which("uv")
-            python_bin = venv_dir / "bin" / "python"
-            if uv_bin and python_bin.exists():
-                cmd = [uv_bin, "pip", "install", "--python", str(python_bin), *dependencies]
-                subprocess.run(cmd, check=True, capture_output=True)
-
-        return venv_dir
-
-
-yarn_venv_manager = YarnVenvManager()
 
 
 def get_yarn_search_paths(config_dir: Path | None = None) -> list[Path]:
