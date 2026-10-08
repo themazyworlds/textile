@@ -37,6 +37,25 @@ class EventOptions:
     retained_value: Any = None
 
 
+class SettingsObject(dict[str, Any]):
+    """Dynamic settings object supporting dot-attribute access and dict indexing."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"Settings has no attribute {name!r}") from None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        self[name] = value
+
+    def __delattr__(self, name: str) -> None:
+        try:
+            del self[name]
+        except KeyError:
+            raise AttributeError(f"Settings has no attribute {name!r}") from None
+
+
 class Yarn(ABC):
     """Abstract Base Class for all Textile Capability Yarns."""
 
@@ -78,6 +97,7 @@ class Yarn(ABC):
         if "dependencies" in kwargs and kwargs["dependencies"] is not None:
             self.dependencies = list(kwargs["dependencies"])
 
+        self._default_settings: dict[str, Any] = {}
         self._populate_pyproject_metadata(name=name, description=description, layer=layer, kwargs=kwargs)
         self._settings: Any = None
 
@@ -133,6 +153,8 @@ class Yarn(ABC):
             self.layer = int(tool_textile["layer"])
         if "resources" not in kwargs and not self.resources and "resources" in tool_textile:
             self.resources = list(tool_textile["resources"])
+        if "settings" in tool_textile and isinstance(tool_textile["settings"], dict):
+            self._default_settings = dict(tool_textile["settings"])
 
     def get_settings_schema(self) -> type[BaseModel] | None:
         """Return explicit Pydantic settings schema for this yarn."""
@@ -140,15 +162,18 @@ class Yarn(ABC):
 
     @property
     def settings(self) -> Any:
-        """Returns validated settings for this yarn based on settings_schema and ~/.config/textile/settings.toml."""
+        """Returns validated settings based on pyproject.toml defaults and user overrides."""
         if self._settings is not None:
             return self._settings
 
         user_config = get_user_yarn_settings(self.name)
+        merged_config = dict(self._default_settings)
+        merged_config.update(user_config)
+
         schema = self.get_settings_schema()
         if schema is not None and isinstance(schema, type) and issubclass(schema, BaseModel):
             try:
-                self._settings = schema.model_validate(user_config)
+                self._settings = schema.model_validate(merged_config)
             except ValidationError as e:
                 logger.warning(
                     "yarn.settings_validation_failed: %s (error: %s). Falling back to schema defaults.",
@@ -158,9 +183,9 @@ class Yarn(ABC):
                 try:
                     self._settings = schema()
                 except SAFE_EXCEPTIONS:
-                    self._settings = user_config
+                    self._settings = SettingsObject(merged_config)
         else:
-            self._settings = user_config
+            self._settings = SettingsObject(merged_config)
 
         return self._settings
 
