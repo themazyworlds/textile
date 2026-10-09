@@ -68,8 +68,28 @@ class TestOTPManager:
         }
         summary = _format_args_summary(args)
         assert "content=" in summary
-        assert "path='/home/u/.config/textile/yarns/evil.py'" in summary
+        assert "path=&#x27;/home/u/.config/textile/yarns/evil.py&#x27;" in summary or "path='/home/u/.config/textile/yarns/evil.py'" in summary
         assert "..." in summary
+
+    def test_format_args_summary_sanitization_and_caps(self):
+        # 1. Newline and injection in keys
+        args_inject = {
+            "a\nStrand: fake_op": "val",
+            "<b>markup</b>": "<script>alert(1)</script>",
+        }
+        summary_inject = _format_args_summary(args_inject)
+        assert "\n" not in summary_inject
+        assert "<b>" not in summary_inject
+        assert "&lt;b&gt;" in summary_inject
+        assert "<script>" not in summary_inject
+        assert "&lt;script&gt;" in summary_inject
+
+        # 2. Key length cap (20 chars) and key count cap (6 keys + N more)
+        many_keys = {f"very_long_key_name_number_{i}": f"val_{i}" for i in range(10)}
+        summary_many = _format_args_summary(many_keys)
+        assert "(+4 more)" in summary_many
+        # verify long keys are capped with ellipsis
+        assert "..." in summary_many
 
     def test_three_misses_wipe_and_lockout(self):
         mgr = OTPManager(database=TapestryDatabase(persist=False))
@@ -90,6 +110,11 @@ class TestOTPManager:
         with pytest.raises(PolicyViolationError) as exc_info:
             mgr.create_challenge(strand, args_hash)
         assert "Security lockout active" in str(exc_info.value)
+
+        # Unlock / clear resets lockout
+        mgr.clear()
+        new_otp = mgr.create_challenge(strand, args_hash)
+        assert len(new_otp) == 4
 
 
 class TestSecurityPolicyGate:
@@ -167,4 +192,39 @@ class TestSecurityPolicyGate:
         res = await loom.execute("mock_privileged_install", args, otp=otp)
         assert "[OTP Code Verified & Accepted]" in res
         assert "Package 'invalid_pkg_123' failed to install." in res
+
+    @pytest.mark.asyncio
+    async def test_loom_pre_otp_schema_validation(self):
+        from textile import Strand, Yarn
+        from textile.core.orchestration.loom import loom
+        from textile.core.orchestration.skein import skein
+
+        class MockValidatedYarn(Yarn):
+            def __init__(self):
+                super().__init__(name="mock_val_yarn", layer=10, description="Mock Val Yarn")
+
+            def get_strands(self):
+                async def _dummy_fn(args: Any):
+                    return "Success"
+
+                return [
+                    Strand(
+                        name="mock_strict_strand",
+                        description="Mock strict strand",
+                        tier=CapabilityTier.MUTATE,
+                        parameters={"target": {"type": "string", "description": "Target path"}},
+                        required=["target"],
+                        handler=_dummy_fn,
+                    )
+                ]
+
+        mock_yarn = MockValidatedYarn()
+        skein.register_yarn(mock_yarn)
+        loom.initialize()
+        loom._rebuild_active()
+
+        # Missing required parameter: rejected immediately with error BEFORE OTP gate
+        res_missing = await loom.execute("mock_strict_strand", {})
+        assert "Error: Validation Hint" in res_missing
+        assert "target" in res_missing
 

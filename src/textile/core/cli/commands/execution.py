@@ -12,7 +12,11 @@ from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.errors import StrandNotFoundError, TextileError
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.twill import run_twill
-from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError
+from textile.core.security.context import (
+    OTPChallengeRequiredError,
+    PolicyViolationError,
+    global_otp_manager,
+)
 
 
 def _parse_cli_arg_val(val: str) -> Any:
@@ -176,4 +180,14 @@ def inspect_strand(
 def cmd_twill():
     """Launch official Twill / MCP stdio server."""
     run_twill()
+
+
+@app.command("unlock")
+def cmd_unlock():
+    """Reset active security OTP lockouts and failed attempt counters."""
+    global_otp_manager.clear()
+    console.print(
+        "\n  [bold green]Security State Cleared:[/bold green] "
+        "[dim]Active OTP lockouts and failed challenge counters have been reset.[/dim]\n"
+    )
 

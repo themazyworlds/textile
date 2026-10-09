@@ -5,6 +5,7 @@ Provides thread-safe and multi-process SQLite-backed single-use visual challenge
 
 import contextlib
 import hashlib
+import html
 import secrets
 import shutil
 import sqlite3
@@ -18,6 +19,8 @@ import orjson
 
 from textile.core.telemetry.database import TapestryDatabase
 
+MAX_SUMMARY_KEYS = 6
+MAX_KEY_CHARS = 20
 MAX_VALUE_CHARS = 40
 VALUE_HEAD_CHARS = 18
 VALUE_TAIL_CHARS = 18
@@ -56,8 +59,29 @@ def _truncate_middle(val_str: str, max_len: int = MAX_VALUE_CHARS) -> str:
     return f"{val_str[:VALUE_HEAD_CHARS]}...{val_str[-VALUE_TAIL_CHARS:]}"
 
 
+def _sanitize_key(key: Any) -> str:
+    """Sanitizes argument key to prevent injection, line breaking, or markup abuse."""
+    k_escaped = repr(str(key))[1:-1] if isinstance(key, str) else repr(key)
+    if len(k_escaped) > MAX_KEY_CHARS:
+        k_escaped = f"{k_escaped[:MAX_KEY_CHARS]}..."
+    return html.escape(k_escaped)
+
+
+def _sanitize_value(val: Any) -> str:
+    """Sanitizes argument value to prevent raw string markup or newline injection."""
+    v_repr = repr(val)
+    v_trunc = _truncate_middle(v_repr)
+    return html.escape(v_trunc)
+
+
 def _format_args_summary(args: Any) -> str:
-    """Format short summary of arguments ensuring every key is displayed with individual value caps."""
+    """Format short, secure summary of arguments for human visual verification on OSD.
+
+    - Escapes all keys and values via repr() and html.escape() to prevent markup/injection.
+    - Limits key length to MAX_KEY_CHARS.
+    - Limits number of visible keys to MAX_SUMMARY_KEYS, adding (+N more) if exceeded.
+    - Middle-truncates long values so key details are preserved safely.
+    """
     if not args:
         return ""
     try:
@@ -66,23 +90,24 @@ def _format_args_summary(args: Any) -> str:
         elif isinstance(args, dict):
             data = args
         else:
-            return _truncate_middle(str(args))
+            return _sanitize_value(args)
 
         if isinstance(data, dict):
             items: list[str] = []
-            for k, v in data.items():
-                if k == "otp":
-                    continue
-                formatted_val = (
-                    f"'{_truncate_middle(v)}'"
-                    if isinstance(v, str)
-                    else _truncate_middle(repr(v))
-                )
-                items.append(f"{k}={formatted_val}")
-            return ", ".join(items)
-        return _truncate_middle(repr(data))
+            filtered_keys = [k for k in data if k != "otp"]
+            display_keys = filtered_keys[:MAX_SUMMARY_KEYS]
+            remaining_count = len(filtered_keys) - len(display_keys)
+
+            for k in display_keys:
+                items.append(f"{_sanitize_key(k)}={_sanitize_value(data[k])}")
+
+            res = ", ".join(items)
+            if remaining_count > 0:
+                res += f" (+{remaining_count} more)"
+            return res
+        return _sanitize_value(data)
     except (orjson.JSONDecodeError, TypeError, ValueError):
-        return _truncate_middle(str(args))
+        return _sanitize_value(str(args))
 
 
 def _display_visual_otp_osd(otp: str, strand_name: str, args_summary: str = "") -> None:

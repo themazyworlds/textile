@@ -16,6 +16,7 @@ import orjson
 from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
 from textile.core.execution.strands import Strand, Weft
+from textile.core.execution.validation import validate_strand_arguments
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.skein import Skein, skein
 from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError, verify_security_policy
@@ -241,6 +242,18 @@ class Loom:
         effective_otp = otp or clean_args.pop("otp", None)
         if isinstance(effective_otp, str):
             effective_otp = effective_otp.strip()
+
+        # Validate arguments against strand schema before OTP challenge or execution
+        val_err, coerced = validate_strand_arguments(
+            strand_name=strand.name,
+            args=clean_args,
+            schema_model=strand.args_schema,
+            parameters=strand.parameters,
+            required=strand.required,
+        )
+        if val_err:
+            return f"Error: {val_err}"
+        clean_args = coerced
 
         args_json = orjson.dumps(clean_args, option=orjson.OPT_SORT_KEYS).decode()
         otp_verified = verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=effective_otp)
