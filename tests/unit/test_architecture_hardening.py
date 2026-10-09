@@ -1,41 +1,35 @@
-"""
-Unit tests for Textile core architecture hardening.
-"""
-
 import asyncio
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pyotp
 
 from textile.core.definitions.errors import SandboxUnavailableError, StrandCollisionError
 from textile.core.execution.invoker import execute_direct
+from textile.core.execution.isolated_runner import execute_isolated_strand
+from textile.core.execution.strands import Strand
 from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.loom import Loom
-from textile.core.security.context import OTPManager
+from textile.core.security.context import OTPChallengeRequiredError, OTPManager
 from textile.core.security.sandbox import BubblewrapSandbox
 
 
 class TestArchitectureHardening(unittest.TestCase):
-    def test_otp_manager_thread_safety_and_collision_prevention(self):
-        manager = OTPManager()
-        # Generate 10 challenges for different calls
-        codes = set()
-        for i in range(10):
-            code = manager.create_challenge(f"strand_{i}", f"hash_{i}")
-            self.assertEqual(len(code), 4)
-            codes.add(code)
+    def test_totp_manager_verification_and_replay_prevention(self):
+        secret = pyotp.random_base32()
+        manager = OTPManager(secret=secret)
 
-        # Ensure all generated active OTP codes are unique (no collisions)
-        self.assertEqual(len(codes), 10)
+        current_code = pyotp.TOTP(secret).now()
+        self.assertEqual(len(current_code), 6)
 
-        # Verification with wrong strand or wrong hash increments failed attempts
-        first_code = list(codes)[0]
-        self.assertFalse(manager.verify_and_consume(first_code, "wrong_strand", "wrong_hash"))
-        self.assertFalse(manager.verify_and_consume(first_code, "wrong_strand", "wrong_hash"))
+        # First verification succeeds
+        self.assertTrue(manager.verify_and_consume(current_code))
 
-        # 3rd failed attempt invalidates the challenge
-        self.assertFalse(manager.verify_and_consume(first_code, "wrong_strand", "wrong_hash"))
-        # Subsequent attempt even with correct params must fail because max_attempts exceeded
-        self.assertFalse(manager.verify_and_consume(first_code, "strand_0", "hash_0"))
+        # Replay with same code in same time window fails (single-use)
+        self.assertFalse(manager.verify_and_consume(current_code))
+
+        # Invalid code fails
+        self.assertFalse(manager.verify_and_consume("000000"))
 
     def test_execute_direct_async_handler_support(self):
         class AsyncYarn(Yarn):
@@ -59,6 +53,23 @@ class TestArchitectureHardening(unittest.TestCase):
     def test_sandbox_fail_closed_when_bwrap_missing(self):
         with patch("shutil.which", return_value=None), self.assertRaises(SandboxUnavailableError):
             BubblewrapSandbox.wrap_command(["python", "-c", "print(1)"], tier="MUTATE")
+
+    def test_isolated_strand_fail_closed_when_bwrap_unavailable(self):
+        mock_yarn = MagicMock()
+        mock_yarn.__class__.__name__ = "MockYarn"
+        mock_yarn.get_strands.return_value = [
+            Strand(name="mock_tool", description="Mock", handler=lambda args: "ok")
+        ]
+
+        with patch.object(BubblewrapSandbox, "is_available", return_value=False):
+            res = execute_isolated_strand(
+                mock_yarn,
+                "mock_tool",
+                {"a": 1},
+                tier="MUTATE",
+            )
+            self.assertIn("Sandbox isolation unavailable", res)
+            self.assertIn("Sandboxed strands require bubblewrap", res)
 
     def test_strand_collision_raises_error(self):
         class MockSkein:
@@ -92,15 +103,11 @@ class TestArchitectureHardening(unittest.TestCase):
         with self.assertRaises(StrandCollisionError):
             test_loom.initialize()
 
-    def test_otp_code_hidden_from_llm_string_output(self):
-        from textile.core.security.context import OTPChallengeRequiredError
-
-        err = OTPChallengeRequiredError(otp="3599", strand_name="hyprland_exit_session", args_hash="hash123")
+    def test_totp_code_hidden_from_llm_string_output(self):
+        err = OTPChallengeRequiredError(strand_name="hyprland_exit_session")
         err_str = str(err)
-
-        # Ensure the OTP code '3599' is NOT leaked in the error text returned to the LLM
-        self.assertNotIn("3599", err_str)
-        self.assertIn("A single-use 4-digit verification code has been displayed on the user's screen", err_str)
+        self.assertIn("2FA Confirmation Required", err_str)
+        self.assertIn("hyprland_exit_session", err_str)
 
 
 if __name__ == "__main__":

@@ -81,7 +81,12 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
         spec.tier_str,
     ]
 
-    if BubblewrapSandbox.is_available() and spec.tier_str.upper() != "PRIVILEGED":
+    if spec.tier_str.upper() != "PRIVILEGED":
+        if not BubblewrapSandbox.is_available():
+            raise SandboxUnavailableError(
+                "Bubblewrap ('bwrap') is not installed or operational on this system. "
+                "Sandboxed strands require bubblewrap for isolation."
+            )
         matching_strand = next((s for s in spec.yarn.get_strands() if s.name == spec.strand_name), None)
         res_list = matching_strand.resources if matching_strand else getattr(spec.yarn, "resources", [])
         cmd = BubblewrapSandbox.wrap_command(
@@ -170,7 +175,8 @@ def execute_isolated_strand(
     except subprocess.TimeoutExpired:
         return f"Error: Strand '{strand_name}' isolated worker process timed out after {timeout} seconds."
     except SandboxUnavailableError as e:
-        return f"Error executing isolated strand '{strand_name}': {e.message}"
+        hint = f" (Hint: {e.hint})" if e.hint else ""
+        return f"Error executing isolated strand '{strand_name}': {e.message}{hint}"
     except (subprocess.SubprocessError, OSError, ValueError) as e:
         return f"Error executing isolated strand '{strand_name}': {e}"
 
