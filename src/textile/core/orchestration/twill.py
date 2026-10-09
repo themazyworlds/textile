@@ -126,7 +126,7 @@ def run_twill():
         asyncio.run(run_twill_async())
     except KeyboardInterrupt:
         if sys.stdin.isatty():
-            sys.stderr.write("\n⚡ Textile Twill server stopped.\n")
+            sys.stderr.write("\nTextile Twill server stopped.\n")
             sys.stderr.flush()
 
 
