@@ -2,9 +2,11 @@
 Textile CLI Strand and Yarn Execution Commands.
 """
 
+import time
 from typing import Any
 
 import orjson
+import pyotp
 import typer
 
 from textile.core.cli.app import app, console, ensure_initialized
@@ -15,7 +17,8 @@ from textile.core.orchestration.twill import run_twill
 from textile.core.security.context import (
     OTPChallengeRequiredError,
     PolicyViolationError,
-    global_otp_manager,
+    get_totp_secret,
+    get_totp_uri,
 )
 
 
@@ -125,9 +128,9 @@ def call_strand(
         res = loom.execute_sync(strand_name, parsed_kwargs)
         console.print(res)
     except OTPChallengeRequiredError as e:
-        console.print("\n  [bold bright_yellow]Visual OTP Confirmation Required[/bold bright_yellow]")
-        console.print("  [dim]A 4-digit single-use security verification code has been displayed on your screen.[/dim]")
-        console.print(f"  [bold cyan]Confirm:[/bold cyan] textile call {strand_name} otp=<code>\n")
+        console.print("\n  [bold bright_yellow]2FA Confirmation Required[/bold bright_yellow]")
+        console.print("  [dim]Enter your 6-digit Authenticator / TOTP code to authorize this action.[/dim]")
+        console.print(f"  [bold cyan]Confirm:[/bold cyan] textile call {strand_name} otp=<6_digit_code>\n")
         raise typer.Exit(code=1) from e
     except PolicyViolationError as e:
         console.print(f"\n  [bold red]Security Policy Violation:[/bold red] {e}\n")
@@ -182,12 +185,29 @@ def cmd_twill():
     run_twill()
 
 
-@app.command("unlock")
-def cmd_unlock():
-    """Reset active security OTP lockouts and failed attempt counters."""
-    global_otp_manager.clear()
+@app.command("2fa")
+def cmd_2fa(
+    code: bool = typer.Option(False, "--code", "-c", help="Generate and print current 6-digit TOTP code"),
+):
+    """Manage 2FA Authenticator (RFC 6238 TOTP)."""
+    secret = get_totp_secret()
+    if code:
+        totp = pyotp.TOTP(secret)
+        remaining = totp.interval - int(time.time()) % totp.interval
+        console.print(
+            f"\n  [bold cyan]Current Code:[/bold cyan] [bold bright_green]{totp.now()}[/bold bright_green] "
+            f"[dim]({remaining}s remaining)[/dim]\n"
+        )
+        return
+
+    uri = get_totp_uri(secret)
+    console.print("\n  [bold bright_cyan]Textile 2FA Authenticator Setup (RFC 6238 TOTP)[/bold bright_cyan]\n")
+    console.print(f"  [bold white]Secret Key:[/bold white] [bold yellow]{secret}[/bold yellow]")
+    console.print(f"  [bold white]URI:[/bold white]        [dim]{uri}[/dim]")
+    console.print("\n  [bold green]Usage with oathtool (offline):[/bold green]")
+    console.print(f"  [cyan]oathtool --totp -b \"{secret}\"[/cyan]\n")
     console.print(
-        "\n  [bold green]Security State Cleared:[/bold green] "
-        "[dim]Active OTP lockouts and failed challenge counters have been reset.[/dim]\n"
+        "  [dim]Import this URI or secret key into Google Authenticator, "
+        "Aegis, 1Password, Bitwarden, or YubiKey.[/dim]\n"
     )
 

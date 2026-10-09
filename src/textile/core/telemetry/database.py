@@ -95,16 +95,6 @@ class TapestryDatabase:
                     retained_slot TEXT,
                     retained_value_json TEXT
                 );
-                CREATE TABLE IF NOT EXISTS otp_challenges (
-                    challenge_id TEXT PRIMARY KEY,
-                    otp TEXT UNIQUE NOT NULL,
-                    strand_name TEXT NOT NULL,
-                    args_hash TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    ttl_seconds REAL NOT NULL DEFAULT 30.0,
-                    failed_attempts INTEGER NOT NULL DEFAULT 0,
-                    max_attempts INTEGER NOT NULL DEFAULT 3
-                );
                 CREATE TABLE IF NOT EXISTS otp_gate_state (
                     key TEXT PRIMARY KEY,
                     val_int INTEGER NOT NULL DEFAULT 0,

@@ -1,16 +1,16 @@
 """
 Textile Security Functional Domain Package.
-Provides security policy gatekeeping (Context), visual OTP verification,
+Provides security policy gatekeeping (Context), 2FA TOTP verification,
 kernel process sandboxing (Sandbox), and resource guardrails (Guardrails).
 """
 
 from textile.core.security.context import (
     OTPChallengeRequiredError,
     OTPManager,
-    PendingOTP,
     PolicyViolationError,
+    get_totp_secret,
+    get_totp_uri,
     global_otp_manager,
-    hash_args,
     verify_security_policy,
 )
 from textile.core.security.guardrails import (
@@ -23,11 +23,11 @@ __all__ = [
     "AccessBoundaryError",
     "OTPChallengeRequiredError",
     "OTPManager",
-    "PendingOTP",
     "PolicyViolationError",
     "ScopedPath",
     "SessionProcessGuard",
+    "get_totp_secret",
+    "get_totp_uri",
     "global_otp_manager",
-    "hash_args",
     "verify_security_policy",
 ]

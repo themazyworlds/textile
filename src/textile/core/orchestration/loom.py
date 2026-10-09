@@ -11,8 +11,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-import orjson
-
 from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
 from textile.core.execution.strands import Strand, Weft
@@ -243,7 +241,7 @@ class Loom:
         if isinstance(effective_otp, str):
             effective_otp = effective_otp.strip()
 
-        # Validate arguments against strand schema before OTP challenge or execution
+        # Validate arguments against strand schema before 2FA check or execution
         val_err, coerced = validate_strand_arguments(
             strand_name=strand.name,
             args=clean_args,
@@ -255,8 +253,7 @@ class Loom:
             return f"Error: {val_err}"
         clean_args = coerced
 
-        args_json = orjson.dumps(clean_args, option=orjson.OPT_SORT_KEYS).decode()
-        otp_verified = verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=effective_otp)
+        verify_security_policy(strand.tier, strand.name, otp=effective_otp)
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
@@ -275,16 +272,7 @@ class Loom:
         success = True
         err = None
         try:
-            res = await handler(args)
-            if isinstance(res, str):
-                lower_res = res.lower()
-                error_indicators = ("error:", "installation error:", "removal error:", "failed to", "permission error:")
-                if any(k in lower_res for k in error_indicators):
-                    if otp_verified:
-                        res = f"[OTP Code Verified & Accepted] Operational Error in strand '{strand_name}': {res}"
-                    else:
-                        res = f"[Operational Failure] Strand '{strand_name}' error: {res}"
-            return res
+            return await handler(clean_args)
         except (PolicyViolationError, OTPChallengeRequiredError):
             success = False
             err = "Security Policy Gate Failure"
@@ -292,15 +280,9 @@ class Loom:
         except Exception as e:
             success = False
             err = str(e)
-            if otp_verified:
-                raise StrandOperationalError(
-                    strand_name=strand_name,
-                    reason=f"[OTP Code Verified & Accepted] Operational Failure in strand '{strand_name}': {e}",
-                    original_error=e,
-                ) from e
             raise StrandOperationalError(
                 strand_name=strand_name,
-                reason=f"[Operational Failure] Strand '{strand_name}' failed during execution: {e}",
+                reason=f"Strand '{strand_name}' failed during execution: {e}",
                 original_error=e,
             ) from e
         finally:
