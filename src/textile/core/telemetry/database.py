@@ -105,6 +105,11 @@ class TapestryDatabase:
                     failed_attempts INTEGER NOT NULL DEFAULT 0,
                     max_attempts INTEGER NOT NULL DEFAULT 3
                 );
+                CREATE TABLE IF NOT EXISTS otp_gate_state (
+                    key TEXT PRIMARY KEY,
+                    val_int INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
             """)
         if not self._is_uri and Path(self._database_path).exists():
             with contextlib.suppress(OSError):

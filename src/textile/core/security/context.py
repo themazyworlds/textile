@@ -14,13 +14,36 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import orjson
+
 from textile.core.telemetry.database import TapestryDatabase
 
+MAX_SUMMARY_LENGTH = 100
+MAX_GLOBAL_FAILED_OTP_GUESSES = 3
 
-def _display_visual_otp_osd(otp: str, strand_name: str) -> None:
+
+def _format_args_summary(args_json: str) -> str:
+    """Format short summary of arguments for human visual verification on OSD."""
+    if not args_json:
+        return ""
+    try:
+        data = orjson.loads(args_json)
+        if isinstance(data, dict):
+            items = [f"{k}={v!r}" for k, v in data.items() if k != "otp"]
+            summary = ", ".join(items)
+            return (summary[:MAX_SUMMARY_LENGTH] + "...") if len(summary) > MAX_SUMMARY_LENGTH else summary
+        return str(data)[:MAX_SUMMARY_LENGTH]
+    except (orjson.JSONDecodeError, TypeError, ValueError):
+        return (args_json[:MAX_SUMMARY_LENGTH] + "...") if len(args_json) > MAX_SUMMARY_LENGTH else args_json
+
+
+def _display_visual_otp_osd(otp: str, strand_name: str, args_summary: str = "") -> None:
     """Display single-use Visual OTP code on screen for human verification."""
     notify_bin = shutil.which("notify-send")
     if notify_bin:
+        body = f"Strand: {strand_name}"
+        if args_summary:
+            body += f"\nArgs: {args_summary}"
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.Popen(
                 [
@@ -32,7 +55,7 @@ def _display_visual_otp_osd(otp: str, strand_name: str) -> None:
                     "-a",
                     "Textile",
                     f"Textile Code: {otp}",
-                    f"Strand: {strand_name}",
+                    body,
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -105,40 +128,55 @@ class OTPManager:
                 except sqlite3.IntegrityError:
                     continue
 
-    def verify_and_consume(self, otp: str, strand_name: str, _args_hash: str = "") -> bool:
-        """Validates and INSTANTLY consumes the OTP atomically so it can never be reused."""
+    def verify_and_consume(self, otp: str, strand_name: str, args_hash: str = "") -> bool:
+        """Validates and INSTANTLY consumes the OTP atomically so it can never be reused.
+
+        Counts every failed attempt globally across all OTP challenges. After 3 misses globally,
+        all pending challenges are immediately wiped.
+        """
         now = time.time()
         with self._lock, self._database._lock, self._database.get_connection() as conn:
             self._purge_expired(conn, now)
 
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT challenge_id, strand_name, failed_attempts, max_attempts FROM otp_challenges WHERE otp = ?",
+                "SELECT challenge_id, strand_name, args_hash FROM otp_challenges WHERE otp = ?",
                 (otp.strip(),),
             )
             row = cursor.fetchone()
-            if not row:
-                return False
+            if row:
+                cid, bound_strand, bound_args_hash = str(row[0]), str(row[1]), str(row[2])
+                if bound_strand == strand_name and (not args_hash or bound_args_hash == args_hash):
+                    # Atomically consume challenge and reset global failure counter
+                    conn.execute("DELETE FROM otp_challenges WHERE challenge_id = ?", (cid,))
+                    conn.execute(
+                        "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('failed_guesses', 0, ?) "
+                        "ON CONFLICT(key) DO UPDATE SET val_int = 0, updated_at = ?",
+                        (now, now),
+                    )
+                    return True
 
-            cid, bound_strand, failed_attempts, max_attempts = row[0], row[1], row[2], row[3]
-            if bound_strand == strand_name:
-                # Atomically consume
-                conn.execute("DELETE FROM otp_challenges WHERE challenge_id = ?", (cid,))
-                return True
+            # Any failure (invalid OTP, strand mismatch, or args_hash mismatch):
+            # Count every wrong guess globally, and after three misses wipe all pending challenges
+            conn.execute(
+                "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('failed_guesses', 1, ?) "
+                "ON CONFLICT(key) DO UPDATE SET val_int = val_int + 1, updated_at = ?",
+                (now, now),
+            )
+            cursor.execute("SELECT val_int FROM otp_gate_state WHERE key = 'failed_guesses'")
+            failed_row = cursor.fetchone()
+            failed_guesses = failed_row[0] if failed_row else 1
 
-            # Mismatched strand: increment failed attempts
-            if failed_attempts + 1 >= max_attempts:
-                conn.execute("DELETE FROM otp_challenges WHERE challenge_id = ?", (cid,))
-            else:
-                conn.execute(
-                    "UPDATE otp_challenges SET failed_attempts = failed_attempts + 1 WHERE challenge_id = ?",
-                    (cid,),
-                )
+            if failed_guesses >= MAX_GLOBAL_FAILED_OTP_GUESSES:
+                conn.execute("DELETE FROM otp_challenges")
+                conn.execute("UPDATE otp_gate_state SET val_int = 0 WHERE key = 'failed_guesses'")
+
             return False
 
     def clear(self) -> None:
         with self._lock, self._database._lock, self._database.get_connection() as conn:
             conn.execute("DELETE FROM otp_challenges")
+            conn.execute("DELETE FROM otp_gate_state")
 
 
 global_otp_manager = OTPManager()
@@ -194,5 +232,6 @@ def verify_security_policy(
 
     # No OTP provided: generate/fetch OTP challenge and display visually on desktop screen
     challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)
-    _display_visual_otp_osd(challenge_code, strand_name)
+    args_summary = _format_args_summary(args_json)
+    _display_visual_otp_osd(challenge_code, strand_name, args_summary)
     raise OTPChallengeRequiredError(otp=challenge_code, strand_name=strand_name, args_hash=args_hash)
