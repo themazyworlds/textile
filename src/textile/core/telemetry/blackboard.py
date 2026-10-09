@@ -4,7 +4,6 @@ Provides state slot retention, notice feeds, and Elastic cross-process IPC event
 """
 
 import contextlib
-import json
 import logging
 import threading
 from dataclasses import dataclass
@@ -12,6 +11,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+import orjson
 from pydantic import BaseModel, Field
 
 from textile.core.telemetry.database import TapestryDatabase
@@ -68,8 +68,8 @@ class SensoryTapestry:
             cursor = connection.cursor()
             cursor.execute("SELECT key, val_json FROM slots")
             for row in cursor.fetchall():
-                with contextlib.suppress(json.JSONDecodeError, TypeError):
-                    self._slots_cache[row[0]] = json.loads(row[1]) if row[1] else None
+                with contextlib.suppress(orjson.JSONDecodeError, TypeError):
+                    self._slots_cache[row[0]] = orjson.loads(row[1]) if row[1] else None
 
     def stitch(
         self,
@@ -105,7 +105,7 @@ class SensoryTapestry:
                     notice.level.value,
                     notice.source,
                     notice.message,
-                    json.dumps(notice.data),
+                    orjson.dumps(notice.data).decode(),
                 ),
             )
 
@@ -121,7 +121,7 @@ class SensoryTapestry:
                 INSERT INTO slots (key, val_json) VALUES (?, ?)
                 ON CONFLICT(key) DO UPDATE SET val_json=excluded.val_json
             """
-            connection.execute(query, (clean_key, json.dumps(value)))
+            connection.execute(query, (clean_key, orjson.dumps(value).decode()))
 
     def get_slot(self, key: str, default: Any = None) -> Any:
         """Get a retained state slot value with sub-microsecond in-memory lookup."""
@@ -169,7 +169,7 @@ class SensoryTapestry:
                     level=NoticeLevel(r[1]),
                     source=r[2],
                     message=r[3],
-                    data=json.loads(r[4]) if r[4] else {},
+                    data=orjson.loads(r[4]) if r[4] else {},
                 ).model_dump()
                 for r in reversed(cursor.fetchall())
             ]
@@ -197,11 +197,11 @@ class SensoryTapestry:
                     s.source,
                     s.urgency,
                     s.summary,
-                    json.dumps(s.data) if s.data else "{}",
+                    orjson.dumps(s.data).decode() if s.data else "{}",
                     float(s.timestamp or 0.0),
                     int(s.process_id or 0),
                     s.retained_slot,
-                    json.dumps(s.retained_value) if s.retained_value is not None else None,
+                    orjson.dumps(s.retained_value).decode() if s.retained_value is not None else None,
                 ),
             )
             inserted_id = cursor.lastrowid or 0
@@ -236,13 +236,13 @@ class SensoryTapestry:
             events = []
             for r in cursor.fetchall():
                 try:
-                    payload_data = json.loads(r[6]) if r[6] else {}
-                except (json.JSONDecodeError, TypeError):
+                    payload_data = orjson.loads(r[6]) if r[6] else {}
+                except (orjson.JSONDecodeError, TypeError):
                     payload_data = {}
 
                 try:
-                    retained_val = json.loads(r[10]) if r[10] else None
-                except (json.JSONDecodeError, TypeError):
+                    retained_val = orjson.loads(r[10]) if r[10] else None
+                except (orjson.JSONDecodeError, TypeError):
                     retained_val = None
 
                 events.append(

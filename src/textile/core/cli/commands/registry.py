@@ -2,6 +2,8 @@
 Textile CLI Registry, Health Audit, and Blackboard Diagnostics Commands.
 """
 
+import contextlib
+import inspect
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,8 +15,6 @@ from pydantic import BaseModel
 from rich.tree import Tree
 
 from textile.core.cli.app import (
-    SeamsAuditReportModel,
-    SeamsSummaryModel,
     TapestryStateModel,
     app,
     console,
@@ -24,17 +24,16 @@ from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.settings import _format_type_name
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
-from textile.core.telemetry.auditor import audit_all
 from textile.core.telemetry.blackboard import sensory_tapestry
 from textile.core.telemetry.ledger import core_tapestry
 
 
 @app.command("skein")
 def cmd_skein(
-    action: str | None = typer.Argument(None, help="Action to perform: enable, disable, toggle"),
+    action: str | None = typer.Argument(None, help="enable, disable, toggle, tree"),
     yarn_target: str | None = typer.Argument(None, help="Target yarn name for enable/disable/toggle"),
 ):
-    """Inspect and manage the Skein yarn lifecycle and discovery registry."""
+    """Inspect and manage the Skein runtime layer hierarchy, policy engine, and yarn activation."""
     ensure_initialized()
 
     if action == "enable" and yarn_target:
@@ -55,28 +54,44 @@ def cmd_skein(
             f"  [bold white]✓[/bold white] Toggled yarn [bold white]{yarn_target}[/bold white] to {state_str}."
         )
         return
+    elif action == "tree":
+        layers_map: dict[int, list[tuple[str, bool, int]]] = {}
+        for name, yarn in skein.all_yarns.items():
+            is_en = skein.is_enabled(name)
+            strands_count = len(yarn.get_strands())
+            layers_map.setdefault(yarn.layer, []).append((name, is_en, strands_count))
+
+        tree = Tree(
+            "[bold bright_cyan]Skein Runtime Hierarchy[/bold bright_cyan]",
+            guide_style="dim cyan",
+        )
+        for layer_num in sorted(layers_map.keys(), reverse=True):
+            layer_branch = tree.add(f"[bold magenta]Layer {layer_num}[/bold magenta]")
+            for y_name, is_en, s_count in sorted(layers_map[layer_num], key=lambda x: x[0]):
+                status_str = "[bold green]ACTIVE[/bold green]" if is_en else "[bold red]DISABLED[/bold red]"
+                layer_branch.add(
+                    f"[bold white]{y_name}[/bold white] "
+                    f"[{status_str}] "
+                    f"[dim]({s_count} strands)[/dim]"
+                )
+        console.print(tree)
+        return
 
     rows = []
     for name, yarn in sorted(skein.all_yarns.items(), key=lambda x: (-x[1].layer, x[1].name)):
         is_en = skein.is_enabled(name)
         en_str = "[green]YES[/green]" if is_en else "[red]NO[/red]"
-        try:
-            is_av = yarn.is_available()
-            av_str = "[green]YES[/green]" if is_av else "[yellow]NO[/yellow]"
-        except (AttributeError, TypeError, ValueError, KeyError, OSError, RuntimeError):
-            av_str = "[red]ERR[/red]"
-
         desc = (yarn.description or "").splitlines()[0].strip() if yarn.description else ""
-        rows.append((yarn.name, str(yarn.layer), en_str, av_str, desc))
+        strands_count = str(len(yarn.get_strands()))
+        rows.append((yarn.name, str(yarn.layer), en_str, strands_count, desc))
 
     print_table(
-        header_title="Textile Skein",
-        subtitle=f"{len(skein.all_yarns)} capability yarns discovered",
+        header_title="Skein",
         columns=[
             Column("Yarn", style="bold cyan", no_wrap=True),
-            Column("Layer", style="bold yellow", justify="center", no_wrap=True),
+            Column("Layer", style="dim", justify="center", no_wrap=True),
             Column("Enabled", justify="center", no_wrap=True),
-            Column("Available", justify="center", no_wrap=True),
+            Column("Strands", justify="right", no_wrap=True),
             Column("Description", style="dim"),
         ],
         rows=rows,
@@ -102,7 +117,7 @@ def _parse_cli_setting_val(raw: str) -> Any:
 def _render_yarn_settings_table(yarn_name: str, settings: dict[str, Any]) -> None:
     rows = [(k, str(v)) for k, v in sorted(settings.items())]
     print_table(
-        header_title="User Settings",
+        header_title="Settings",
         subtitle=yarn_name,
         columns=[
             Column("Setting Key", style="bold cyan"),
@@ -124,8 +139,7 @@ def _render_all_settings_table(all_settings: dict[str, Any]) -> None:
                 rows.append((y_name, k, str(v)))
 
     print_table(
-        header_title="Textile User Settings",
-        subtitle="(~/.config/textile/settings.toml)",
+        header_title="Settings",
         columns=[
             Column("Yarn", style="bold cyan"),
             Column("Key", style="bold white"),
@@ -196,8 +210,8 @@ def _handle_settings_init() -> None:
 
 @app.command("settings")
 def cmd_settings(
-    action: str | None = typer.Argument(None, help="Action: get, set, reset, init, docs"),
-    yarn_name: str | None = typer.Argument(None, help="Target yarn name (e.g. weave, hyprland, web_research)"),
+    action: str | None = typer.Argument(None, help="get, set, reset, init, docs"),
+    yarn_name: str | None = typer.Argument(None, help="Target yarn name"),
     key: str | None = typer.Argument(None, help="Setting key"),
     value: str | None = typer.Argument(None, help="Setting value"),
 ):
@@ -226,120 +240,6 @@ def cmd_settings(
         _render_all_settings_table(skein.get_all_settings())
 
 
-
-@app.command("loom")
-def cmd_loom(
-    filter_yarn: str | None = typer.Argument(None, help="Filter strands by specific yarn name"),
-):
-    """List active desktop yarns and strands in a visual tree hierarchy."""
-    ensure_initialized()
-    loom.initialize()
-
-    yarns_map = {}
-    total_strands = 0
-    for p_name, yarn_obj in loom.active_yarns.items():
-        if filter_yarn and p_name != filter_yarn:
-            continue
-        if strands_list := yarn_obj.get_strands():
-            yarns_map[yarn_obj] = strands_list
-            total_strands += len(strands_list)
-
-    sorted_yarns = sorted(yarns_map.keys(), key=lambda p: (-p.layer, p.name))
-    if not sorted_yarns:
-        console.print(
-            f"[dim]No active yarns found{f' matching filter {filter_yarn}' if filter_yarn else ''}.[/dim]"
-        )
-        return
-
-    console.print(
-        f"\n  [bold bright_cyan]Textile Loom[/bold bright_cyan] "
-        f"[dim]• {len(sorted_yarns)} active yarns • {total_strands} registered strands[/dim]\n"
-    )
-
-    for yarn in sorted_yarns:
-        strands = yarns_map[yarn]
-        yarn_tree = Tree(
-            f"[bold white]{yarn.name}[/bold white] [dim]v{yarn.version}[/dim] "
-            f"• [dim magenta]Layer {yarn.layer}[/dim magenta]",
-            guide_style="dim cyan",
-        )
-        for t in sorted(strands, key=lambda x: x.name):
-            is_overridden, active_name, cap_id = loom.get_strand_override_status(t, yarn)
-            if is_overridden:
-                yarn_tree.add(
-                    f"[strike dim red]{t.name}[/strike dim red] [dim yellow](overridden by {active_name})[/dim yellow]"
-                )
-            else:
-                yarn_tree.add(f"[cyan]{t.name}[/cyan]")
-        console.print(yarn_tree)
-
-
-@app.command("seams")
-def cmd_seams(
-    json_output: bool = typer.Option(False, "--json", help="Output audit report as Pydantic JSON"),
-):
-    """Run comprehensive yarn integrity and health diagnostics."""
-    loom.initialize()
-    report_dict = audit_all(loom, skein).model_dump()
-
-    summary_data = report_dict.get("summary", {})
-    summary_model = SeamsSummaryModel(
-        overall_health=report_dict.get("overall_health", "healthy"),
-        total_yarns=summary_data.get("total_yarns", 0),
-        healthy_yarns=summary_data.get("healthy_yarns", 0),
-        degraded_yarns=summary_data.get("degraded_yarns", 0),
-        critical_yarns=summary_data.get("critical_yarns", 0),
-        total_active_strands=summary_data.get("total_active_strands", 0),
-    )
-    audit_report = SeamsAuditReportModel(
-        overall_health=report_dict.get("overall_health", "healthy"),
-        summary=summary_model,
-        yarns=report_dict.get("yarns", []),
-    )
-
-    if json_output:
-        print(audit_report.model_dump_json(indent=2))
-        return
-
-    health = audit_report.overall_health.upper()
-    color = "green" if health == "HEALTHY" else ("yellow" if health == "DEGRADED" else "red")
-    sub_title = (
-        f"[bold {color}]{health}[/bold {color}] "
-        f"[dim]• {summary_model.healthy_yarns}/{summary_model.total_yarns} yarns active "
-        f"• {summary_model.total_active_strands} strands[/dim]"
-    )
-
-    rows = []
-    for p in audit_report.yarns:
-        yarn_name = str(p.get("yarn_name") or p.get("name") or "")
-        p_health = str(p.get("health_status") or p.get("health") or "healthy").upper()
-        p_color = "green" if p_health == "HEALTHY" else ("yellow" if p_health == "DEGRADED" else "red")
-        strands_list = p.get("strands_report") or []
-        strands_count = (
-            len(strands_list)
-            if isinstance(strands_list, list) and strands_list
-            else p.get("strands_count", 0)
-        )
-        rows.append((
-            yarn_name,
-            str(p.get("layer", 10)),
-            f"[{p_color}]{p_health}[/{p_color}]",
-            str(strands_count),
-        ))
-
-    print_table(
-        header_title="textile seams",
-        subtitle=sub_title,
-        columns=[
-            Column("Yarn", style="bold cyan"),
-            Column("Layer", justify="center"),
-            Column("Status", justify="center"),
-            Column("Strands", justify="right"),
-        ],
-        rows=rows,
-    )
-
-
 @app.command("tapestry")
 def cmd_tapestry(
     json_output: bool = typer.Option(False, "--json", help="Output tapestry state as Pydantic JSON"),
@@ -364,7 +264,7 @@ def cmd_tapestry(
         rows.append((t["task_id"][:8], t["strand_name"], str(t.get("tier", "-")), status_str))
 
     print_table(
-        header_title="Core Task Ledger",
+        header_title="Tapestry",
         subtitle=f"{len(active)} active tasks",
         columns=[
             Column("Task ID", style="bold yellow", width=10),
@@ -376,74 +276,105 @@ def cmd_tapestry(
     )
 
 
-@app.command("yarn")
-def cmd_yarn(
-    action: str = typer.Argument("list", help="Action: list, install, remove, paths"),
-    target: str | None = typer.Argument(None, help="Yarn name, git repository URL, or local path"),
-):
-    """Manage installed capability yarns, discovery search paths, and third-party extensions."""
+def _handle_yarn_paths() -> None:
+    console.print("\n  [bold cyan]Textile Yarn Discovery Search Paths (in priority order):[/bold cyan]\n")
+    for i, p in enumerate(skein.get_search_paths(), 1):
+        exists_str = "[green]exists[/green]" if p.exists() else "[dim]not found[/dim]"
+        console.print(f"  [bold yellow]{i}.[/bold yellow] {p} ({exists_str})")
+    console.print()
+
+
+def _handle_yarn_info(target: str) -> None:
+    yarn = skein.all_yarns.get(target)
+    if not yarn:
+        console.print(f"  [bold red]Error:[/bold red] Yarn '[bold white]{target}[/bold white]' is not installed.")
+        return
+
+    source_path = "built-in / dynamic"
+    with contextlib.suppress(TypeError, OSError):
+        source_path = str(inspect.getfile(yarn.__class__))
+
+    strands = yarn.get_strands()
+    desc = (yarn.description or "").strip()
+    deps = ", ".join(yarn.get_dependencies()) if yarn.get_dependencies() else "[dim]none[/dim]"
+
+    console.print(f"\n  [bold bright_cyan]Yarn Info:[/bold bright_cyan] [bold white]{yarn.name}[/bold white]\n")
+    console.print(f"  [bold cyan]Class:[/bold cyan]        {yarn.__class__.__name__}")
+    console.print(f"  [bold cyan]Layer:[/bold cyan]        {yarn.layer}")
+    console.print(f"  [bold cyan]Version:[/bold cyan]      {yarn.version}")
+    console.print(f"  [bold cyan]Tailor:[/bold cyan]       {yarn.tailor}")
+    console.print(f"  [bold cyan]Source:[/bold cyan]       {source_path}")
+    console.print(f"  [bold cyan]Dependencies:[/bold cyan] {deps}")
+    console.print(f"  [bold cyan]Description:[/bold cyan]  {desc}\n")
+
+    if strands:
+        rows = []
+        for s in sorted(strands, key=lambda x: x.name):
+            s_desc = (s.description or "").splitlines()[0].strip() if s.description else ""
+            rows.append((s.name, s.tier, s_desc))
+        print_table(
+            header_title="Strands",
+            subtitle=f"{len(strands)} registered",
+            columns=[
+                Column("Strand", style="bold cyan"),
+                Column("Tier", justify="center", style="yellow"),
+                Column("Description", style="dim"),
+            ],
+            rows=rows,
+        )
+
+
+def _handle_yarn_install(target: str, user_yarns: Path) -> None:
+    user_yarns.mkdir(parents=True, exist_ok=True)
+    target_path = Path(target).expanduser().resolve()
+    if target_path.exists() and target_path.is_dir():
+        dest = user_yarns / target_path.name
+        shutil.copytree(target_path, dest, dirs_exist_ok=True)
+        console.print(f"  [bold green]✓[/bold green] Installed yarn from [bold white]{target}[/bold white]")
+        console.print(f"    Destination: {dest}")
+    else:
+        repo_url = (
+            target
+            if target.startswith(("http://", "https://", "git@"))
+            else f"https://github.com/{target}.git"
+        )
+        raw_name = target.rstrip("/").split("/")[-1].replace(".git", "")
+        repo_name = raw_name.replace("textile-yarn-", "").replace("textile-", "")
+        dest = user_yarns / repo_name
+        git_bin = shutil.which("git")
+        if not git_bin:
+            console.print("  [bold red]Error:[/bold red] git binary not found in PATH.")
+            return
+        res = subprocess.run(
+            [git_bin, "clone", "--depth", "1", repo_url, str(dest)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode != 0:
+            console.print(f"  [bold red]Error installing yarn:[/bold red] {res.stderr.strip()}")
+            return
+        console.print(
+            f"  [bold green]✓[/bold green] Installed yarn [bold white]{repo_name}[/bold white] from {repo_url}"
+        )
+        console.print(f"    Destination: {dest}")
+
+    skein._initialized = False
     ensure_initialized()
-    user_yarns = Path(platformdirs.user_data_dir("textile")) / "yarns"
 
-    if action in ("paths", "search-paths"):
-        console.print("\n  [bold cyan]Textile Yarn Discovery Search Paths (in priority order):[/bold cyan]\n")
-        for i, p in enumerate(skein.get_search_paths(), 1):
-            exists_str = "[green]exists[/green]" if p.exists() else "[dim]not found[/dim]"
-            console.print(f"  [bold yellow]{i}.[/bold yellow] {p} ({exists_str})")
-        console.print()
-        return
 
-    if action == "install" and target:
-        user_yarns.mkdir(parents=True, exist_ok=True)
-        target_path = Path(target).expanduser().resolve()
-        if target_path.exists() and target_path.is_dir():
-            dest = user_yarns / target_path.name
-            shutil.copytree(target_path, dest, dirs_exist_ok=True)
-            console.print(f"  [bold green]✓[/bold green] Installed yarn from [bold white]{target}[/bold white]")
-            console.print(f"    Destination: {dest}")
-        else:
-            repo_url = (
-                target
-                if target.startswith(("http://", "https://", "git@"))
-                else f"https://github.com/{target}.git"
-            )
-            raw_name = target.rstrip("/").split("/")[-1].replace(".git", "")
-            repo_name = raw_name.replace("textile-yarn-", "").replace("textile-", "")
-            dest = user_yarns / repo_name
-            git_bin = shutil.which("git")
-            if not git_bin:
-                console.print("  [bold red]Error:[/bold red] git binary not found in PATH.")
-                return
-            res = subprocess.run(
-                [git_bin, "clone", "--depth", "1", repo_url, str(dest)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if res.returncode != 0:
-                console.print(f"  [bold red]Error installing yarn:[/bold red] {res.stderr.strip()}")
-                return
-            console.print(
-                f"  [bold green]✓[/bold green] Installed yarn [bold white]{repo_name}[/bold white] from {repo_url}"
-            )
-            console.print(f"    Destination: {dest}")
+def _handle_yarn_remove(target: str, user_yarns: Path) -> None:
+    dest = user_yarns / target
+    if dest.exists():
+        shutil.rmtree(dest)
+        console.print(
+            f"  [bold yellow]✓[/bold yellow] Removed yarn [bold white]{target}[/bold white] from {dest}"
+        )
+    else:
+        console.print(f"  [bold red]Error:[/bold red] Yarn '{target}' not found in {user_yarns}.")
 
-        skein._initialized = False
-        ensure_initialized()
-        return
 
-    if action == "remove" and target:
-        dest = user_yarns / target
-        if dest.exists():
-            shutil.rmtree(dest)
-            console.print(
-                f"  [bold yellow]✓[/bold yellow] Removed yarn [bold white]{target}[/bold white] from {dest}"
-            )
-        else:
-            console.print(f"  [bold red]Error:[/bold red] Yarn '{target}' not found in {user_yarns}.")
-        return
-
-    # Default action: list
+def _render_yarns_list_table() -> None:
     rows = []
     for name, yarn in sorted(skein.all_yarns.items()):
         desc = (yarn.description or "").splitlines()[0].strip() if yarn.description else ""
@@ -451,20 +382,42 @@ def cmd_yarn(
             name,
             str(yarn.layer),
             yarn.tailor or "textile",
+            yarn.version,
             str(len(yarn.get_strands())),
             desc,
         ))
 
     print_table(
-        header_title="Discovered Capability Yarns",
-        subtitle=f"{len(skein.all_yarns)} active",
+        header_title="Installed Yarns",
         columns=[
             Column("Yarn", style="bold cyan", no_wrap=True),
-            Column("Layer", style="bold yellow", justify="center", no_wrap=True),
+            Column("Layer", style="dim", justify="center", no_wrap=True),
             Column("Tailor", no_wrap=True),
+            Column("Version", style="green", no_wrap=True),
             Column("Strands", justify="right", no_wrap=True),
             Column("Description", style="dim"),
         ],
         rows=rows,
     )
+
+
+@app.command("yarns")
+def cmd_yarns(
+    action: str = typer.Argument("list", help="list, info, install, remove, paths"),
+    target: str | None = typer.Argument(None, help="Yarn name, git repository URL, or local path"),
+):
+    """Manage installed capability yarns, inspection, and discovery search paths."""
+    ensure_initialized()
+    user_yarns = Path(platformdirs.user_data_dir("textile")) / "yarns"
+
+    if action in ("paths", "search-paths"):
+        _handle_yarn_paths()
+    elif action == "info" and target:
+        _handle_yarn_info(target)
+    elif action == "install" and target:
+        _handle_yarn_install(target, user_yarns)
+    elif action == "remove" and target:
+        _handle_yarn_remove(target, user_yarns)
+    else:
+        _render_yarns_list_table()
 

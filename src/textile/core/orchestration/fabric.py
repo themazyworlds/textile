@@ -1,22 +1,16 @@
 """
 Textile Core Fabric - Native Core Strands & Engine Administration.
-Provides baseline system inspection, task ledger management, integrity auditing, and test execution.
+Provides baseline system inspection, task ledger management, and integrity auditing.
 Layer 0 (Core Fabric).
 """
 
 import logging
-import os
-import subprocess
-import sys
-from pathlib import Path
 from typing import Any
 
 from textile.core.execution.decorators import strand
 from textile.core.execution.strands import CapabilityTier
 from textile.core.execution.yarn import Yarn
-from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
-from textile.core.telemetry.auditor import audit_all
 from textile.core.telemetry.elastic import elastic
 from textile.core.telemetry.ledger import core_tapestry
 
@@ -41,11 +35,6 @@ class CoreFabricYarn(Yarn):
         return elastic.get_state()
 
     @strand(tier=CapabilityTier.OBSERVE)
-    def textile_get_sensory_state(self) -> dict[str, Any]:
-        """Get the open sensory blackboard snapshot (sensory state slots and recent stitched notices/alerts)."""
-        return elastic.get_state()
-
-    @strand(tier=CapabilityTier.OBSERVE)
     def textile_get_engine_state(self) -> dict[str, Any]:
         """Get the core engine execution state (active running tasks and execution history)."""
         return core_tapestry.get_state()
@@ -58,34 +47,6 @@ class CoreFabricYarn(Yarn):
         """
         return core_tapestry.cancel_task(strand_name)
 
-    @strand(tier=CapabilityTier.OBSERVE)
-    def audit_yarn_integrity(self) -> dict[str, Any]:
-        """Audit system-wide yarn health, runtime dependencies, layer overrides, and schemas."""
-        return audit_all(loom, skein).model_dump()
-
-    @strand(tier=CapabilityTier.PRIVILEGED)
-    def run_system_tests(self) -> str:
-        """Run the full Textile system diagnostic unit, integration, and E2E test suite."""
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-        test_script = os.path.join(project_root, "tests", "run_all_tests.py")
-        if not Path(test_script).exists():
-            return "Error: test script tests/run_all_tests.py not found."
-
-        try:
-            res = subprocess.run(
-                [sys.executable, test_script],
-                cwd=project_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-            return res.stdout
-        except (OSError, subprocess.SubprocessError) as e:
-            return f"Error executing system test suite: {e}"
-
 
 core_fabric_yarn = CoreFabricYarn()
 skein.register_yarn(core_fabric_yarn)
-

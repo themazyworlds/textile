@@ -5,12 +5,13 @@ Textile Loom - High-Performance Strand Execution, Capability Resolution, and Dis
 import asyncio
 import concurrent.futures
 import contextlib
-import json
 import os
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
+
+import orjson
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
@@ -241,7 +242,7 @@ class Loom:
         if isinstance(effective_otp, str):
             effective_otp = effective_otp.strip()
 
-        args_json = json.dumps(clean_args, sort_keys=True)
+        args_json = orjson.dumps(clean_args, option=orjson.OPT_SORT_KEYS).decode()
         otp_verified = verify_security_policy(strand.tier, strand.name, args_json=args_json, otp=effective_otp)
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")

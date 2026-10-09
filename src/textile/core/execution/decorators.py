@@ -33,6 +33,7 @@ class StrandDecoratorOptions:
     tier: CapabilityTier | Literal["observe", "interact", "mutate", "privileged", "system_exec"] | None = None
     timeout: float | None = 30.0
     no_timeout: bool = False
+    isolated: bool = True
 
 
 @dataclass(slots=True)
@@ -65,6 +66,7 @@ def strand(
         setattr(fn, "_strand_tier", opts.tier)
         setattr(fn, "_strand_timeout", opts.timeout)
         setattr(fn, "_strand_no_timeout", opts.no_timeout)
+        setattr(fn, "_strand_isolated", opts.isolated)
         return fn
 
     return decorator(func) if func is not None else decorator

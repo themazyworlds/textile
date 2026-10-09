@@ -26,7 +26,6 @@ from textile.core.definitions.layers import (
 from textile.core.definitions.layers import (
     LAYER_USER_OVERRIDE_THRESHOLD as LAYER_USER_OVERRIDE,
 )
-from textile.core.definitions.sys_detect import detect_shell, detect_terminal, detect_terminal_and_shell
 from textile.core.execution.decorators import strand, weft
 from textile.core.execution.strands import CapabilityTier, Strand, Weft
 from textile.core.execution.yarn import Yarn
@@ -60,9 +59,6 @@ __all__ = [
     "YarnNotFoundError",
     "__version__",
     "core_tapestry",
-    "detect_shell",
-    "detect_terminal",
-    "detect_terminal_and_shell",
     "elastic",
     "fabric_instructions",
     "loom",

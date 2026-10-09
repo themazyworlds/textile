@@ -35,7 +35,7 @@ def create_table(
         show_header=show_header,
         header_style="bold bright_cyan",
         show_edge=False,
-        padding=(0, 2),
+        padding=(0, 1),
     )
 
     for col in columns:
@@ -69,7 +69,7 @@ def print_table(
         rows=rows,
         show_header=show_header,
     )
-    title_str = f"[bold bright_cyan]{header_title}[/bold bright_cyan]" if header_title else None
+    title_str = header_title if header_title else None
     if title_str and subtitle:
         title_str += f" [dim]• {subtitle}[/dim]"
 
@@ -82,5 +82,6 @@ def print_table(
         expand=False,
         padding=(0, 0),
     )
+    console.print()
     console.print(panel)
     return panel

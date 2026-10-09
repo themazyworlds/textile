@@ -5,12 +5,12 @@ Textile Core Strand Invoker & Argument Synthesis Factory.
 import asyncio
 import concurrent.futures
 import inspect
-import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, get_type_hints
 
+import orjson
 from pydantic import BaseModel, Field, create_model
 
 from textile.core.definitions.errors import TextileError
@@ -27,14 +27,14 @@ STRAND_EXEC_ERRORS = (
     KeyError,
     OSError,
     RuntimeError,
-    json.JSONDecodeError,
+    orjson.JSONDecodeError,
 )
 
 
 def _format_handler_result(res: Any) -> str:
     """Format handler execution output into string or formatted JSON."""
     if isinstance(res, (dict, list)):
-        return json.dumps(res, indent=2)
+        return orjson.dumps(res, option=orjson.OPT_INDENT_2).decode()
     return str(res) if res is not None else "ok"
 
 

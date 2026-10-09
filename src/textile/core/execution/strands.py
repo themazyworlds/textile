@@ -17,7 +17,7 @@ class CapabilityTier(StrEnum):
     """Execution risk & privilege tiers for Textile Strands."""
 
     OBSERVE = "observe"  # Read-only telemetry, state inspection, queries, logs
-    INTERACT = "interact"  # Desktop GUI interactions, notifications, clipboard, media
+    INTERACT = "interact"  # Desktop GUI interactions, window focus, visual notifications
     MUTATE = "mutate"  # File modifications, killing user processes, local workspace changes
     PRIVILEGED = "privileged"  # System configuration, package installs, D-Bus system calls, Polkit
     SYSTEM_EXEC = "system_exec"  # Arbitrary shell command execution (auto-isolated)

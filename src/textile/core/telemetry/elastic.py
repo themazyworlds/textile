@@ -171,7 +171,7 @@ class ElasticEngine:
         """
         Broadcast an event to all subscribers, persist to Tapestry, and update retained slots.
 
-        :param topic: Hierarchical event topic (e.g., 'timer.expired', 'canvas.mood', 'sensors.cpu').
+        :param topic: Hierarchical event topic (e.g., 'timer.expired', 'system.alert', 'sensors.cpu').
         :param summary: Human-readable narrative description of the event.
         :param options: Optional BroadcastOptions instance or source string.
         """
@@ -290,7 +290,7 @@ class ElasticEngine:
         """
         Subscribe to Elastic event topics.
 
-        :param pattern: Topic pattern to match (e.g., '*', 'timer.*', 'canvas.mood').
+        :param pattern: Topic pattern to match (e.g., '*', 'timer.*', 'system.*').
         :param callback: Callable function accepting an EventFrame.
         :param min_urgency: Minimum urgency threshold to receive events.
         :return: Subscription token string for unsubscription.
@@ -352,7 +352,7 @@ class ElasticEngine:
         Occupy / assign a seat (retained slot) on the Tapestry blackboard.
         Automatically updates the blackboard state and broadcasts the change event.
 
-        :param slot: The slot / seat identifier (e.g. 'timers.active', 'compositor.active_window').
+        :param slot: The slot / seat identifier (e.g. 'system.status', 'compositor.active_window').
         :param value: The state value to retain in the seat.
         :param summary: Optional human-readable description.
         :param source: The yarn or component name claiming the seat.

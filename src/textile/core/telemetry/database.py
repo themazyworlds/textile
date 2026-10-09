@@ -3,6 +3,7 @@ Textile Telemetry Database Management.
 Provides SQLite WAL persistent and memory-backed database connection management.
 """
 
+import contextlib
 import os
 import sqlite3
 import tempfile
@@ -17,7 +18,9 @@ def _get_runtime_directory() -> Path:
         if runtime_dir
         else Path(tempfile.gettempdir()) / f"textile-{os.getuid()}"
     )
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        os.chmod(directory, 0o700)
     return directory
 
 
@@ -92,4 +95,17 @@ class TapestryDatabase:
                     retained_slot TEXT,
                     retained_value_json TEXT
                 );
+                CREATE TABLE IF NOT EXISTS otp_challenges (
+                    challenge_id TEXT PRIMARY KEY,
+                    otp TEXT UNIQUE NOT NULL,
+                    strand_name TEXT NOT NULL,
+                    args_hash TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    ttl_seconds REAL NOT NULL DEFAULT 30.0,
+                    failed_attempts INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 3
+                );
             """)
+        if not self._is_uri and Path(self._database_path).exists():
+            with contextlib.suppress(OSError):
+                os.chmod(self._database_path, 0o600)

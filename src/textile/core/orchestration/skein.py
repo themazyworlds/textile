@@ -6,7 +6,6 @@ import contextlib
 import importlib
 import importlib.util
 import inspect
-import json
 import os
 import sys
 import threading
@@ -14,6 +13,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import orjson
 import platformdirs
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
@@ -232,8 +232,8 @@ class Skein:
     def _load_config(self) -> None:
         try:
             if self._config_file.exists():
-                self._disabled_yarns = set(json.loads(self._config_file.read_text()).get("disabled_yarns", []))
-        except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
+                self._disabled_yarns = set(orjson.loads(self._config_file.read_bytes()).get("disabled_yarns", []))
+        except (OSError, orjson.JSONDecodeError, KeyError, TypeError) as e:
             logger.debug("skein.config_load_failed", path=str(self._config_file), error=str(e))
 
         self._load_settings()
@@ -300,7 +300,8 @@ class Skein:
         try:
             self._config_file.parent.mkdir(parents=True, exist_ok=True)
             tmp_file = self._config_file.with_suffix(".tmp")
-            tmp_file.write_text(json.dumps({"disabled_yarns": list(self._disabled_yarns)}, indent=2))
+            payload = orjson.dumps({"disabled_yarns": list(self._disabled_yarns)}, option=orjson.OPT_INDENT_2)
+            tmp_file.write_bytes(payload)
             tmp_file.replace(self._config_file)
         except (OSError, TypeError) as e:
             logger.warning("skein.config_save_failed", path=str(self._config_file), error=str(e))

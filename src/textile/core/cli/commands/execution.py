@@ -2,16 +2,17 @@
 Textile CLI Strand and Yarn Execution Commands.
 """
 
-import json
 from typing import Any
 
+import orjson
 import typer
 
 from textile.core.cli.app import app, console, ensure_initialized
 from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.errors import StrandNotFoundError, TextileError
 from textile.core.orchestration.loom import loom
-from textile.core.orchestration.skein import skein
+from textile.core.orchestration.twill import run_twill
+from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError
 
 
 def _parse_cli_arg_val(val: str) -> Any:
@@ -84,39 +85,13 @@ def list_strands(
         matched.append((s_name, s_tier, s_desc))
 
     print_table(
-        header_title="Textile Strands",
-        subtitle=f"{len(matched)} registered strands",
+        header_title="Strands",
         columns=[
             Column("Strand", style="bold cyan", no_wrap=True),
-            Column("Tier", justify="center", no_wrap=True),
+            Column("Tier", style="dim", no_wrap=True),
             Column("Description", style="dim"),
         ],
         rows=matched,
-    )
-
-
-@app.command("yarns")
-def list_yarns():
-    """Inspect registered Yarn modules and layer hierarchy."""
-    ensure_initialized()
-    yarns = sorted(skein.all_yarns.values(), key=lambda item: (-item.layer, item.name))
-
-    rows = []
-    for y in yarns:
-        status_str = "[green]ACTIVE[/green]" if skein.is_enabled(y.name) else "[red]DISABLED[/red]"
-        desc = (y.description or "").splitlines()[0].strip() if y.description else ""
-        rows.append((y.name, str(y.layer), status_str, desc))
-
-    print_table(
-        header_title="Textile Yarns",
-        subtitle=f"{len(yarns)} capability yarns",
-        columns=[
-            Column("Yarn", style="bold cyan", no_wrap=True),
-            Column("Layer", justify="center", no_wrap=True),
-            Column("Status", justify="center", no_wrap=True),
-            Column("Description", style="dim"),
-        ],
-        rows=rows,
     )
 
 
@@ -124,7 +99,7 @@ def list_yarns():
 def call_strand(
     strand_name: str = typer.Argument(
         ...,
-        help="Name of the strand to execute (e.g. hyprland_get_windows, clipboard_get)",
+        help="Name of the strand to execute",
     ),
     args: list[str] = typer.Argument(None, help="Key=Value parameters (e.g. text='Hello World' target=1)"),
     json_args: str | None = typer.Option(None, "--json", "-j", help="Raw JSON string of arguments"),
@@ -135,8 +110,8 @@ def call_strand(
 
     if json_args:
         try:
-            parsed_kwargs = json.loads(json_args)
-        except json.JSONDecodeError as e:
+            parsed_kwargs = orjson.loads(json_args)
+        except orjson.JSONDecodeError as e:
             console.print(f"[bold red]Error parsing JSON arguments:[/bold red] {e}")
             raise typer.Exit(code=1) from e
     elif args:
@@ -145,6 +120,14 @@ def call_strand(
     try:
         res = loom.execute_sync(strand_name, parsed_kwargs)
         console.print(res)
+    except OTPChallengeRequiredError as e:
+        console.print("\n  [bold bright_yellow]Visual OTP Confirmation Required[/bold bright_yellow]")
+        console.print("  [dim]A 4-digit single-use security verification code has been displayed on your screen.[/dim]")
+        console.print(f"  [bold cyan]Confirm:[/bold cyan] textile call {strand_name} otp=<code>\n")
+        raise typer.Exit(code=1) from e
+    except PolicyViolationError as e:
+        console.print(f"\n  [bold red]Security Policy Violation:[/bold red] {e}\n")
+        raise typer.Exit(code=1) from e
     except TextileError as e:
         console.print(f"[bold red]{e.message}[/bold red]")
         if e.hint:
@@ -187,3 +170,10 @@ def inspect_strand(
             ],
             rows=rows,
         )
+
+
+@app.command("twill")
+def cmd_twill():
+    """Launch official Twill / MCP stdio server."""
+    run_twill()
+

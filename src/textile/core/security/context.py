@@ -1,12 +1,20 @@
+"""
+Textile Security Context & Visual OTP Verification Manager.
+Provides thread-safe and multi-process SQLite-backed single-use visual challenge OTP verification.
+"""
+
 import contextlib
 import hashlib
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+from textile.core.telemetry.database import TapestryDatabase
 
 
 def _display_visual_otp_osd(otp: str, strand_name: str) -> None:
@@ -41,95 +49,96 @@ class PendingOTP:
     args_hash: str
     created_at: float = field(default_factory=time.time)
     ttl_seconds: float = 30.0
-    consumed: bool = False
     failed_attempts: int = 0
     max_attempts: int = 3
 
     def is_valid(self, now: float | None = None) -> bool:
         current_time = now if now is not None else time.time()
         return (
-            not self.consumed
-            and self.failed_attempts < self.max_attempts
+            self.failed_attempts < self.max_attempts
             and (current_time - self.created_at) <= self.ttl_seconds
         )
 
 
 class OTPManager:
-    """Manages thread-safe, collision-free single-use visual challenge OTPs."""
+    """Manages thread-safe, multi-process, single-use visual challenge OTPs backed by SQLite."""
 
-    def __init__(self) -> None:
+    def __init__(self, database: TapestryDatabase | None = None) -> None:
+        self._database = database or TapestryDatabase(persist=True)
         self._lock = threading.Lock()
-        self._pending: dict[str, PendingOTP] = {}
-        self._otp_map: dict[str, str] = {}
 
-    def _purge_expired_locked(self, now: float) -> None:
-        expired_ids = [cid for cid, ch in self._pending.items() if not ch.is_valid(now)]
-        for cid in expired_ids:
-            ch = self._pending.pop(cid, None)
-            if ch and self._otp_map.get(ch.otp) == cid:
-                del self._otp_map[ch.otp]
+    def _purge_expired(self, connection: sqlite3.Connection, now: float) -> None:
+        connection.execute("DELETE FROM otp_challenges WHERE (created_at + ttl_seconds) < ?", (now,))
 
     def create_challenge(self, strand_name: str, args_hash: str) -> str:
-        """Generates a 4-digit OTP bound to a specific strand call and args hash."""
-        with self._lock:
-            now = time.time()
-            self._purge_expired_locked(now)
+        """Generates or retrieves an active 4-digit OTP bound to a specific strand call and args hash."""
+        now = time.time()
+        with self._lock, self._database._lock, self._database.get_connection() as conn:
+            self._purge_expired(conn, now)
 
-            # Check if an active valid challenge already exists for this exact call
-            for challenge in self._pending.values():
-                if challenge.strand_name == strand_name and challenge.args_hash == args_hash and challenge.is_valid():
-                    return challenge.otp
+            # Check if active unexpired challenge exists for this exact strand and args
+            cursor = conn.cursor()
+            query_select = (
+                "SELECT otp FROM otp_challenges "
+                "WHERE strand_name = ? AND args_hash = ? AND (created_at + ttl_seconds) >= ?"
+            )
+            cursor.execute(query_select, (strand_name, args_hash, now))
+            if row := cursor.fetchone():
+                return str(row[0])
 
-            # Generate collision-free OTP code and unique internal challenge ID
+            # Generate collision-free 4-digit OTP
             while True:
                 otp = f"{secrets.randbelow(10000):04d}"
-                if otp not in self._otp_map:
-                    break
-
-            cid = secrets.token_hex(16)
-            ch = PendingOTP(
-                challenge_id=cid,
-                otp=otp,
-                strand_name=strand_name,
-                args_hash=args_hash,
-                created_at=now,
-            )
-            self._pending[cid] = ch
-            self._otp_map[otp] = cid
-            return otp
+                cid = secrets.token_hex(16)
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO otp_challenges (
+                            challenge_id, otp, strand_name, args_hash,
+                            created_at, ttl_seconds, failed_attempts, max_attempts
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, 0, 3)
+                        """,
+                        (cid, otp, strand_name, args_hash, now, 30.0),
+                    )
+                    return otp
+                except sqlite3.IntegrityError:
+                    continue
 
     def verify_and_consume(self, otp: str, strand_name: str, _args_hash: str = "") -> bool:
         """Validates and INSTANTLY consumes the OTP atomically so it can never be reused."""
-        with self._lock:
-            now = time.time()
-            self._purge_expired_locked(now)
+        now = time.time()
+        with self._lock, self._database._lock, self._database.get_connection() as conn:
+            self._purge_expired(conn, now)
 
-            cid = self._otp_map.get(otp)
-            if not cid or cid not in self._pending:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT challenge_id, strand_name, failed_attempts, max_attempts FROM otp_challenges WHERE otp = ?",
+                (otp.strip(),),
+            )
+            row = cursor.fetchone()
+            if not row:
                 return False
 
-            challenge = self._pending[cid]
-            if not challenge.is_valid():
-                self._pending.pop(cid, None)
-                self._otp_map.pop(otp, None)
-                return False
-
-            if challenge.strand_name == strand_name:
-                challenge.consumed = True
-                self._pending.pop(cid, None)
-                self._otp_map.pop(otp, None)
+            cid, bound_strand, failed_attempts, max_attempts = row[0], row[1], row[2], row[3]
+            if bound_strand == strand_name:
+                # Atomically consume
+                conn.execute("DELETE FROM otp_challenges WHERE challenge_id = ?", (cid,))
                 return True
 
-            challenge.failed_attempts += 1
-            if challenge.failed_attempts >= challenge.max_attempts:
-                self._pending.pop(cid, None)
-                self._otp_map.pop(otp, None)
+            # Mismatched strand: increment failed attempts
+            if failed_attempts + 1 >= max_attempts:
+                conn.execute("DELETE FROM otp_challenges WHERE challenge_id = ?", (cid,))
+            else:
+                conn.execute(
+                    "UPDATE otp_challenges SET failed_attempts = failed_attempts + 1 WHERE challenge_id = ?",
+                    (cid,),
+                )
             return False
 
     def clear(self) -> None:
-        with self._lock:
-            self._pending.clear()
-            self._otp_map.clear()
+        with self._lock, self._database._lock, self._database.get_connection() as conn:
+            conn.execute("DELETE FROM otp_challenges")
 
 
 global_otp_manager = OTPManager()
@@ -187,5 +196,3 @@ def verify_security_policy(
     challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)
     _display_visual_otp_osd(challenge_code, strand_name)
     raise OTPChallengeRequiredError(otp=challenge_code, strand_name=strand_name, args_hash=args_hash)
-
-

@@ -3,12 +3,12 @@ Textile Task Ledger Engine.
 Provides task execution tracking, active task management, and execution history.
 """
 
-import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import orjson
 from pydantic import BaseModel, Field
 
 from textile.core.telemetry.database import TapestryDatabase
@@ -73,7 +73,7 @@ class CoreTapestry:
                     record.task_id,
                     record.strand_name,
                     record.start_time,
-                    json.dumps(record.args),
+                    orjson.dumps(record.args).decode(),
                     record.tier,
                 ),
             )
@@ -101,7 +101,7 @@ class CoreTapestry:
                 task_id=task_id,
                 strand_name=row[0],
                 start_time=row[1],
-                args=json.loads(row[2]) if row[2] else {},
+                args=orjson.loads(row[2]) if row[2] else {},
                 tier=row[3],
                 success=success,
                 duration_ms=duration_ms,
@@ -124,7 +124,7 @@ class CoreTapestry:
                     1 if record.success else 0,
                     record.error,
                     record.tier,
-                    json.dumps(record.args),
+                    orjson.dumps(record.args).decode(),
                 ),
             )
             return record
@@ -161,7 +161,7 @@ class CoreTapestry:
                     task_id=r[0],
                     strand_name=r[1],
                     start_time=r[2],
-                    args=json.loads(r[3]) if r[3] else {},
+                    args=orjson.loads(r[3]) if r[3] else {},
                     tier=r[4],
                 ).model_dump()
                 for r in cursor.fetchall()
@@ -184,7 +184,7 @@ class CoreTapestry:
                     success=bool(r[4]),
                     error=r[5],
                     tier=r[6],
-                    args=json.loads(r[7]) if r[7] else {},
+                    args=orjson.loads(r[7]) if r[7] else {},
                 ).model_dump()
                 for r in reversed(cursor.fetchall())
             ]

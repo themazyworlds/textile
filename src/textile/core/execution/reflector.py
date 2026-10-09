@@ -58,9 +58,9 @@ def method_to_weft(_yarn: Any, method: Callable[..., Any]) -> Weft:
     sig = inspect.signature(method)
     weft_name = getattr(method, "_weft_name", method.__name__)
     weft_pattern = getattr(method, "_weft_pattern")
-    doc_summary, _ = _extract_docstring_info(inspect.getdoc(method))
-    raw_desc = getattr(method, "_weft_description", None) or doc_summary or weft_name
-    weft_desc = raw_desc.splitlines()[0].strip() if raw_desc else weft_name
+    doc = inspect.getdoc(method) or ""
+    raw_desc = getattr(method, "_weft_description", None) or doc or weft_name
+    weft_desc = " ".join(raw_desc.split()) if raw_desc else weft_name
     weft_strip = getattr(method, "_weft_strip", True)
     weft_priority = getattr(method, "_weft_priority", 100)
 
@@ -98,6 +98,8 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     args_model = _build_args_model(method, f"{strand_name}_Args", param_docs)
     schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
     params, req_list = schema.get("properties", {}), schema.get("required", [])
+    isolated = getattr(method, "_strand_isolated", True)
+    runner = execute_isolated_strand if isolated else None
 
     invoker = _create_invoker(
         yarn,
@@ -110,7 +112,7 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
             timeout=timeout,
             tier=tier_val,
         ),
-        runner=execute_isolated_strand,
+        runner=runner,
     )
 
     return Strand(

@@ -1,10 +1,8 @@
 """
 Textile Telemetry Functional Domain Package.
-Provides sensory blackboard & task ledger (Tapestry), cross-process event bus (Elastic),
-and integrity auditing (Seams).
+Provides sensory blackboard & task ledger (Tapestry) and cross-process event bus (Elastic).
 """
 
-from textile.core.telemetry.auditor import audit_all, audit_strand, audit_yarn
 from textile.core.telemetry.blackboard import (
     SensoryTapestry,
     sensory_tapestry,
@@ -24,9 +22,6 @@ __all__ = [
     "EventUrgency",
     "SensoryTapestry",
     "TapestryDatabase",
-    "audit_all",
-    "audit_strand",
-    "audit_yarn",
     "configure_logging",
     "core_tapestry",
     "elastic",

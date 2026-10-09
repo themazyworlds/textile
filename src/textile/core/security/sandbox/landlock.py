@@ -6,6 +6,7 @@ Enforces ABI v1-v3 read-only kernel walls via unprivileged syscalls.
 import ctypes
 import os
 import sys
+from collections.abc import Sequence
 
 from textile.core.telemetry.log import get_logger
 
@@ -67,8 +68,12 @@ class LandlockSandbox:
             return False
 
     @classmethod
-    def apply_read_only(cls, allowed_read_path: str = "/") -> bool:
-        """Confine the current process to read-only filesystem access."""
+    def apply_read_only(
+        cls,
+        allowed_read_path: str = "/",
+        allowed_write_paths: Sequence[str] = (),
+    ) -> bool:
+        """Confine the current process to read-only filesystem access with optional writable paths."""
         if not cls.is_supported():
             logger.debug("sandbox.landlock_unsupported")
             return False
@@ -97,6 +102,23 @@ class LandlockSandbox:
                     return False
             finally:
                 os.close(root_fd)
+
+            # Always allow stdio and character devices (/dev) write access
+            # so /dev/null, /dev/zero, /dev/urandom, etc. work
+            write_paths = list(allowed_write_paths)
+            if "/dev" not in write_paths and os.path.exists("/dev"):
+                write_paths.append("/dev")
+
+            for wp in write_paths:
+                if os.path.exists(wp):
+                    w_fd = os.open(wp, os.O_PATH | os.O_CLOEXEC)
+                    try:
+                        w_attr = LandlockPathBeneathAttr()
+                        w_attr.allowed_access = ACCESS_FS_RO | LANDLOCK_ACCESS_FS_WRITE_FILE
+                        w_attr.parent_fd = w_fd
+                        libc.syscall(SYS_landlock_add_rule, ruleset_fd, 1, ctypes.byref(w_attr), 0)
+                    finally:
+                        os.close(w_fd)
 
             libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
             ret_restrict = libc.syscall(SYS_landlock_restrict_self, ruleset_fd, 0)

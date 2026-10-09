@@ -4,22 +4,17 @@ Provides discovery, layer hierarchy, strand inspection, execution, IPC, and heal
 """
 
 from textile.core.cli.app import (
-    SeamsAuditReportModel,
-    SeamsSummaryModel,
     TapestryStateModel,
     app,
     console,
     ensure_initialized,
 )
-from textile.core.cli.commands import daemons, execution, registry
+from textile.core.cli.commands import execution, registry
 
 __all__ = [
-    "SeamsAuditReportModel",
-    "SeamsSummaryModel",
     "TapestryStateModel",
     "app",
     "console",
-    "daemons",
     "ensure_initialized",
     "execution",
     "main",

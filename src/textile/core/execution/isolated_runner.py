@@ -7,7 +7,6 @@ import contextlib
 import importlib
 import importlib.util
 import inspect
-import json
 import os
 import re
 import shutil
@@ -16,6 +15,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import orjson
 
 import textile
 from textile.core.definitions.errors import SandboxUnavailableError
@@ -29,7 +30,7 @@ MIN_ARG_COUNT = 5
 def _format_handler_result(res: Any) -> str:
     """Format handler execution output into string or formatted JSON."""
     if isinstance(res, (dict, list)):
-        return json.dumps(res, indent=2)
+        return orjson.dumps(res, option=orjson.OPT_INDENT_2).decode()
     return str(res) if res is not None else "ok"
 
 
@@ -76,7 +77,7 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
         target_spec,
         spec.yarn.__class__.__name__,
         spec.strand_name,
-        json.dumps(spec.args),
+        orjson.dumps(spec.args).decode(),
         spec.tier_str,
     ]
 
@@ -96,11 +97,11 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
     err = res.stderr.strip()
     if out:
         try:
-            payload = json.loads(out)
+            payload = orjson.loads(out)
             if payload.get("success"):
                 return _format_handler_result(payload.get("result"))
             return f"Error: {payload.get('error', 'Execution failed')}"
-        except (json.JSONDecodeError, ValueError, TypeError):
+        except (orjson.JSONDecodeError, ValueError, TypeError):
             if res.returncode == 0:
                 return out
 
@@ -208,7 +209,7 @@ def _setup_worker_sys_path() -> None:
 
 def main():
     if len(sys.argv) < MIN_ARG_COUNT:
-        print(json.dumps({"success": False, "error": "Invalid arguments to isolated_runner"}))
+        print(orjson.dumps({"success": False, "error": "Invalid arguments to isolated_runner"}).decode())
         sys.exit(1)
 
     target_spec = sys.argv[1]
@@ -217,9 +218,9 @@ def main():
     args_json = sys.argv[4]
 
     try:
-        args: dict[str, Any] = json.loads(args_json) if args_json else {}
-    except (json.JSONDecodeError, ValueError, TypeError) as e:
-        print(json.dumps({"success": False, "error": f"Failed to parse arguments JSON: {e}"}))
+        args: dict[str, Any] = orjson.loads(args_json) if args_json else {}
+    except (orjson.JSONDecodeError, ValueError, TypeError) as e:
+        print(orjson.dumps({"success": False, "error": f"Failed to parse arguments JSON: {e}"}).decode())
         sys.exit(1)
 
     _setup_worker_sys_path()
@@ -230,26 +231,35 @@ def main():
         cls = getattr(mod, class_name)
         instance = cls()
 
+        matching_strand = next((s for s in instance.get_strands() if s.name == strand_name), None)
+        res_list = matching_strand.resources if matching_strand else getattr(instance, "resources", [])
+        allowed_writes = []
+        for r in res_list:
+            if str(r).startswith("socket:"):
+                sock_p = os.path.expandvars(os.path.expanduser(str(r)[7:].strip()))
+                allowed_writes.append(sock_p)
+                if Path(sock_p).parent.exists():
+                    allowed_writes.append(str(Path(sock_p).parent))
+
         if (
             tier_name in ("OBSERVE", "INTERACT")
             and LandlockSandbox.is_supported()
-            and not LandlockSandbox.apply_read_only()
+            and not LandlockSandbox.apply_read_only(allowed_write_paths=allowed_writes)
         ):
             print(
-                json.dumps(
+                orjson.dumps(
                     {"success": False, "error": f"Failed to apply Landlock read-only sandbox for tier {tier_name}"}
-                )
+                ).decode()
             )
             sys.exit(1)
 
         res = execute_direct(instance, strand_name, args)
-        print(json.dumps({"success": True, "result": res}))
+        print(orjson.dumps({"success": True, "result": res}).decode())
         sys.exit(0)
     except (ImportError, AttributeError, TypeError, ValueError, RuntimeError, KeyError, OSError) as e:
-        print(json.dumps({"success": False, "error": str(e)}))
+        print(orjson.dumps({"success": False, "error": str(e)}).decode())
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-
