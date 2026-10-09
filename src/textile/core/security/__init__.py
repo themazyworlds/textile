@@ -10,6 +10,7 @@ from textile.core.security.context import (
     PendingOTP,
     PolicyViolationError,
     global_otp_manager,
+    hash_args,
     verify_security_policy,
 )
 from textile.core.security.guardrails import (
@@ -27,5 +28,6 @@ __all__ = [
     "ScopedPath",
     "SessionProcessGuard",
     "global_otp_manager",
+    "hash_args",
     "verify_security_policy",
 ]

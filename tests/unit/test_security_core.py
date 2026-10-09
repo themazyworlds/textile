@@ -3,7 +3,6 @@ Textile Core Layer 1 - Security & OTP Engine Unit Tests.
 Verifies single-use OTP generation, consumption, action-binding, and policy enforcement.
 """
 
-import hashlib
 import json
 from typing import Any
 
@@ -14,16 +13,19 @@ from textile.core.security.context import (
     OTPChallengeRequiredError,
     OTPManager,
     PolicyViolationError,
+    _format_args_summary,
     global_otp_manager,
+    hash_args,
     verify_security_policy,
 )
+from textile.core.telemetry.database import TapestryDatabase
 
 
 class TestOTPManager:
     def test_create_and_consume_otp(self):
-        mgr = OTPManager()
+        mgr = OTPManager(database=TapestryDatabase(persist=False))
         strand = "file_op"
-        args_hash = hashlib.sha256(b'{"op": "delete"}').hexdigest()
+        args_hash = hash_args({"op": "delete"})
 
         otp = mgr.create_challenge(strand, args_hash)
         assert len(otp) == 4
@@ -42,13 +44,52 @@ class TestOTPManager:
         assert mgr.verify_and_consume(otp, strand, args_hash) is False
 
     def test_otp_reuses_active_challenge_for_same_call(self):
-        mgr = OTPManager()
+        mgr = OTPManager(database=TapestryDatabase(persist=False))
         strand = "packagekit_install"
-        args_hash = hashlib.sha256(b'{"pkg": "git"}').hexdigest()
+        args_hash = hash_args({"pkg": "git"})
 
         otp1 = mgr.create_challenge(strand, args_hash)
         otp2 = mgr.create_challenge(strand, args_hash)
         assert otp1 == otp2
+
+    def test_hash_args_consistency(self):
+        raw_dict = {"packages": "git", "force": True}
+        json_str = json.dumps(raw_dict)
+        h1 = hash_args(raw_dict)
+        h2 = hash_args(json_str)
+        # Transient otp key must not affect hash
+        h3 = hash_args({"packages": "git", "force": True, "otp": "9999"})
+        assert h1 == h2 == h3
+
+    def test_format_args_summary_displays_all_keys(self):
+        args = {
+            "content": "A" * 120,
+            "path": "/home/u/.config/textile/yarns/evil.py",
+        }
+        summary = _format_args_summary(args)
+        assert "content=" in summary
+        assert "path='/home/u/.config/textile/yarns/evil.py'" in summary
+        assert "..." in summary
+
+    def test_three_misses_wipe_and_lockout(self):
+        mgr = OTPManager(database=TapestryDatabase(persist=False))
+        strand = "file_op"
+        args_hash = hash_args({"path": "/tmp/test.txt"})
+
+        otp = mgr.create_challenge(strand, args_hash)
+
+        # 3 failed guesses
+        assert mgr.verify_and_consume("0000", strand, args_hash) is False
+        assert mgr.verify_and_consume("0001", strand, args_hash) is False
+        assert mgr.verify_and_consume("0002", strand, args_hash) is False
+
+        # Challenge wiped
+        assert mgr.verify_and_consume(otp, strand, args_hash) is False
+
+        # Lockout active: creating new challenges is blocked
+        with pytest.raises(PolicyViolationError) as exc_info:
+            mgr.create_challenge(strand, args_hash)
+        assert "Security lockout active" in str(exc_info.value)
 
 
 class TestSecurityPolicyGate:
@@ -61,12 +102,12 @@ class TestSecurityPolicyGate:
 
     def test_mutate_tier_requires_otp_challenge(self):
         strand = "file_op"
-        args_json = json.dumps({"op": "write", "path": "/tmp/test.txt"})
-        args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
+        args = {"op": "write", "path": "/tmp/test.txt"}
+        args_hash = hash_args(args)
 
         # Without OTP, raises OTPChallengeRequiredError
         with pytest.raises(OTPChallengeRequiredError) as exc_info:
-            verify_security_policy(CapabilityTier.MUTATE, strand, args_json=args_json)
+            verify_security_policy(CapabilityTier.MUTATE, strand, args_json=args)
 
         err = exc_info.value
         assert err.strand_name == strand
@@ -74,21 +115,21 @@ class TestSecurityPolicyGate:
         assert len(err.otp) == 4
 
         # With correct OTP, passes cleanly
-        verify_security_policy(CapabilityTier.MUTATE, strand, args_json=args_json, otp=err.otp)
+        verify_security_policy(CapabilityTier.MUTATE, strand, args_json=args, otp=err.otp)
 
         # Replaying the same OTP fails
         with pytest.raises(PolicyViolationError):
-            verify_security_policy(CapabilityTier.MUTATE, strand, args_json=args_json, otp=err.otp)
+            verify_security_policy(CapabilityTier.MUTATE, strand, args_json=args, otp=err.otp)
 
     def test_privileged_and_system_exec_require_otp(self):
         strand = "polkit_pkexec"
-        args_json = json.dumps({"cmd": "systemctl restart bluetooth"})
+        args = {"cmd": "systemctl restart bluetooth"}
 
         with pytest.raises(OTPChallengeRequiredError) as exc_info:
-            verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args_json)
+            verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args)
 
         otp = exc_info.value.otp
-        assert verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args_json, otp=otp) is True
+        assert verify_security_policy(CapabilityTier.PRIVILEGED, strand, args_json=args, otp=otp) is True
 
     @pytest.mark.asyncio
     async def test_loom_unmasked_error_propagation(self):
@@ -119,11 +160,11 @@ class TestSecurityPolicyGate:
         loom.initialize()
         loom._rebuild_active()
 
-        args_json = json.dumps({"packages": "invalid_pkg_123"})
-        args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
+        args = {"packages": "invalid_pkg_123"}
+        args_hash = hash_args(args)
         otp = global_otp_manager.create_challenge("mock_privileged_install", args_hash)
 
-        res = await loom.execute("mock_privileged_install", {"packages": "invalid_pkg_123"}, otp=otp)
+        res = await loom.execute("mock_privileged_install", args, otp=otp)
         assert "[OTP Code Verified & Accepted]" in res
         assert "Package 'invalid_pkg_123' failed to install." in res
 

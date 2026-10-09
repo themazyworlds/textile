@@ -41,6 +41,7 @@ from textile.core.security import (
     ScopedPath,
     SessionProcessGuard,
     global_otp_manager,
+    hash_args,
     verify_security_policy,
 )
 from textile.core.telemetry import (
@@ -87,6 +88,7 @@ __all__ = [
     "elastic",
     "get_layer_info",
     "global_otp_manager",
+    "hash_args",
     "loom",
     "run_twill",
     "sensory_tapestry",

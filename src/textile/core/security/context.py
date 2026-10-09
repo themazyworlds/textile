@@ -18,23 +18,71 @@ import orjson
 
 from textile.core.telemetry.database import TapestryDatabase
 
-MAX_SUMMARY_LENGTH = 100
+MAX_VALUE_CHARS = 40
+VALUE_HEAD_CHARS = 18
+VALUE_TAIL_CHARS = 18
 MAX_GLOBAL_FAILED_OTP_GUESSES = 3
+BASE_LOCKOUT_SECONDS = 60.0
+FAILURE_DECAY_SECONDS = 60.0
+CONSECUTIVE_WIPE_WINDOW = 600.0
 
 
-def _format_args_summary(args_json: str) -> str:
-    """Format short summary of arguments for human visual verification on OSD."""
-    if not args_json:
+def hash_args(args: Any) -> str:
+    """Computes a canonical, deterministic SHA-256 hash of strand arguments."""
+    if isinstance(args, str):
+        try:
+            parsed = orjson.loads(args)
+            if isinstance(parsed, dict):
+                clean = {k: v for k, v in parsed.items() if k != "otp"}
+                payload = orjson.dumps(clean, option=orjson.OPT_SORT_KEYS)
+            else:
+                payload = orjson.dumps(parsed, option=orjson.OPT_SORT_KEYS)
+        except (orjson.JSONDecodeError, TypeError):
+            payload = args.encode("utf-8")
+    elif isinstance(args, dict):
+        clean = {k: v for k, v in args.items() if k != "otp"}
+        payload = orjson.dumps(clean, option=orjson.OPT_SORT_KEYS)
+    elif args is None:
+        payload = b"{}"
+    else:
+        payload = orjson.dumps(args, option=orjson.OPT_SORT_KEYS)
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _truncate_middle(val_str: str, max_len: int = MAX_VALUE_CHARS) -> str:
+    """Truncates long strings in the middle so start and end context are both preserved."""
+    if len(val_str) <= max_len:
+        return val_str
+    return f"{val_str[:VALUE_HEAD_CHARS]}...{val_str[-VALUE_TAIL_CHARS:]}"
+
+
+def _format_args_summary(args: Any) -> str:
+    """Format short summary of arguments ensuring every key is displayed with individual value caps."""
+    if not args:
         return ""
     try:
-        data = orjson.loads(args_json)
+        if isinstance(args, str):
+            data = orjson.loads(args)
+        elif isinstance(args, dict):
+            data = args
+        else:
+            return _truncate_middle(str(args))
+
         if isinstance(data, dict):
-            items = [f"{k}={v!r}" for k, v in data.items() if k != "otp"]
-            summary = ", ".join(items)
-            return (summary[:MAX_SUMMARY_LENGTH] + "...") if len(summary) > MAX_SUMMARY_LENGTH else summary
-        return str(data)[:MAX_SUMMARY_LENGTH]
+            items: list[str] = []
+            for k, v in data.items():
+                if k == "otp":
+                    continue
+                formatted_val = (
+                    f"'{_truncate_middle(v)}'"
+                    if isinstance(v, str)
+                    else _truncate_middle(repr(v))
+                )
+                items.append(f"{k}={formatted_val}")
+            return ", ".join(items)
+        return _truncate_middle(repr(data))
     except (orjson.JSONDecodeError, TypeError, ValueError):
-        return (args_json[:MAX_SUMMARY_LENGTH] + "...") if len(args_json) > MAX_SUMMARY_LENGTH else args_json
+        return _truncate_middle(str(args))
 
 
 def _display_visual_otp_osd(otp: str, strand_name: str, args_summary: str = "") -> None:
@@ -83,6 +131,25 @@ class PendingOTP:
         )
 
 
+class PolicyViolationError(PermissionError):
+    """Raised when an operation violates security policy (e.g. invalid/expired OTP or lockout active)."""
+
+
+class OTPChallengeRequiredError(PermissionError):
+    """Raised when a MUTATE, PRIVILEGED, or SYSTEM_EXEC strand requires visual OTP confirmation."""
+
+    def __init__(self, otp: str, strand_name: str, args_hash: str) -> None:
+        self.otp = otp
+        self.strand_name = strand_name
+        self.args_hash = args_hash
+        # CRITICAL: Do NOT leak self.otp in string representation returned to LLM tool context!
+        super().__init__(
+            f"OTP Confirmation Required for '{strand_name}'. "
+            f"A single-use 4-digit verification code has been displayed on the user's screen. "
+            f"Ask the user to read the 4-digit code off their screen and confirm by passing otp='<code_from_user>'."
+        )
+
+
 class OTPManager:
     """Manages thread-safe, multi-process, single-use visual challenge OTPs backed by SQLite."""
 
@@ -93,11 +160,41 @@ class OTPManager:
     def _purge_expired(self, connection: sqlite3.Connection, now: float) -> None:
         connection.execute("DELETE FROM otp_challenges WHERE (created_at + ttl_seconds) < ?", (now,))
 
+    def _get_lockout_remaining(self, connection: sqlite3.Connection, now: float) -> float:
+        cursor = connection.cursor()
+        cursor.execute("SELECT updated_at FROM otp_gate_state WHERE key = 'lockout_until'")
+        row = cursor.fetchone()
+        if row and float(row[0]) > now:
+            return float(row[0]) - now
+        return 0.0
+
+    def _get_active_failed_guesses(self, connection: sqlite3.Connection, now: float) -> int:
+        cursor = connection.cursor()
+        cursor.execute("SELECT val_int, updated_at FROM otp_gate_state WHERE key = 'failed_guesses'")
+        row = cursor.fetchone()
+        if not row:
+            return 0
+        val_int, updated_at = int(row[0]), float(row[1])
+        if (now - updated_at) > FAILURE_DECAY_SECONDS:
+            connection.execute(
+                "UPDATE otp_gate_state SET val_int = 0, updated_at = ? WHERE key = 'failed_guesses'",
+                (now,),
+            )
+            return 0
+        return val_int
+
     def create_challenge(self, strand_name: str, args_hash: str) -> str:
         """Generates or retrieves an active 4-digit OTP bound to a specific strand call and args hash."""
         now = time.time()
         with self._lock, self._database._lock, self._database.get_connection() as conn:
             self._purge_expired(conn, now)
+
+            remaining_lockout = self._get_lockout_remaining(conn, now)
+            if remaining_lockout > 0:
+                raise PolicyViolationError(
+                    f"OTP rate limit exceeded: Security lockout active for {int(remaining_lockout) + 1}s "
+                    "due to repeated failed authentication attempts."
+                )
 
             # Check if active unexpired challenge exists for this exact strand and args
             cursor = conn.cursor()
@@ -128,15 +225,19 @@ class OTPManager:
                 except sqlite3.IntegrityError:
                     continue
 
-    def verify_and_consume(self, otp: str, strand_name: str, args_hash: str = "") -> bool:
+    def verify_and_consume(self, otp: str, strand_name: str, args_hash: str) -> bool:
         """Validates and INSTANTLY consumes the OTP atomically so it can never be reused.
 
         Counts every failed attempt globally across all OTP challenges. After 3 misses globally,
-        all pending challenges are immediately wiped.
+        all pending challenges are immediately wiped and an exponential backoff lockout is enforced.
         """
         now = time.time()
         with self._lock, self._database._lock, self._database.get_connection() as conn:
             self._purge_expired(conn, now)
+
+            # Rejections enforced during active lockout
+            if self._get_lockout_remaining(conn, now) > 0:
+                return False
 
             cursor = conn.cursor()
             cursor.execute(
@@ -146,30 +247,64 @@ class OTPManager:
             row = cursor.fetchone()
             if row:
                 cid, bound_strand, bound_args_hash = str(row[0]), str(row[1]), str(row[2])
-                if bound_strand == strand_name and (not args_hash or bound_args_hash == args_hash):
-                    # Atomically consume challenge and reset global failure counter
+                if bound_strand == strand_name and bound_args_hash == args_hash:
+                    # Atomically consume challenge and reset failure / lockout counters
                     conn.execute("DELETE FROM otp_challenges WHERE challenge_id = ?", (cid,))
                     conn.execute(
                         "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('failed_guesses', 0, ?) "
                         "ON CONFLICT(key) DO UPDATE SET val_int = 0, updated_at = ?",
                         (now, now),
                     )
+                    conn.execute(
+                        "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('consecutive_wipes', 0, ?) "
+                        "ON CONFLICT(key) DO UPDATE SET val_int = 0, updated_at = ?",
+                        (now, now),
+                    )
                     return True
 
             # Any failure (invalid OTP, strand mismatch, or args_hash mismatch):
-            # Count every wrong guess globally, and after three misses wipe all pending challenges
-            conn.execute(
-                "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('failed_guesses', 1, ?) "
-                "ON CONFLICT(key) DO UPDATE SET val_int = val_int + 1, updated_at = ?",
-                (now, now),
-            )
-            cursor.execute("SELECT val_int FROM otp_gate_state WHERE key = 'failed_guesses'")
-            failed_row = cursor.fetchone()
-            failed_guesses = failed_row[0] if failed_row else 1
+            active_failures = self._get_active_failed_guesses(conn, now)
+            new_failures = active_failures + 1
 
-            if failed_guesses >= MAX_GLOBAL_FAILED_OTP_GUESSES:
+            conn.execute(
+                "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('failed_guesses', ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET val_int = ?, updated_at = ?",
+                (new_failures, now, new_failures, now),
+            )
+
+            if new_failures >= MAX_GLOBAL_FAILED_OTP_GUESSES:
+                # 3-miss threshold reached: wipe all pending challenges
                 conn.execute("DELETE FROM otp_challenges")
-                conn.execute("UPDATE otp_gate_state SET val_int = 0 WHERE key = 'failed_guesses'")
+                conn.execute(
+                    "UPDATE otp_gate_state SET val_int = 0, updated_at = ? WHERE key = 'failed_guesses'",
+                    (now,),
+                )
+
+                # Determine consecutive wipe count for exponential backoff
+                cursor.execute(
+                    "SELECT val_int, updated_at FROM otp_gate_state WHERE key = 'consecutive_wipes'"
+                )
+                w_row = cursor.fetchone()
+                prev_wipes = 0
+                if w_row:
+                    w_count, w_time = int(w_row[0]), float(w_row[1])
+                    if (now - w_time) < CONSECUTIVE_WIPE_WINDOW:
+                        prev_wipes = w_count
+
+                consecutive_wipes = prev_wipes + 1
+                lockout_duration = BASE_LOCKOUT_SECONDS * (2 ** (consecutive_wipes - 1))
+                lockout_until = now + lockout_duration
+
+                conn.execute(
+                    "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('consecutive_wipes', ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET val_int = ?, updated_at = ?",
+                    (consecutive_wipes, now, consecutive_wipes, now),
+                )
+                conn.execute(
+                    "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('lockout_until', 0, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET updated_at = ?",
+                    (lockout_until, lockout_until),
+                )
 
             return False
 
@@ -182,29 +317,10 @@ class OTPManager:
 global_otp_manager = OTPManager()
 
 
-class PolicyViolationError(PermissionError):
-    """Raised when an operation violates security policy (e.g. invalid/expired OTP)."""
-
-
-class OTPChallengeRequiredError(PermissionError):
-    """Raised when a MUTATE, PRIVILEGED, or SYSTEM_EXEC strand requires visual OTP confirmation."""
-
-    def __init__(self, otp: str, strand_name: str, args_hash: str) -> None:
-        self.otp = otp
-        self.strand_name = strand_name
-        self.args_hash = args_hash
-        # CRITICAL: Do NOT leak self.otp in string representation returned to LLM tool context!
-        super().__init__(
-            f"OTP Confirmation Required for '{strand_name}'. "
-            f"A single-use 4-digit verification code has been displayed on the user's screen. "
-            f"Ask the user to read the 4-digit code off their screen and confirm by passing otp='<code_from_user>'."
-        )
-
-
 def verify_security_policy(
     tier: Any,
     strand_name: str,
-    args_json: str = "",
+    args_json: str | dict[str, Any] = "",
     otp: str | None = None,
 ) -> bool:
     """Canonical security policy gate.
@@ -220,8 +336,8 @@ def verify_security_policy(
     if tier_val in ("observe", "interact"):
         return False
 
-    # Calculate deterministic hash of call arguments
-    args_hash = hashlib.sha256(args_json.encode("utf-8")).hexdigest()
+    # Deterministic argument hash
+    args_hash = hash_args(args_json)
 
     if otp:
         if global_otp_manager.verify_and_consume(otp, strand_name, args_hash):
@@ -230,7 +346,7 @@ def verify_security_policy(
             f"[Security Policy Violation - Invalid/Expired OTP] Invalid or expired OTP code for strand '{strand_name}'."
         )
 
-    # No OTP provided: generate/fetch OTP challenge and display visually on desktop screen
+    # No OTP provided: generate/fetch OTP challenge (enforces lockout) and display visually on desktop screen
     challenge_code = global_otp_manager.create_challenge(strand_name, args_hash)
     args_summary = _format_args_summary(args_json)
     _display_visual_otp_osd(challenge_code, strand_name, args_summary)
