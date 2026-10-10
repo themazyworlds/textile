@@ -95,7 +95,7 @@ class OTPManager:
         now = time.time()
         base_step = int(now / 30)
 
-        for window in (-1, 0, 1):
+        for window in (0, 1, -1):
             step = base_step + window
             step_time = datetime.fromtimestamp(step * 30, tz=UTC)
             if totp.verify(clean_code, for_time=step_time):
@@ -103,7 +103,7 @@ class OTPManager:
                     cursor = conn.execute("SELECT val_int FROM otp_gate_state WHERE key = 'last_used_timestep'")
                     row = cursor.fetchone()
                     if row and int(row[0]) >= step:
-                        return False
+                        continue
 
                     conn.execute(
                         "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('last_used_timestep', ?, ?) "

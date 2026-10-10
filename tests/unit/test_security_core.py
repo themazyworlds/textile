@@ -3,6 +3,8 @@ Textile Core Layer 1 - Security & 2FA TOTP Engine Unit Tests.
 Verifies RFC 6238 TOTP verification, single-use replay prevention, and policy enforcement.
 """
 
+import time
+from datetime import UTC, datetime
 from typing import Any
 
 import pyotp
@@ -73,6 +75,28 @@ class TestSecurityPolicyGate:
         # Replaying the same code fails
         with pytest.raises(PolicyViolationError):
             verify_security_policy(CapabilityTier.MUTATE, strand, otp=code)
+
+    def test_otp_drift_and_monotonic_replay_protection(self):
+        secret = global_otp_manager._get_secret()
+        totp = pyotp.TOTP(secret)
+
+        now = time.time()
+        base_step = int(now / 30)
+
+        # Code from current timestep
+        curr_time = datetime.fromtimestamp(base_step * 30, tz=UTC)
+        curr_code = totp.at(curr_time)
+
+        # First verification succeeds
+        assert global_otp_manager.verify_and_consume(curr_code) is True
+
+        # Immediate replay of same code fails
+        assert global_otp_manager.verify_and_consume(curr_code) is False
+
+        # Attempting past window (-1) after consuming current window fails monotonically
+        past_time = datetime.fromtimestamp((base_step - 1) * 30, tz=UTC)
+        past_code = totp.at(past_time)
+        assert global_otp_manager.verify_and_consume(past_code) is False
 
     def test_privileged_and_system_exec_require_2fa(self):
         strand = "polkit_pkexec"
