@@ -34,13 +34,13 @@ def _display_totp_osd(code: str, strand_name: str) -> None:
                 timeout=30,
             )
 
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
+    def _worker() -> None:
         with contextlib.suppress(OSError, RuntimeError):
             asyncio.run(_send())
-    else:
-        loop.create_task(_send())
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=1.0)
 
 
 def get_totp_secret() -> str:
