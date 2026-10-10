@@ -262,7 +262,7 @@ class Loom:
         ctx = _ExecutionTelemetryContext(
             task_id=task_id,
             strand_name=strand_name,
-            args=args,
+            args=clean_args,
             tier_val=tier_val,
             caller=effective_caller,
         )
