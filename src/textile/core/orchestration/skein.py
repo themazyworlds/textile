@@ -7,6 +7,7 @@ import importlib
 import importlib.util
 import inspect
 import os
+import subprocess
 import sys
 import threading
 import tomllib
@@ -18,7 +19,9 @@ import platformdirs
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.definitions.settings import generate_documented_toml
-from textile.core.execution.strands import Strand
+from textile.core.execution.decorators import _parse_tier
+from textile.core.execution.isolated_runner import execute_isolated_strand
+from textile.core.execution.strands import CapabilityTier, Strand
 from textile.core.execution.yarn import Yarn
 from textile.core.security.context import PolicyViolationError
 from textile.core.telemetry.log import get_logger
@@ -112,6 +115,102 @@ def get_yarn_search_paths(config_dir: Path | None = None) -> list[Path]:
     return unique_paths
 
 
+class ProbedYarn(Yarn):
+    """Dynamically created Yarn representing a capability package probed in an isolated venv."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        layer: int,
+        source_file: Path,
+        meta: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(name=name, description=description, layer=layer, **kwargs)
+        self._source_file = source_file
+        self._class_name = meta.get("class_name", self.__class__.__name__)
+        self._probed_strands_data = meta.get("strands", [])
+        self._cached_strands: list[Strand] | None = None
+
+    def get_strands(self) -> list[Strand]:
+        if self._cached_strands is not None:
+            return self._cached_strands
+
+        strands: list[Strand] = []
+        for s_data in self._probed_strands_data:
+            s_name = s_data["name"]
+            tier_val = _parse_tier(s_data.get("tier", CapabilityTier.INTERACT), s_name)
+            params = s_data.get("parameters", {})
+            req_list = s_data.get("required", [])
+            strand_desc = s_data.get("description", s_name)
+            strand_res = s_data.get("resources", list(self.resources))
+            timeout = s_data.get("timeout", 30.0)
+
+            async def _handler(args: dict[str, Any], _sname=s_name, _tier=tier_val, _timeout=timeout) -> str:
+                return execute_isolated_strand(
+                    self,
+                    _sname,
+                    args,
+                    tier=_tier,
+                    timeout=_timeout,
+                )
+
+            strands.append(
+                Strand(
+                    name=s_name,
+                    description=strand_desc,
+                    parameters=params,
+                    required=req_list,
+                    handler=_handler,
+                    raw_handler=_handler,
+                    capability=s_data.get("capability"),
+                    tier=tier_val,
+                    resources=strand_res,
+                )
+            )
+
+        self._cached_strands = strands
+        return strands
+
+
+def probe_yarn_file(file_path: str | Path | None = None) -> None:
+    """Entrypoint executed inside a yarn's own virtualenv to reflect and output strand metadata JSON."""
+    target_path = Path(file_path or sys.argv[1]).resolve()
+    spec = importlib.util.spec_from_file_location("probed_yarn_target", target_path)
+    if not spec or not spec.loader:
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    for _, attr in inspect.getmembers(mod, inspect.isclass):
+        if issubclass(attr, Yarn) and attr is not Yarn:
+            inst = attr()
+            strands_data = []
+            for s in inst.get_strands():
+                strands_data.append(
+                    {
+                        "name": s.name,
+                        "description": s.description,
+                        "tier": s.tier.value if hasattr(s.tier, "value") else str(s.tier),
+                        "parameters": s.parameters,
+                        "required": s.required,
+                        "resources": list(s.resources),
+                    }
+                )
+            out = {
+                "class_name": attr.__name__,
+                "name": inst.name,
+                "description": inst.description,
+                "layer": inst.layer,
+                "tailor": inst.tailor,
+                "version": inst.version,
+                "resources": list(inst.resources),
+                "strands": strands_data,
+            }
+            print("__TEXTILE_PROBE_JSON__:" + orjson.dumps(out).decode())
+
+
 class Skein:
     """Manages yarn discovery, intent compilation, policy verification, and runtime health."""
 
@@ -142,6 +241,49 @@ class Skein:
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
+    def _try_probe_isolated_yarn(self, py_file: Path, override: bool) -> bool:
+        """Attempt to discover Yarn using its private virtualenv probe."""
+        yarn_venv_py = py_file.parent / ".venv" / "bin" / "python"
+        if not yarn_venv_py.exists():
+            return False
+
+        try:
+            res = subprocess.run(
+                [
+                    str(yarn_venv_py),
+                    "-c",
+                    "from textile.core.orchestration.skein import probe_yarn_file; probe_yarn_file()",
+                    str(py_file.resolve()),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10.0,
+                check=False,
+            )
+            registered_any = False
+            for line in res.stdout.splitlines():
+                if line.startswith("__TEXTILE_PROBE_JSON__:"):
+                    raw_json = line.removeprefix("__TEXTILE_PROBE_JSON__:")
+                    data = orjson.loads(raw_json)
+                    probed_inst = ProbedYarn(
+                        name=data["name"],
+                        description=data["description"],
+                        layer=data["layer"],
+                        source_file=py_file.resolve(),
+                        meta=data,
+                        tailor=data.get("tailor", "textile"),
+                        version=data.get("version", "1.0.0"),
+                        resources=data.get("resources", []),
+                    )
+                    with self._lock:
+                        if override or probed_inst.name not in self.all_yarns:
+                            self.all_yarns[probed_inst.name] = probed_inst
+                    registered_any = True
+            return registered_any
+        except (subprocess.SubprocessError, OSError, orjson.JSONDecodeError) as e:
+            logger.debug("skein.yarn_venv_probe_failed", path=str(py_file), error=str(e))
+            return False
+
     def load_yarns_from_dir(self, target_dir: Path, override: bool = False) -> None:
         """Discover and register Yarns from a target directory."""
         if not target_dir.exists() or not target_dir.is_dir():
@@ -155,6 +297,9 @@ class Skein:
                 and py_file.stem != py_file.parent.name
                 and not (py_file.parent / "pyproject.toml").exists()
             ):
+                continue
+
+            if self._try_probe_isolated_yarn(py_file, override):
                 continue
 
             try:

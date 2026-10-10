@@ -46,6 +46,8 @@ class _WorkerExecutionSpec:
 
 def _resolve_target_spec(yarn: Any) -> str:
     """Resolve target module spec or file path for isolated execution."""
+    if hasattr(yarn, "_source_file") and yarn._source_file:
+        return str(yarn._source_file)
     target_spec = yarn.__class__.__module__
     with contextlib.suppress(TypeError, OSError):
         file_path = inspect.getfile(yarn.__class__)
@@ -56,6 +58,11 @@ def _resolve_target_spec(yarn: Any) -> str:
 
 def _resolve_yarn_python(yarn: Any) -> str:
     """Resolve Python interpreter path for yarn, prioritizing yarn-local venv."""
+    if hasattr(yarn, "_source_file") and yarn._source_file:
+        p = Path(yarn._source_file).resolve()
+        yarn_venv_py = p.parent / ".venv" / "bin" / "python"
+        if yarn_venv_py.exists():
+            return str(yarn_venv_py)
     with contextlib.suppress(TypeError, OSError, ValueError):
         file_path = inspect.getfile(yarn.__class__)
         if file_path:
@@ -70,12 +77,13 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
     """Construct isolated subprocess command with sandbox wrapping if applicable."""
     target_spec = _resolve_target_spec(spec.yarn)
     python_bin = _resolve_yarn_python(spec.yarn)
+    class_name = getattr(spec.yarn, "_class_name", spec.yarn.__class__.__name__)
     cmd = [
         python_bin,
         "-c",
         "from textile.core.execution.isolated_runner import main; main()",
         target_spec,
-        spec.yarn.__class__.__name__,
+        class_name,
         spec.strand_name,
         orjson.dumps(spec.args).decode(),
         spec.tier_str,
