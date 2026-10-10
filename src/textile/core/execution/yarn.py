@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
+from textile.core.definitions.events import EventUrgency
 from textile.core.definitions.settings import get_user_yarn_settings
 from textile.core.execution.reflector import (
     StrandConfig,
@@ -22,8 +23,7 @@ from textile.core.execution.reflector import (
     reflect_wefts,
 )
 from textile.core.execution.strands import Strand, Weft
-from textile.core.telemetry.blackboard import sensory_tapestry
-from textile.core.telemetry.elastic import EventUrgency, elastic
+from textile.core.telemetry import elastic, sensory_tapestry
 
 logger = logging.getLogger(__name__)
 

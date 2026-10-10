@@ -14,6 +14,10 @@ from typing import Any
 
 import pyotp
 
+from textile.core.definitions.errors import (
+    OTPChallengeRequiredError,
+    PolicyViolationError,
+)
 from textile.core.telemetry.database import TapestryDatabase
 
 
@@ -67,21 +71,6 @@ def get_totp_uri(secret: str | None = None) -> str:
     """Generates standard otpauth:// provisioning URI for authenticator apps."""
     sec = secret or get_totp_secret()
     return pyotp.totp.TOTP(sec).provisioning_uri(name="Textile Desktop", issuer_name="Textile")
-
-
-class PolicyViolationError(PermissionError):
-    """Raised when an operation violates security policy (e.g. invalid/expired 2FA code)."""
-
-
-class OTPChallengeRequiredError(PermissionError):
-    """Raised when a MUTATE, PRIVILEGED, or SYSTEM_EXEC strand requires 2FA confirmation."""
-
-    def __init__(self, strand_name: str) -> None:
-        self.strand_name = strand_name
-        super().__init__(
-            f"2FA Confirmation Required for '{strand_name}'. "
-            f"Pass current 6-digit Authenticator code via otp='<6_digit_code>'."
-        )
 
 
 class OTPManager:
