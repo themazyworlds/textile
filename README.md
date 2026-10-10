@@ -16,14 +16,15 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 
 ## Features
 
-- **Model Context Protocol (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, and any MCP client over stdio.
+- **Model Context Protocol (`Twill`)**: Exposes desktop tools and system controls to Claude, Cursor, Antigravity, and any MCP client over stdio.
 - **Autonomous Voice Companion (`Weave`)**: Full-duplex conversational voice interface using LiveKit and Gemini Realtime with streaming semantic attunements.
 - **Event & Sensory Fabric (`Elastic`)**: Unified cross-process event bus with urgency tiers, retained slot management, and SQLite WAL IPC synchronization.
 - **Capability Yarns (`@strand` & `@weft`)**: Decorate Python methods with `@strand` for tools and `@weft` for real-time streaming token interception with Pydantic v2 validation.
 - **Directory-Isolated Packaging**: Every capability yarn is a self-contained directory governed by standard `pyproject.toml` metadata and dedicated virtual environments.
-- **Layered Dispatch (`Loom`)**: Prioritized layer hierarchy (0 to 1000) allowing specialized compositors, session managers, and user overrides to override lower OS fallbacks cleanly.
-- **Subprocess & Visual OTP Security**: Single-use 4-digit Visual OTP confirmation for state-mutating and privileged operations.
-- **Canvas UI**: Quickshell Wayland overlay for dynamic emotive expressions, mood animations, and visual presence.
+- **Layered Dispatch (`Loom` & `Skein`)**: Prioritized layer hierarchy (0 to 1000) allowing specialized compositors, session managers, and user overrides to override lower OS fallbacks cleanly.
+- **Bubblewrap Sandboxing**: Hardware-enforced process isolation and fail-closed kernel namespaces (filesystem read-only bind mounts, isolated `/tmp` and `/home`, network stack filtering, PID/IPC unsharing).
+- **RFC 6238 TOTP 2FA Security**: Multi-tier capability enforcement (`OBSERVE`, `INTERACT`, `MUTATE`, `PRIVILEGED`) backed by standard 6-digit TOTP authentication with single-use timestep replay protection and non-blocking desktop notifications.
+- **Canvas UI**: Quickshell Wayland overlay for dynamic emotive expressions, mood animations, and visual desktop presence.
 
 ---
 
@@ -31,37 +32,51 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 
 - **Python 3.14+** and [**`uv`**](https://github.com/astral-sh/uv)
 
-- **Google Gemini API Key** (required for Weave voice agent):
+- **Bubblewrap (`bwrap`)** (Required for sandboxed strand execution):
+  ```bash
+  # Arch Linux
+  sudo pacman -S bubblewrap
+
+  # Debian / Ubuntu
+  sudo apt install bubblewrap
+
+  # Fedora
+  sudo dnf install bubblewrap
+  ```
+
+- **libnotify (`notify-send`)** (Recommended for 2FA desktop notifications):
+  ```bash
+  # Arch Linux
+  sudo pacman -S libnotify
+
+  # Debian / Ubuntu
+  sudo apt install libnotify-bin
+
+  # Fedora
+  sudo dnf install libnotify
+  ```
+
+- **Google Gemini API Key** (Required for Weave voice agent):
   ```bash
   export GOOGLE_API_KEY="your-gemini-api-key"
   ```
 
-- **LiveKit CLI (`lk`)** (required for Weave interactive console and dev modes):
+- **LiveKit CLI (`lk`)** (Required for Weave voice dev and console streaming):
   ```bash
   # Arch Linux
   yay -S livekit-cli
-
-  # NixOS
-  nix-env -iA nixpkgs.livekit-cli
 
   # Debian / Ubuntu / Fedora / Generic Linux
   curl -sSL https://get.livekit.io/cli | bash
   ```
 
-- **Quickshell** (Highly Recommended, for the desktop Canvas UI):
+- **Quickshell** (Optional, for the desktop Canvas UI):
   ```bash
   # Arch Linux
   yay -S quickshell
 
   # Fedora
   sudo dnf copr enable outfoxxed/quickshell && sudo dnf install quickshell
-
-  # NixOS
-  nix-env -iA nixpkgs.quickshell
-
-  # Debian / Ubuntu / Fedora / Generic Linux (Build from source)
-  git clone https://github.com/quickshell-mirror/quickshell.git
-  cd quickshell && cmake -B build && cmake --build build --target install
   ```
 
 ---
@@ -69,48 +84,64 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
 ## Quick Start
 
 ### 1. Run the MCP Server (stdio)
-Connect external AI coding assistants directly to your Linux desktop:
+Connect external AI coding assistants and agents directly to your Linux desktop:
 ```bash
 uv run textile twill
 ```
 
-### 2. Launch the Voice Companion
-Start the interactive conversational companion in your terminal:
+### 2. Configure 2FA (RFC 6238 TOTP)
+Textile protects `PRIVILEGED` and `MUTATE` operations with TOTP 2FA:
 ```bash
-uv run textile weave
+# View authenticator setup URI (for Google Authenticator, Aegis, 1Password, Bitwarden)
+uv run textile 2fa
+
+# Generate current 6-digit TOTP code directly from the CLI
+uv run textile 2fa -c
 ```
 
-### 3. Launch the Canvas UI
-Start the reactive desktop presence:
+### 3. Direct CLI Execution & Inspection
 ```bash
-uv run textile canvas launch
-uv run textile canvas mood thinking
-uv run textile canvas close
-```
-
-### 4. Direct CLI Execution & Inspection
-```bash
-# List all active capability yarns and layer status
-uv run textile skein
-uv run textile yarns
-
-# List and filter registered strands
+# List all registered strands across all active yarns
 uv run textile strands
+
+# Filter strands by capability tier (observe, interact, mutate, privileged)
 uv run textile strands --tier observe
 
-# Inspect detailed schema and documentation for a strand
+# Inspect parameter schema and documentation for a strand
 uv run textile inspect hyprland_get_windows
 
-# Inspect and document yarn settings schema
-uv run textile settings docs weave
-
-# Run automated dependency validation and health audit
-uv run textile seams
-
-# Execute any registered tool directly
+# Execute a strand directly
 uv run textile call clipboard_set text="Hello from Textile"
 uv run textile call clipboard_get
+
+# Execute a privileged strand with 2FA confirmation
+uv run textile call hyprland_exit_session --otp auto
 ```
+
+### 4. Skein, Yarns & Tapestry State Inspection
+```bash
+# Inspect active yarns, layer resolution, and capability overrides
+uv run textile skein
+
+# List all discovered capability yarns and paths
+uv run textile yarns
+
+# View engine task ledger and sensory blackboard state
+uv run textile tapestry
+```
+
+---
+
+## Capability Tiers & Security Policy
+
+Every strand declares an explicit capability tier governing execution and authorization:
+
+| Tier | Policy Gate | Sandboxing | Description |
+| :--- | :--- | :--- | :--- |
+| `OBSERVE` | Open (No 2FA) | Read-only mounts | Read-only sensory telemetry, window lists, system status |
+| `INTERACT` | Open (No 2FA) | Workspace / Network binds | Safe user interactions, setting clipboard, launching apps |
+| `MUTATE` | 2FA Confirmation | Workspace write binds | Modifying persistent state, files, or configs |
+| `PRIVILEGED` | 2FA Confirmation | Host execution / Root gate | Session termination, reboot, power management, kernel control |
 
 ---
 
@@ -144,12 +175,12 @@ choices = ["spotify", "vlc", "firefox", "chromium"]
 
 ### 2. `media_control.py`
 ```python
-from textile import Yarn, strand, weft
-from textile.core.telemetry.elastic import EventUrgency, elastic
+from textile import Yarn, strand
+from textile.core.execution.strands import CapabilityTier
 
 
 class MediaControlYarn(Yarn):
-    @strand(tier="interact")
+    @strand(tier=CapabilityTier.INTERACT)
     async def media_play_pause(self, target: str | None = None) -> str:
         """Play or pause media playback."""
         player = target or self.settings.default_player
@@ -168,7 +199,7 @@ User settings and overrides are stored in `~/.config/textile/settings.toml`:
 # Edit any setting below to customize per-yarn configuration.
 
 [weave]
-model = "gemini-3.8-live"
+model = "gemini-2.5-flash"
 voice = "Puck"
 instructions = "You are Textile Weave, an ultra-fast, friendly, intelligent voice companion embedded into Linux desktop."
 ```
