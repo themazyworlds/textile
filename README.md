@@ -44,18 +44,6 @@ A sovereign, layered Linux automation fabric for real-time voice companions, MCP
   sudo dnf install bubblewrap
   ```
 
-- **libnotify (`notify-send`)** (Recommended for 2FA desktop notifications):
-  ```bash
-  # Arch Linux
-  sudo pacman -S libnotify
-
-  # Debian / Ubuntu
-  sudo apt install libnotify-bin
-
-  # Fedora
-  sudo dnf install libnotify
-  ```
-
 - **Google Gemini API Key** (Required for Weave voice agent):
   ```bash
   export GOOGLE_API_KEY="your-gemini-api-key"

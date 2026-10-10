@@ -3,10 +3,9 @@ Textile Security Context & 2FA TOTP Verification Manager.
 Provides RFC 6238 Time-Based One-Time Password (TOTP) verification and single-use replay protection.
 """
 
+import asyncio
 import contextlib
 import os
-import shutil
-import subprocess
 import threading
 import time
 from datetime import UTC, datetime
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pyotp
+from desktop_notifier import DesktopNotifier, Urgency
 
 from textile.core.definitions.errors import (
     OTPChallengeRequiredError,
@@ -23,25 +23,24 @@ from textile.core.telemetry.database import TapestryDatabase
 
 
 def _display_totp_osd(code: str, strand_name: str) -> None:
-    """Displays 2FA TOTP code on desktop screen via notify-send for human confirmation."""
-    notify_bin = shutil.which("notify-send")
-    if notify_bin:
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.Popen(
-                [
-                    notify_bin,
-                    "-u",
-                    "critical",
-                    "-t",
-                    "30000",
-                    "-a",
-                    "Textile",
-                    f"Textile 2FA: {code}",
-                    f"Strand: {strand_name}",
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+    """Displays 2FA TOTP code on desktop screen via native D-Bus desktop-notifier."""
+    async def _send() -> None:
+        with contextlib.suppress(OSError, RuntimeError):
+            notifier = DesktopNotifier(app_name="Textile")
+            await notifier.send(
+                title=f"Textile 2FA: {code}",
+                message=f"Strand: {strand_name}",
+                urgency=Urgency.Critical,
+                timeout=30,
             )
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        with contextlib.suppress(OSError, RuntimeError):
+            asyncio.run(_send())
+    else:
+        loop.create_task(_send())
 
 
 def get_totp_secret() -> str:
