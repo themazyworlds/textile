@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,31 +86,33 @@ class OTPManager:
         return self._secret or get_totp_secret()
 
     def verify_and_consume(self, otp: str) -> bool:
-        """Validates 6-digit TOTP code against local secret, preventing token replays in the same timestep."""
-        now = time.time()
+        """Validates 6-digit TOTP code against local secret, preventing token replays across drift windows."""
         clean_code = otp.strip()
         if not clean_code:
             return False
 
         totp = pyotp.TOTP(self._get_secret())
-        if not totp.verify(clean_code, valid_window=1):
-            return False
+        now = time.time()
+        base_step = int(now / 30)
 
-        time_step = int(now / 30)
-        with self._lock, self._database._lock, self._database.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT val_int FROM otp_gate_state WHERE key = 'last_used_timestep'")
-            row = cursor.fetchone()
-            if row and int(row[0]) == time_step:
-                # Token already consumed in current 30s timestep (replay prevention)
-                return False
+        for window in (-1, 0, 1):
+            step = base_step + window
+            step_time = datetime.fromtimestamp(step * 30, tz=UTC)
+            if totp.verify(clean_code, for_time=step_time):
+                with self._lock, self._database._lock, self._database.get_connection() as conn:
+                    cursor = conn.execute("SELECT val_int FROM otp_gate_state WHERE key = 'last_used_timestep'")
+                    row = cursor.fetchone()
+                    if row and int(row[0]) >= step:
+                        return False
 
-            conn.execute(
-                "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('last_used_timestep', ?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET val_int = ?, updated_at = ?",
-                (time_step, now, time_step, now),
-            )
-            return True
+                    conn.execute(
+                        "INSERT INTO otp_gate_state (key, val_int, updated_at) VALUES ('last_used_timestep', ?, ?) "
+                        "ON CONFLICT(key) DO UPDATE SET val_int = excluded.val_int, updated_at = excluded.updated_at",
+                        (step, now),
+                    )
+                    return True
+
+        return False
 
     def clear(self) -> None:
         with self._lock, self._database._lock, self._database.get_connection() as conn:
