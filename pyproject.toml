@@ -46,7 +46,7 @@ filterwarnings = [
 source-include = ["tests/**", "AGENTS.md"]
 
 [tool.uv.sources]
-needle = { path = "../needle", editable = true }
+needle = { path = "../textile-needle", editable = true }
 
 [dependency-groups]
 dev = [
@@ -107,6 +107,6 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
 include = ["src"]
-extraPaths = ["src", "../needle/src", "../textile-yarns/yarns"]
+extraPaths = ["src", "../textile-needle/src", "../textile-yarns/yarns"]
 pythonVersion = "3.14"
 pythonPlatform = "Linux"
