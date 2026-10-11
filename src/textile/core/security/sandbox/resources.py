@@ -54,6 +54,8 @@ def _resolve_sound_bind() -> list[str]:
 def _resolve_dbus_session_bind() -> list[str]:
     """Resolve dynamic D-Bus session bus socket mount."""
     args = []
+    if (runtime := os.environ.get("XDG_RUNTIME_DIR")) and Path(runtime).exists():
+        args.extend(["--bind", runtime, runtime, "--setenv", "XDG_RUNTIME_DIR", runtime])
     bus_addr = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
     if bus_addr:
         args.extend(["--setenv", "DBUS_SESSION_BUS_ADDRESS", bus_addr])
@@ -61,14 +63,11 @@ def _resolve_dbus_session_bind() -> list[str]:
             sock_path = bus_addr.split("unix:path=")[1].split(",")[0]
             if Path(sock_path).exists():
                 args.extend(["--ro-bind", sock_path, sock_path])
-    elif runtime := os.environ.get("XDG_RUNTIME_DIR"):
+    elif runtime:
         default_bus = os.path.join(runtime, "bus")
         if Path(default_bus).exists():
             args.extend(
                 [
-                    "--ro-bind",
-                    default_bus,
-                    default_bus,
                     "--setenv",
                     "DBUS_SESSION_BUS_ADDRESS",
                     f"unix:path={default_bus}",

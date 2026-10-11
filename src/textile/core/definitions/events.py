@@ -3,8 +3,22 @@ Textile Event Definitions & Urgency Tiers.
 Provides pure enum and data structures for event publication without engine dependencies.
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+
+
+@dataclass(slots=True)
+class EventOptions:
+    data: Any = None
+    summary: str = ""
+    urgency: EventUrgency = None  # type: ignore[assignment]
+    retained_slot: str | None = None
+    retained_value: Any = None
+
+    def __post_init__(self) -> None:
+        if self.urgency is None:
+            self.urgency = EventUrgency.NOTICE
 
 
 class EventUrgency(StrEnum):

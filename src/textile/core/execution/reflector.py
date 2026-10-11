@@ -9,18 +9,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from needle import CapabilityTier, Strand, Weft
+from needle import parse_capability_tier as _parse_tier
 from pydantic import BaseModel
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
-from textile.core.execution.decorators import _parse_tier
 from textile.core.execution.invoker import (
     InvokerConfig,
     _build_args_model,
     _create_invoker,
     execute_direct,
 )
-from textile.core.execution.isolated_runner import execute_isolated_strand
-from textile.core.execution.strands import CapabilityTier, Strand, Weft
+from textile.core.execution.runner import execute_strand
 from textile.core.execution.validation import (
     _extract_docstring_info,
     schema_to_model,
@@ -40,6 +40,7 @@ class StrandConfig:
     capability: str | None = None
     tier: CapabilityTier | str = CapabilityTier.INTERACT
     resources: list[str] | None = None
+    no_timeout: bool = False
 
 
 __all__ = [
@@ -98,8 +99,7 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     args_model = _build_args_model(method, f"{strand_name}_Args", param_docs)
     schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
     params, req_list = schema.get("properties", {}), schema.get("required", [])
-    isolated = getattr(method, "_strand_isolated", True)
-    runner = execute_isolated_strand if isolated else None
+    runner = execute_strand
 
     invoker = _create_invoker(
         yarn,
@@ -174,19 +174,18 @@ def build_dynamic_strand(
     **kwargs: Any,
 ) -> Strand:
     """Dynamically construct a Strand instance."""
-    kwargs.pop("isolated", None)
     cfg = config or StrandConfig(**kwargs)
     tier_val = _parse_tier(cfg.tier, name)
     schema_model: type[BaseModel] | None = cfg.args_schema or (
         schema_to_model(name, cfg.parameters or {}, cfg.required or []) if cfg.parameters else None
     )
-    schema = (
-        schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
-    )
+    schema = schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
     params = schema.get("properties", {})
     req_list = schema.get("required", []) if schema_model else (cfg.required or [])
     yarn_resources = getattr(yarn, "resources", [])
     res_list = cfg.resources or yarn_resources
+
+    eff_timeout = None if cfg.no_timeout else cfg.timeout
 
     async def _safe_handler(args: dict[str, Any]) -> str:
         val_err, coerced = validate_strand_arguments(
@@ -194,9 +193,7 @@ def build_dynamic_strand(
         )
         if val_err:
             return val_err
-        return await asyncio.to_thread(
-            execute_isolated_strand, yarn, name, coerced, timeout=cfg.timeout, tier=tier_val
-        )
+        return await asyncio.to_thread(execute_strand, yarn, name, coerced, timeout=eff_timeout, tier=tier_val)
 
     return Strand(
         name=name,
@@ -209,4 +206,6 @@ def build_dynamic_strand(
         args_schema=schema_model,
         tier=tier_val,
         resources=res_list,
+        timeout=eff_timeout,
+        no_timeout=cfg.no_timeout,
     )

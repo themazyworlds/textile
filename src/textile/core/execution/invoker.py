@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from typing import Any, get_type_hints
 
 import orjson
+from needle import CapabilityTier
 from pydantic import BaseModel, Field, create_model
 
 from textile.core.definitions.errors import TextileError
-from textile.core.execution.strands import CapabilityTier
 from textile.core.execution.validation import validate_strand_arguments
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def _build_args_model(
     sig = inspect.signature(method)
     try:
         hints = get_type_hints(method)
-    except (AttributeError, TypeError, NameError, ValueError, KeyError):
+    except AttributeError, TypeError, NameError, ValueError, KeyError:
         hints = {}
 
     docs = param_docs or {}
@@ -108,14 +108,12 @@ def _create_invoker(
             return val_err
         coerced.pop("otp", None)
         if runner is not None:
-            return await asyncio.to_thread(
-                runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier
-            )
+            return await asyncio.to_thread(runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier)
         try:
             if is_coro:
                 res = await method(**coerced)
             else:
-                res = await asyncio.to_thread(method, **coerced)
+                res = method(**coerced)
             return _format_handler_result(res)
         except STRAND_EXEC_ERRORS as e:
             return f"Error executing strand '{strand_name}': {e}"
@@ -168,13 +166,10 @@ def execute_direct(yarn: Any, strand_name: str, args: dict[str, Any]) -> str:
 
             if loop and loop.is_running():
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    res = pool.submit(
-                        asyncio.run, res if inspect.iscoroutine(res) else target_func(**coerced)
-                    ).result()
+                    res = pool.submit(asyncio.run, res if inspect.iscoroutine(res) else target_func(**coerced)).result()
             else:
                 res = asyncio.run(res if inspect.iscoroutine(res) else target_func(**coerced))
 
         return _format_handler_result(res)
     except STRAND_EXEC_ERRORS as e:
         return f"Error executing strand '{strand_name}': {e}"
-

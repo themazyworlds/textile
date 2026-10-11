@@ -5,8 +5,7 @@ Synthesizes system prompt directives, security governance, and MCP tool definiti
 
 from typing import Any
 
-from textile.core.execution.strands import Strand
-from textile.core.execution.yarn import Yarn
+from needle import Strand, Yarn
 
 __all__ = ["FabricInstructions", "fabric_instructions"]
 

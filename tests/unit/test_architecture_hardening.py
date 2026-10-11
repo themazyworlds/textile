@@ -1,14 +1,14 @@
 import asyncio
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pyotp
+from needle import Strand, Yarn
 
 from textile.core.definitions.errors import SandboxUnavailableError, StrandCollisionError
 from textile.core.execution.invoker import execute_direct
-from textile.core.execution.isolated_runner import execute_isolated_strand
-from textile.core.execution.strands import Strand
-from textile.core.execution.yarn import Yarn
+from textile.core.execution.runner import execute_strand
 from textile.core.orchestration.loom import Loom
 from textile.core.security.context import OTPChallengeRequiredError, OTPManager
 from textile.core.security.sandbox import BubblewrapSandbox
@@ -40,9 +40,9 @@ class TestArchitectureHardening(unittest.TestCase):
                 return True
 
             def get_strands(self):
-                async def _async_handler(val: str) -> str:
+                async def _async_handler(args: dict[str, Any]) -> str:
                     await asyncio.sleep(0.001)
-                    return f"async_result_{val}"
+                    return f"async_result_{args.get('val', '')}"
 
                 return [self.build_strand("async_tool", "Async tool", _async_handler)]
 
@@ -57,12 +57,10 @@ class TestArchitectureHardening(unittest.TestCase):
     def test_isolated_strand_fail_closed_when_bwrap_unavailable(self):
         mock_yarn = MagicMock()
         mock_yarn.__class__.__name__ = "MockYarn"
-        mock_yarn.get_strands.return_value = [
-            Strand(name="mock_tool", description="Mock", handler=lambda args: "ok")
-        ]
+        mock_yarn.get_strands.return_value = [Strand(name="mock_tool", description="Mock", handler=lambda args: "ok")]
 
         with patch.object(BubblewrapSandbox, "is_available", return_value=False):
-            res = execute_isolated_strand(
+            res = execute_strand(
                 mock_yarn,
                 "mock_tool",
                 {"a": 1},

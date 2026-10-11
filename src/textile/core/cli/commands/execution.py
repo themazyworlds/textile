@@ -158,8 +158,7 @@ def inspect_strand(
         raise typer.Exit(code=1)
 
     console.print(
-        f"\n  [bold bright_cyan]Strand Details[/bold bright_cyan] "
-        f"[dim]•[/dim] [bold white]{target.name}[/bold white]\n"
+        f"\n  [bold bright_cyan]Strand Details[/bold bright_cyan] [dim]•[/dim] [bold white]{target.name}[/bold white]\n"
     )
     console.print(f"  [bold white]Tier:[/bold white] {target.tier}")
     console.print(f"  [bold white]Description:[/bold white] {target.description or '—'}\n")
@@ -205,9 +204,8 @@ def cmd_2fa(
     console.print(f"  [bold white]Secret Key:[/bold white] [bold yellow]{secret}[/bold yellow]")
     console.print(f"  [bold white]URI:[/bold white]        [dim]{uri}[/dim]")
     console.print("\n  [bold green]Usage with oathtool (offline):[/bold green]")
-    console.print(f"  [cyan]oathtool --totp -b \"{secret}\"[/cyan]\n")
+    console.print(f'  [cyan]oathtool --totp -b "{secret}"[/cyan]\n')
     console.print(
         "  [dim]Import this URI or secret key into Google Authenticator, "
         "Aegis, 1Password, Bitwarden, or YubiKey.[/dim]\n"
     )
-

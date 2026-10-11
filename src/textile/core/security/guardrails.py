@@ -14,7 +14,6 @@ class AccessBoundaryError(PermissionError):
     """Raised when an operation attempts to escape its ambient capability boundary."""
 
 
-
 class ScopedPath:
     """
     Mathematical root anchor jail.

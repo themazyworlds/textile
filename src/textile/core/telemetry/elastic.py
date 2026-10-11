@@ -203,12 +203,7 @@ class ElasticEngine:
                     retained_value=opts.retained_value,
                 )
 
-        try:
-            loop = asyncio.get_running_loop()
-            loop.run_in_executor(None, _persist_to_sqlite)
-        except RuntimeError:
-            _persist_to_sqlite()
-
+        _persist_to_sqlite()
         return frame
 
     def _deliver_local(self, frame: EventFrame) -> None:

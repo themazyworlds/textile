@@ -11,11 +11,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from needle import Strand, Weft, Yarn
+
 from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
-from textile.core.execution.strands import Strand, Weft
 from textile.core.execution.validation import validate_strand_arguments
-from textile.core.execution.yarn import Yarn
 from textile.core.orchestration.skein import Skein, skein
 from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError, verify_security_policy
 from textile.core.telemetry.blackboard import NoticeLevel, sensory_tapestry
@@ -24,7 +24,6 @@ from textile.core.telemetry.ledger import core_tapestry
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
-
 
 
 @dataclass(slots=True)
@@ -273,7 +272,7 @@ class Loom:
         err = None
         try:
             return await handler(clean_args)
-        except (PolicyViolationError, OTPChallengeRequiredError):
+        except PolicyViolationError, OTPChallengeRequiredError:
             success = False
             err = "Security Policy Gate Failure"
             raise
@@ -288,7 +287,6 @@ class Loom:
         finally:
             dur = (time.perf_counter() - t0) * 1000.0
             self._record_execution_end(ctx, dur, success, err)
-
 
     def execute_sync(
         self,
@@ -306,9 +304,7 @@ class Loom:
 
         if loop and loop.is_running():
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(
-                    asyncio.run, self.execute(strand_name, args, caller=caller, otp=otp)
-                ).result()
+                return pool.submit(asyncio.run, self.execute(strand_name, args, caller=caller, otp=otp)).result()
         return asyncio.run(self.execute(strand_name, args, caller=caller, otp=otp))
 
     def get_all_wefts(self) -> list[Weft]:

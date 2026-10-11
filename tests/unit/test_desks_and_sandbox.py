@@ -119,4 +119,3 @@ class TestBubblewrapSandbox:
                 assert "TEST_CUSTOM_ENV" in args
                 assert "STATIC_VAL" in args
                 assert str(sock_file) in args
-

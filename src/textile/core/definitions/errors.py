@@ -131,5 +131,3 @@ class OTPChallengeRequiredError(PermissionError):
             f"2FA Confirmation Required for '{strand_name}'. "
             f"Pass current 6-digit Authenticator code via otp='<6_digit_code>'."
         )
-
-

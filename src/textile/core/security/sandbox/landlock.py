@@ -64,7 +64,7 @@ class LandlockSandbox:
             libc = ctypes.CDLL(None, use_errno=True)
             res = libc.syscall(SYS_landlock_create_ruleset, 0, 0, 1)
             return res >= 0 or ctypes.get_errno() != ENOSYS_ERRNO
-        except (OSError, AttributeError):
+        except OSError, AttributeError:
             return False
 
     @classmethod

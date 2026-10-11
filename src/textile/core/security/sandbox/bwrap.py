@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from textile.core.definitions.errors import SandboxUnavailableError
@@ -49,8 +50,10 @@ class BubblewrapBuilder:
             self.args.extend(["--tmpfs", p])
         return self
 
-    def set_namespaces(self, allow_network: bool) -> BubblewrapBuilder:
-        self.args.extend(["--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent"])
+    def set_namespaces(self, allow_network: bool, unshare_user: bool = True) -> BubblewrapBuilder:
+        if unshare_user:
+            self.args.extend(["--unshare-user", "--unshare-pid"])
+        self.args.extend(["--unshare-ipc", "--unshare-uts", "--die-with-parent"])
         if not allow_network:
             self.args.append("--unshare-net")
         return self
@@ -86,12 +89,22 @@ def _bind_user_config_and_share(builder: BubblewrapBuilder) -> None:
 
 
 def _bind_python_prefixes(builder: BubblewrapBuilder) -> None:
-    """Bind virtualenv and sys.prefix locations into sandbox if not standard system paths."""
+    """Bind virtualenv, sys.prefix, and extra sys.path locations (e.g. editable packages) into sandbox."""
     for check_path in (sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)):
         if check_path and Path(check_path).exists():
             p_resolved = str(Path(check_path).resolve())
             if not any(p_resolved.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
                 builder.args.extend(["--ro-bind-try", p_resolved, p_resolved])
+
+    sys_temp = tempfile.gettempdir()
+    ignored_prefixes = ("/usr", "/lib", "/opt", "/nix", sys_temp)
+    for entry in sys.path:
+        if entry and Path(entry).exists():
+            p_res = Path(entry).resolve()
+            p_str = str(p_res)
+            if not any(p_str.startswith(prefix) for prefix in ignored_prefixes):
+                target = str(p_res.parent if p_res.name == "src" else p_res)
+                builder.args.extend(["--ro-bind-try", target, target])
 
 
 def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) -> None:
@@ -134,7 +147,7 @@ class BubblewrapSandbox:
                 check=False,
             )
             return res.returncode == 0
-        except (OSError, subprocess.SubprocessError):
+        except OSError, subprocess.SubprocessError:
             return False
 
     @staticmethod
@@ -163,16 +176,29 @@ class BubblewrapSandbox:
         uv_cache = os.path.join(container_tmp, "uv_cache")
 
         allow_network = bool(resources and any("net" in str(r).lower() for r in resources))
+        needs_host_session = bool(
+            resources
+            and any(
+                str(r).lower() in ("dbus:session", "dbus-session", "display", "display:wayland")
+                or str(r).lower().startswith("env:xdg_runtime_dir")
+                for r in resources
+            )
+        )
         builder = (
             BubblewrapBuilder(bwrap_path)
             .bind_system_base()
             .bind_tmpfs([container_tmp, container_home])
             .bind_resources(resources)
-            .set_namespaces(allow_network)
+            .set_namespaces(allow_network=allow_network, unshare_user=not needs_host_session)
             .bind_workspace(ws, is_writable)
+            .set_env("HOME", target_env.get("HOME", str(Path.home())))
+            .set_env("USER", target_env.get("USER", os.getenv("USER", "user")))
             .set_env("PATH", target_env.get("PATH", "/usr/bin:/bin"))
             .set_env("UV_CACHE_DIR", uv_cache)
             .set_env("PYTHONPATH", target_env.get("PYTHONPATH"))
+            .set_env("TERMINAL", target_env.get("TERMINAL"))
+            .set_env("XDG_CONFIG_HOME", target_env.get("XDG_CONFIG_HOME"))
+            .set_env("XDG_DATA_HOME", target_env.get("XDG_DATA_HOME"))
         )
 
         _bind_user_config_and_share(builder)

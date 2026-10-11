@@ -237,12 +237,12 @@ class SensoryTapestry:
             for r in cursor.fetchall():
                 try:
                     payload_data = orjson.loads(r[6]) if r[6] else {}
-                except (orjson.JSONDecodeError, TypeError):
+                except orjson.JSONDecodeError, TypeError:
                     payload_data = {}
 
                 try:
                     retained_val = orjson.loads(r[10]) if r[10] else None
-                except (orjson.JSONDecodeError, TypeError):
+                except orjson.JSONDecodeError, TypeError:
                     retained_val = None
 
                 events.append(

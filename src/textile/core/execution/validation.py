@@ -51,8 +51,7 @@ def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> 
     errors = [
         f"Parameter '{p_name}' has invalid specification."
         for p_name, p_spec in parameters.items()
-        if not isinstance(p_spec, dict)
-        or str(p_spec.get("type", "")).lower() not in valid_types
+        if not isinstance(p_spec, dict) or str(p_spec.get("type", "")).lower() not in valid_types
     ]
     if isinstance(required, list):
         for req in required:
@@ -119,7 +118,7 @@ def validate_strand_arguments(
             return None, args
         try:
             model = schema_to_model(strand_name, parameters, required or [])
-        except (AttributeError, TypeError, ValueError, KeyError, ValidationError):
+        except AttributeError, TypeError, ValueError, KeyError, ValidationError:
             return None, args
 
     clean_args = args.copy()
@@ -155,4 +154,3 @@ def _extract_docstring_info(doc: str | None) -> tuple[str, dict[str, str]]:
                 desc_lines.append(s)
     summary = " ".join(desc_lines).strip()
     return summary, param_docs
-

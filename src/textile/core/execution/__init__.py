@@ -6,20 +6,21 @@ invoker factory, and isolated subprocess runner.
 
 from typing import TYPE_CHECKING, Any
 
-from textile.core.execution.decorators import strand, weft
-from textile.core.execution.strands import CapabilityTier, Strand, Weft
+from needle import CapabilityTier, Strand, Weft, Yarn, strand, weft
+
+from textile.core.definitions.events import EventOptions
+from textile.core.execution.reflector import StrandConfig
 from textile.core.execution.validation import validate_strand_arguments
-from textile.core.execution.yarn import EventOptions, StrandConfig, Yarn
 
 if TYPE_CHECKING:
     from textile.core.execution.invoker import InvokerConfig, _build_args_model, _create_invoker
-    from textile.core.execution.isolated_runner import execute_isolated_strand
+    from textile.core.execution.runner import execute_strand
 
 _LAZY_EXPORTS = {
     "InvokerConfig": ("textile.core.execution.invoker", "InvokerConfig"),
     "_build_args_model": ("textile.core.execution.invoker", "_build_args_model"),
     "_create_invoker": ("textile.core.execution.invoker", "_create_invoker"),
-    "execute_isolated_strand": ("textile.core.execution.isolated_runner", "execute_isolated_strand"),
+    "execute_strand": ("textile.core.execution.runner", "execute_strand"),
 }
 
 
@@ -47,7 +48,7 @@ __all__ = [
     "Yarn",
     "_build_args_model",
     "_create_invoker",
-    "execute_isolated_strand",
+    "execute_strand",
     "strand",
     "validate_strand_arguments",
     "weft",

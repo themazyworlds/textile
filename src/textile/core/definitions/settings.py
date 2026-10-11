@@ -43,7 +43,7 @@ def get_user_yarn_settings(yarn_name: str, settings_file: Path | None = None) ->
                 yarn_data = data.get(yarn_name, {})
                 return dict(yarn_data) if isinstance(yarn_data, dict) else {}
             return {}
-    except (OSError, tomllib.TOMLDecodeError):
+    except OSError, tomllib.TOMLDecodeError:
         return {}
 
 
@@ -176,4 +176,3 @@ def generate_documented_toml(
             _render_dict_section(sections, schema_or_dict, yarn_current)
 
     return "\n".join(sections).strip() + "\n"
-

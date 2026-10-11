@@ -9,8 +9,9 @@ import inspect
 import operator
 from typing import Any
 
+from needle import Weft
+
 from textile.core.definitions.errors import SAFE_EXCEPTIONS
-from textile.core.execution.strands import Weft
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
@@ -28,9 +29,7 @@ class StreamEngine:
         """Collect and chronologically sort all regex matches across active Wefts."""
         all_matches = []
         for weft in wefts:
-            all_matches.extend(
-                (m.start(), -weft.priority, weft, m) for m in weft.pattern.finditer(text)
-            )
+            all_matches.extend((m.start(), -weft.priority, weft, m) for m in weft.pattern.finditer(text))
         all_matches.sort(key=operator.itemgetter(0, 1))
         return all_matches
 

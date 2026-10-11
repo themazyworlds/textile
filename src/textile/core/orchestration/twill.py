@@ -37,9 +37,7 @@ def create_twill_server() -> Server:
             ]
         )
 
-    async def handle_get_prompt(
-        _ctx: Any, params: types.GetPromptRequestParams
-    ) -> types.GetPromptResult:
+    async def handle_get_prompt(_ctx: Any, params: types.GetPromptRequestParams) -> types.GetPromptResult:
         if params.name in {"textile_system_instructions", "textile_system_contract"}:
             return types.GetPromptResult(
                 description="Textile Desktop Fabric Active System Instructions",
@@ -70,9 +68,7 @@ def create_twill_server() -> Server:
             ]
         )
 
-    async def handle_call_tool(
-        _ctx: Any, params: types.CallToolRequestParams
-    ) -> types.CallToolResult:
+    async def handle_call_tool(_ctx: Any, params: types.CallToolRequestParams) -> types.CallToolResult:
         name = params.name
         arguments = params.arguments or {}
         try:

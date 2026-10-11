@@ -69,11 +69,7 @@ def cmd_skein(
             layer_branch = tree.add(f"[bold magenta]Layer {layer_num}[/bold magenta]")
             for y_name, is_en, s_count in sorted(layers_map[layer_num], key=lambda x: x[0]):
                 status_str = "[bold green]ACTIVE[/bold green]" if is_en else "[bold red]DISABLED[/bold red]"
-                layer_branch.add(
-                    f"[bold white]{y_name}[/bold white] "
-                    f"[{status_str}] "
-                    f"[dim]({s_count} strands)[/dim]"
-                )
+                layer_branch.add(f"[bold white]{y_name}[/bold white] [{status_str}] [dim]({s_count} strands)[/dim]")
         console.print(tree)
         return
 
@@ -333,11 +329,7 @@ def _handle_yarn_install(target: str, user_yarns: Path) -> None:
         console.print(f"  [bold green]✓[/bold green] Installed yarn from [bold white]{target}[/bold white]")
         console.print(f"    Destination: {dest}")
     else:
-        repo_url = (
-            target
-            if target.startswith(("http://", "https://", "git@"))
-            else f"https://github.com/{target}.git"
-        )
+        repo_url = target if target.startswith(("http://", "https://", "git@")) else f"https://github.com/{target}.git"
         raw_name = target.rstrip("/").split("/")[-1].replace(".git", "")
         repo_name = raw_name.replace("textile-yarn-", "").replace("textile-", "")
         dest = user_yarns / repo_name
@@ -367,9 +359,7 @@ def _handle_yarn_remove(target: str, user_yarns: Path) -> None:
     dest = user_yarns / target
     if dest.exists():
         shutil.rmtree(dest)
-        console.print(
-            f"  [bold yellow]✓[/bold yellow] Removed yarn [bold white]{target}[/bold white] from {dest}"
-        )
+        console.print(f"  [bold yellow]✓[/bold yellow] Removed yarn [bold white]{target}[/bold white] from {dest}")
     else:
         console.print(f"  [bold red]Error:[/bold red] Yarn '{target}' not found in {user_yarns}.")
 
@@ -378,14 +368,16 @@ def _render_yarns_list_table() -> None:
     rows = []
     for name, yarn in sorted(skein.all_yarns.items()):
         desc = (yarn.description or "").splitlines()[0].strip() if yarn.description else ""
-        rows.append((
-            name,
-            str(yarn.layer),
-            yarn.tailor or "textile",
-            yarn.version,
-            str(len(yarn.get_strands())),
-            desc,
-        ))
+        rows.append(
+            (
+                name,
+                str(yarn.layer),
+                yarn.tailor or "textile",
+                yarn.version,
+                str(len(yarn.get_strands())),
+                desc,
+            )
+        )
 
     print_table(
         header_title="Installed Yarns",
@@ -420,4 +412,3 @@ def cmd_yarns(
         _handle_yarn_remove(target, user_yarns)
     else:
         _render_yarns_list_table()
-

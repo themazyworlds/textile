@@ -24,6 +24,7 @@ from textile.core.telemetry.database import TapestryDatabase
 
 def _display_totp_osd(code: str, strand_name: str) -> None:
     """Displays 2FA TOTP code on desktop screen via native D-Bus desktop-notifier."""
+
     async def _send() -> None:
         with contextlib.suppress(OSError, RuntimeError):
             notifier = DesktopNotifier(app_name="Textile")
@@ -34,13 +35,14 @@ def _display_totp_osd(code: str, strand_name: str) -> None:
                 timeout=30,
             )
 
-    def _worker() -> None:
+    try:
+        asyncio.get_running_loop()
+        thread = threading.Thread(target=lambda: asyncio.run(_send()))
+        thread.start()
+        thread.join(timeout=1.0)
+    except RuntimeError:
         with contextlib.suppress(OSError, RuntimeError):
             asyncio.run(_send())
-
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
-    t.join(timeout=1.0)
 
 
 def get_totp_secret() -> str:

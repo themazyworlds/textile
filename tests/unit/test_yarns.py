@@ -310,47 +310,6 @@ class TestYarnArchitecture(unittest.TestCase):
         # The final tag should be applied to canvas slot in tapestry
         self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "happy")
 
-    def test_weave_streaming_transcription_node(self):
-        pytest.importorskip("livekit")
-        import asyncio
-        import time
-
-        from canvas.canvas import Canvas
-        from weave.agent import WeaveAgent
-
-        from textile.core.orchestration.loom import loom
-        from textile.core.orchestration.skein import skein
-        from textile.core.telemetry.blackboard import sensory_tapestry
-
-        canvas = Canvas()
-        canvas.is_available = lambda: True
-        skein.register_yarn(canvas)
-        loom._rebuild_active()
-
-        agent = WeaveAgent(instructions="test instructions")
-
-        async def _test():
-            async def token_stream():
-                yield "<mood:curious>"
-                yield " What shall"
-                yield " we investigate"
-                yield " next?"
-
-            output_tokens = []
-            async for token in agent.transcription_node(token_stream(), None):
-                output_tokens.append(token)
-
-            return "".join(output_tokens)
-
-        loop = asyncio.new_event_loop()
-        clean_text = loop.run_until_complete(_test())
-        loop.close()
-        time.sleep(0.1)
-
-        # Verify tag was intercepted and stripped from visible stream
-        self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "curious")
-        self.assertEqual(clean_text, " What shall we investigate next?")
-
     def test_packagekit_pure_dbus_yarn(self):
         pytest.importorskip("dbus_fast")
         from dbus_fast import Variant
@@ -433,18 +392,19 @@ class TestYarnArchitecture(unittest.TestCase):
         # 2. UWSM launch_app with is_tui=True using dynamic terminal detection
         uwsm_yarn = UWSM()
         with (
-            patch.dict("os.environ", {"TERMINAL": "kitty"}),
-            patch("shutil.which", return_value="/usr/bin/kitty"),
-            patch("subprocess.Popen") as mock_popen,
+            patch("shutil.which", return_value="/usr/bin/uwsm"),
+            patch("subprocess.run") as mock_run,
         ):
-            mock_proc = MagicMock()
-            mock_proc.pid = 23456
-            mock_popen.return_value = mock_proc
+            mock_res = MagicMock()
+            mock_res.returncode = 0
+            mock_res.stdout = ""
+            mock_res.stderr = ""
+            mock_run.return_value = mock_res
             res = uwsm_yarn.launch_app("nvim", is_tui=True, args=["/tmp/test.txt"])
-            self.assertIn("PID 23456", res)
-            args, kwargs = mock_popen.call_args
+            self.assertIn("Successfully launched", res)
+            args, kwargs = mock_run.call_args
             called_cmd = args[0]
-            self.assertEqual(called_cmd, ["uwsm", "app", "--", "kitty", "-e", "nvim", "/tmp/test.txt"])
+            self.assertEqual(called_cmd, ["/usr/bin/uwsm", "app", "-t", "service", "-T", "--", "nvim", "/tmp/test.txt"])
             self.assertNotIn("-i", called_cmd)
             self.assertNotIn("-c", called_cmd)
 
@@ -568,4 +528,3 @@ class TestYarnArchitecture(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

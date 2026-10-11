@@ -7,9 +7,8 @@ Layer 0 (Core Fabric).
 import logging
 from typing import Any
 
-from textile.core.execution.decorators import strand
-from textile.core.execution.strands import CapabilityTier
-from textile.core.execution.yarn import Yarn
+from needle import CapabilityTier, Yarn, strand
+
 from textile.core.orchestration.skein import skein
 from textile.core.telemetry.elastic import elastic
 from textile.core.telemetry.ledger import core_tapestry

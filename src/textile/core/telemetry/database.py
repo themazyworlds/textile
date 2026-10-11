@@ -13,11 +13,7 @@ from pathlib import Path
 
 def _get_runtime_directory() -> Path:
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-    directory = (
-        Path(runtime_dir) / "textile"
-        if runtime_dir
-        else Path(tempfile.gettempdir()) / f"textile-{os.getuid()}"
-    )
+    directory = Path(runtime_dir) / "textile" if runtime_dir else Path(tempfile.gettempdir()) / f"textile-{os.getuid()}"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(directory, 0o700)
@@ -41,7 +37,12 @@ class TapestryDatabase:
     def get_connection(self) -> sqlite3.Connection:
         connection = getattr(self._local_storage, "connection", None)
         if connection is None:
-            connection = sqlite3.connect(self._database_path, timeout=15.0, uri=self._is_uri)
+            connection = sqlite3.connect(
+                self._database_path,
+                timeout=15.0,
+                uri=self._is_uri,
+                autocommit=True,
+            )
             connection.execute("PRAGMA busy_timeout=15000;")
             if not self._is_uri:
                 connection.execute("PRAGMA journal_mode=WAL;")

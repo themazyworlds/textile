@@ -4,6 +4,8 @@ Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 
 from typing import TYPE_CHECKING, Any
 
+from needle import CapabilityTier, Strand, Weft, Yarn, strand, weft
+
 from textile.core.definitions import shims
 from textile.core.definitions.errors import (
     OTPChallengeRequiredError,
@@ -30,9 +32,6 @@ from textile.core.definitions.layers import (
 from textile.core.definitions.layers import (
     LAYER_USER_OVERRIDE_THRESHOLD as LAYER_USER_OVERRIDE,
 )
-from textile.core.execution.decorators import strand, weft
-from textile.core.execution.strands import CapabilityTier, Strand, Weft
-from textile.core.execution.yarn import Yarn
 
 if TYPE_CHECKING:
     from textile.core.orchestration.instructions import fabric_instructions
