@@ -107,6 +107,6 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
 include = ["src"]
-extraPaths = ["src", "../textile-yarns/yarns"]
+extraPaths = ["src", "../needle/src", "../textile-yarns/yarns"]
 pythonVersion = "3.14"
 pythonPlatform = "Linux"
