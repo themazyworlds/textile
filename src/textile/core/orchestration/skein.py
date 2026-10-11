@@ -21,7 +21,7 @@ from needle import parse_capability_tier as _parse_tier
 
 from textile.core.definitions.errors import SAFE_EXCEPTIONS, PolicyViolationError
 from textile.core.definitions.settings import generate_documented_toml
-from textile.core.execution.runner import _PROBE_SCRIPT, execute_strand
+from textile.core.execution.runner import PROBE_SCRIPT, execute_strand
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
@@ -290,8 +290,7 @@ class Skein:
             res = subprocess.run(
                 [
                     str(yarn_venv_py),
-                    "-c",
-                    _PROBE_SCRIPT,
+                    str(PROBE_SCRIPT),
                     path_str,
                 ],
                 capture_output=True,
