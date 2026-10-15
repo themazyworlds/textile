@@ -8,12 +8,12 @@ from typing import Any
 import orjson
 import pyotp
 import typer
+from needle.errors import StrandNotFoundError
 
 from textile.core.cli.app import app, console, ensure_initialized
 from textile.core.cli.ui import Column, print_table
-from textile.core.definitions.errors import StrandNotFoundError, TextileError
+from textile.core.definitions.errors import TextileError
 from textile.core.orchestration.loom import loom
-from textile.core.orchestration.twill import run_twill
 from textile.core.security.context import (
     OTPChallengeRequiredError,
     PolicyViolationError,
@@ -181,7 +181,9 @@ def inspect_strand(
 @app.command("twill")
 def cmd_twill():
     """Launch official Twill / MCP stdio server."""
-    run_twill()
+    from textile.core.orchestration import twill  # noqa: PLC0415
+
+    twill.run_twill()
 
 
 @app.command("2fa")

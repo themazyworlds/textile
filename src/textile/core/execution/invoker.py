@@ -14,21 +14,10 @@ import orjson
 from needle import CapabilityTier
 from pydantic import BaseModel, Field, create_model
 
-from textile.core.definitions.errors import TextileError
+from textile.core.definitions.errors import STRAND_EXEC_ERRORS
 from textile.core.execution.validation import validate_strand_arguments
 
 logger = logging.getLogger(__name__)
-
-STRAND_EXEC_ERRORS = (
-    TextileError,
-    AttributeError,
-    TypeError,
-    ValueError,
-    KeyError,
-    OSError,
-    RuntimeError,
-    orjson.JSONDecodeError,
-)
 
 
 def _format_handler_result(res: Any) -> str:
@@ -54,7 +43,7 @@ def _build_args_model(
     docs = param_docs or {}
     fields = {}
     for p_name, param in sig.parameters.items():
-        if p_name in ("self", "cls"):
+        if p_name in {"self", "cls"}:
             continue
         p_type = hints.get(p_name, Any)
         p_desc = docs.get(p_name, "")

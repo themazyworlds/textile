@@ -10,7 +10,9 @@ from typing import Any
 import pyotp
 import pytest
 
-from textile import CapabilityTier
+from textile import CapabilityTier, Strand, Yarn
+from textile.core.orchestration.loom import loom
+from textile.core.orchestration.skein import skein
 from textile.core.security.context import (
     OTPChallengeRequiredError,
     OTPManager,
@@ -47,6 +49,54 @@ class TestOTPManager:
         uri = get_totp_uri(secret)
         assert uri.startswith("otpauth://totp/Textile")
         assert f"secret={secret}" in uri
+
+
+class MockElevatedYarn(Yarn):
+    def __init__(self):
+        super().__init__(name="mock_elevated", layer=10, description="Mock Yarn")
+
+    def is_available(self) -> bool:
+        return True
+
+    def get_strands(self) -> list[Strand]:
+        async def _dummy_install(args: Any):
+            pkg = args.get("packages") if isinstance(args, dict) else args
+            return f"Error: Package '{pkg}' failed to install."
+
+        return [
+            Strand(
+                name="mock_privileged_install",
+                description="Mock install",
+                tier=CapabilityTier.PRIVILEGED,
+                parameters={"packages": {"type": "string", "description": "Package name"}},
+                handler=_dummy_install,
+                raw_handler=_dummy_install,
+            )
+        ]
+
+
+class MockValidatedYarn(Yarn):
+    def __init__(self):
+        super().__init__(name="mock_val_yarn", layer=10, description="Mock Val Yarn")
+
+    def is_available(self) -> bool:
+        return True
+
+    def get_strands(self) -> list[Strand]:
+        async def _dummy_fn(args: Any):
+            return "Success"
+
+        return [
+            Strand(
+                name="mock_strict_strand",
+                description="Mock strict strand",
+                tier=CapabilityTier.MUTATE,
+                parameters={"target": {"type": "string", "description": "Target path"}},
+                required=["target"],
+                handler=_dummy_fn,
+                raw_handler=_dummy_fn,
+            )
+        ]
 
 
 class TestSecurityPolicyGate:
@@ -111,29 +161,6 @@ class TestSecurityPolicyGate:
 
     @pytest.mark.asyncio
     async def test_loom_unmasked_error_propagation(self):
-        from textile import Strand, Yarn
-        from textile.core.orchestration.loom import loom
-        from textile.core.orchestration.skein import skein
-
-        class MockElevatedYarn(Yarn):
-            def __init__(self):
-                super().__init__(name="mock_elevated", layer=10, description="Mock Yarn")
-
-            def get_strands(self):
-                async def _dummy_install(args: Any):
-                    pkg = args.get("packages") if isinstance(args, dict) else args
-                    return f"Error: Package '{pkg}' failed to install."
-
-                return [
-                    Strand(
-                        name="mock_privileged_install",
-                        description="Mock install",
-                        tier=CapabilityTier.PRIVILEGED,
-                        parameters={"packages": {"type": "string", "description": "Package name"}},
-                        handler=_dummy_install,
-                    )
-                ]
-
         mock_yarn = MockElevatedYarn()
         skein.register_yarn(mock_yarn)
         loom.initialize()
@@ -147,29 +174,6 @@ class TestSecurityPolicyGate:
 
     @pytest.mark.asyncio
     async def test_loom_pre_otp_schema_validation(self):
-        from textile import Strand, Yarn
-        from textile.core.orchestration.loom import loom
-        from textile.core.orchestration.skein import skein
-
-        class MockValidatedYarn(Yarn):
-            def __init__(self):
-                super().__init__(name="mock_val_yarn", layer=10, description="Mock Val Yarn")
-
-            def get_strands(self):
-                async def _dummy_fn(args: Any):
-                    return "Success"
-
-                return [
-                    Strand(
-                        name="mock_strict_strand",
-                        description="Mock strict strand",
-                        tier=CapabilityTier.MUTATE,
-                        parameters={"target": {"type": "string", "description": "Target path"}},
-                        required=["target"],
-                        handler=_dummy_fn,
-                    )
-                ]
-
         mock_yarn = MockValidatedYarn()
         skein.register_yarn(mock_yarn)
         loom.initialize()

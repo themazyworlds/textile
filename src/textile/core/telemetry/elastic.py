@@ -1,7 +1,7 @@
 """
 Textile Elastic - Unified Event Broadcast & Sensory Subscription Fabric.
 Serves as the single front door for both broadcasting and subscribing to system events,
-sensory deltas, LLM weft triggers, and Tapestry state updates.
+sensory deltas, and Tapestry state updates.
 """
 
 import asyncio
@@ -17,9 +17,8 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, Field
+from needle import EventFrame, EventUrgency
 
-from textile.core.definitions.events import EventUrgency
 from textile.core.telemetry.blackboard import NoticeLevel, sensory_tapestry
 from textile.core.telemetry.log import get_logger
 
@@ -31,21 +30,6 @@ class BroadcastOptions:
     source: str = "system"
     urgency: EventUrgency | str = EventUrgency.NOTICE
     data: dict[str, Any] | None = None
-    retained_slot: str | None = None
-    retained_value: Any = None
-
-
-class EventFrame(BaseModel):
-    """Standardized, self-describing immutable event packet."""
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:12])
-    topic: str
-    source: str = "system"
-    urgency: EventUrgency = EventUrgency.NOTICE
-    summary: str
-    data: dict[str, Any] = Field(default_factory=dict)
-    timestamp: float = Field(default_factory=time.time)
-    process_id: int = Field(default_factory=os.getpid)
     retained_slot: str | None = None
     retained_value: Any = None
 
@@ -67,7 +51,7 @@ class _Subscription:
         if self.min_urgency is not None and frame.urgency.numeric < self.min_urgency.numeric:
             return False
 
-        if self.pattern in ("*", frame.topic):
+        if self.pattern in {"*", frame.topic}:
             return True
 
         return fnmatch.fnmatch(frame.topic, self.pattern)
@@ -83,7 +67,7 @@ class ElasticEngine:
         self._lock = threading.RLock()
         self._pid = os.getpid()
         self._subscriptions: dict[str, _Subscription] = {}
-        self._async_queues: list[asyncio.Queue[EventFrame]] = []
+        self._async_queues: set[asyncio.Queue[EventFrame]] = set()
         self._running = True
         self._ipc_thread: threading.Thread | None = None
         self._last_event_id: int = 0
@@ -210,7 +194,7 @@ class ElasticEngine:
         """Deliver EventFrame to local in-process subscribers and async queues."""
         with self._lock:
             subs = list(self._subscriptions.values())
-            queues = self._async_queues.copy()
+            queues = list(self._async_queues)
 
         for sub in subs:
             if sub.matches(frame):
@@ -288,17 +272,16 @@ class ElasticEngine:
         """
         q: asyncio.Queue[EventFrame] = asyncio.Queue(maxsize=100)
         with self._lock:
-            self._async_queues.append(q)
+            self._async_queues.add(q)
 
         try:
             while True:
                 frame = await q.get()
-                if pattern in ("*", frame.topic) or fnmatch.fnmatch(frame.topic, pattern):
+                if pattern in {"*", frame.topic} or fnmatch.fnmatch(frame.topic, pattern):
                     yield frame
         finally:
             with self._lock:
-                if q in self._async_queues:
-                    self._async_queues.remove(q)
+                self._async_queues.discard(q)
 
     # --- Tapestry Seat & Slot Management (Universal Blackboard Interface) ---
 

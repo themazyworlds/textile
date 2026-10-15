@@ -5,34 +5,30 @@ Textile Loom - High-Performance Strand Execution, Capability Resolution, and Dis
 import asyncio
 import concurrent.futures
 import contextlib
+import inspect
 import os
 import time
 import uuid
-from dataclasses import dataclass
 from typing import Any
 
-from needle import Strand, Weft, Yarn
+from needle import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
+from needle import Strand, Yarn
+from needle.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
-from textile.core.definitions.layers import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
+from textile.core.execution.reflector import reflect_strands
 from textile.core.execution.validation import validate_strand_arguments
 from textile.core.orchestration.skein import Skein, skein
 from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError, verify_security_policy
-from textile.core.telemetry.blackboard import NoticeLevel, sensory_tapestry
-from textile.core.telemetry.elastic import EventUrgency, elastic
-from textile.core.telemetry.ledger import core_tapestry
 from textile.core.telemetry.log import get_logger
+from textile.core.telemetry.recorder import (
+    ExecutionTelemetryContext,
+    record_execution_end,
+    record_execution_start,
+)
 
 logger = get_logger(__name__)
 
-
-@dataclass(slots=True)
-class _ExecutionTelemetryContext:
-    task_id: str
-    strand_name: str
-    args: dict[str, Any]
-    tier_val: str
-    caller: str
+__all__ = ["Loom", "loom"]
 
 
 class Loom:
@@ -42,15 +38,9 @@ class Loom:
         self._skein = registry or skein
         self.active_yarns: dict[str, Yarn] = {}
         self.strands: dict[str, Strand] = {}
-        self._wefts: list[Weft] = []
         self._strand_to_yarn: dict[str, Yarn] = {}
         self._capability_to_strand: dict[str, tuple[Strand, Yarn]] = {}
         self._initialized: bool = False
-
-    @property
-    def wefts(self) -> list[Weft]:
-        self.initialize()
-        return self._wefts
 
     def get_settings(self, yarn_name: str) -> Any:
         """Retrieve validated settings model for any yarn by name."""
@@ -66,16 +56,15 @@ class Loom:
         self._rebuild_active()
         self._initialized = True
 
-    def _register_yarn_strands_and_wefts(
+    def _register_yarn_strands(
         self,
         yarn: Yarn,
         new_strands: dict[str, Strand],
         new_strand_map: dict[str, Yarn],
         new_cap_map: dict[str, tuple[Strand, Yarn]],
-        new_wefts: list[Weft],
     ) -> None:
-        """Register a single yarn's strands and wefts into Loom lookup maps."""
-        for strand in yarn.get_strands():
+        """Register a single yarn's strands into Loom lookup maps."""
+        for strand in reflect_strands(yarn):
             if strand.name in new_strands and not strand.capability:
                 existing_yarn = new_strand_map[strand.name]
                 if existing_yarn.name != yarn.name:
@@ -90,7 +79,6 @@ class Loom:
             new_strand_map[strand.name] = yarn
             if strand.capability:
                 new_cap_map[strand.capability] = (strand, yarn)
-        new_wefts.extend(yarn.get_wefts())
 
     def _notify_yarn_lifecycle_events(
         self,
@@ -110,7 +98,6 @@ class Loom:
     def _rebuild_active(self) -> None:
         new_active = self._skein.get_active_yarns()
         new_strands: dict[str, Strand] = {}
-        new_wefts: list[Weft] = []
         new_strand_map: dict[str, Yarn] = {}
         new_cap_map: dict[str, tuple[Strand, Yarn]] = {}
 
@@ -118,14 +105,13 @@ class Loom:
         sorted_yarns = sorted(new_active.values(), key=lambda p: getattr(p, "layer", LAYER_BASE))
         for yarn in sorted_yarns:
             try:
-                self._register_yarn_strands_and_wefts(yarn, new_strands, new_strand_map, new_cap_map, new_wefts)
+                self._register_yarn_strands(yarn, new_strands, new_strand_map, new_cap_map)
             except SAFE_EXCEPTIONS as e:
                 logger.error("loom.yarn_load_failed", yarn=yarn.name, error=str(e))
 
-        new_wefts.sort(key=lambda w: w.priority, reverse=True)
         self._notify_yarn_lifecycle_events(set(self.active_yarns.keys()), set(new_active.keys()), new_active)
 
-        self.active_yarns, self.strands, self._wefts = new_active, new_strands, new_wefts
+        self.active_yarns, self.strands = new_active, new_strands
         self._strand_to_yarn, self._capability_to_strand = new_strand_map, new_cap_map
 
     def get_strand_override_status(self, strand: Strand, yarn: Yarn) -> tuple[bool, str | None, str | None]:
@@ -165,61 +151,6 @@ class Loom:
 
         return strand, yarn, handler
 
-    def _record_execution_start(self, ctx: _ExecutionTelemetryContext) -> None:
-        """Record task start telemetry in CoreTapestry and Elastic."""
-        core_tapestry.record_task_start(
-            ctx.task_id,
-            ctx.strand_name,
-            args=ctx.args,
-            tier=ctx.tier_val,
-        )
-        elastic.broadcast(
-            topic="loom.tool_start",
-            source="loom",
-            summary=f"Starting strand '{ctx.strand_name}' [{ctx.tier_val.upper()}]",
-            urgency=EventUrgency.AMBIENT,
-            data={"task_id": ctx.task_id, "strand": ctx.strand_name, "caller": ctx.caller, "tier": ctx.tier_val},
-        )
-
-    def _record_execution_end(
-        self,
-        ctx: _ExecutionTelemetryContext,
-        dur_ms: float,
-        success: bool,
-        err: str | None,
-    ) -> None:
-        """Record task completion telemetry in CoreTapestry, SensoryTapestry, and Elastic."""
-        core_tapestry.record_task_end(ctx.task_id, success=success, duration_ms=dur_ms, error=err)
-        msg = (
-            f"Executed '{ctx.strand_name}' [{ctx.tier_val.upper()}] ({dur_ms:.1f}ms)"
-            if success
-            else f"Failed '{ctx.strand_name}': {err}"
-        )
-        sensory_tapestry.stitch(
-            level=NoticeLevel.INFO if success else NoticeLevel.ERROR,
-            source=ctx.strand_name,
-            message=msg,
-            data={
-                "caller": ctx.caller,
-                "args": ctx.args,
-                "tier": ctx.tier_val,
-            },
-        )
-        elastic.broadcast(
-            topic="loom.tool_done",
-            source="loom",
-            summary=msg,
-            urgency=EventUrgency.NOTICE if success else EventUrgency.ALERT,
-            data={
-                "task_id": ctx.task_id,
-                "strand": ctx.strand_name,
-                "success": success,
-                "duration_ms": dur_ms,
-                "caller": ctx.caller,
-                "error": err,
-            },
-        )
-
     async def execute(
         self,
         strand_name: str,
@@ -258,20 +189,21 @@ class Loom:
         task_id = str(uuid.uuid4())[:8]
         tier_val = strand.tier.value if hasattr(strand.tier, "value") else str(strand.tier)
 
-        ctx = _ExecutionTelemetryContext(
+        ctx = ExecutionTelemetryContext(
             task_id=task_id,
             strand_name=strand_name,
             args=clean_args,
             tier_val=tier_val,
             caller=effective_caller,
         )
-        self._record_execution_start(ctx)
+        record_execution_start(ctx)
 
         t0 = time.perf_counter()
         success = True
         err = None
         try:
-            return await handler(clean_args)
+            res = handler(clean_args)
+            return await res if inspect.iscoroutine(res) else str(res)
         except PolicyViolationError, OTPChallengeRequiredError:
             success = False
             err = "Security Policy Gate Failure"
@@ -286,7 +218,7 @@ class Loom:
             ) from e
         finally:
             dur = (time.perf_counter() - t0) * 1000.0
-            self._record_execution_end(ctx, dur, success, err)
+            record_execution_end(ctx, dur, success, err)
 
     def execute_sync(
         self,
@@ -306,11 +238,6 @@ class Loom:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(asyncio.run, self.execute(strand_name, args, caller=caller, otp=otp)).result()
         return asyncio.run(self.execute(strand_name, args, caller=caller, otp=otp))
-
-    def get_all_wefts(self) -> list[Weft]:
-        """Return all active Weft attunements sorted by priority."""
-        self.initialize()
-        return self.wefts.copy()
 
 
 loom = Loom()

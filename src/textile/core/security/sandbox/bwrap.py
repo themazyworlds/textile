@@ -3,6 +3,7 @@ Bubblewrap (bwrap) unprivileged container builder and isolation manager.
 Enforces mount isolation, network namespaces, and capability tier bounds.
 """
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -119,6 +120,16 @@ def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) ->
             if ".venv" in p_str:
                 venv_root = p_str.split("/bin/")[0]
                 builder.args.extend(["--ro-bind-try", venv_root, venv_root])
+                # Bind any external source directories linked via .pth files (e.g. editable needle SDK)
+                with contextlib.suppress(OSError):
+                    for pth in Path(venv_root).glob("lib*/python*/site-packages/*.pth"):
+                        for line in pth.read_text(encoding="utf-8").splitlines():
+                            target_line = line.strip()
+                            if target_line and not target_line.startswith(("#", "import ")):
+                                p_pth = Path(target_line).resolve()
+                                if p_pth.exists():
+                                    bind_target = str(p_pth.parent if p_pth.name == "src" else p_pth)
+                                    builder.args.extend(["--ro-bind-try", bind_target, bind_target])
             elif not any(p_str.startswith(prefix) for prefix in ("/usr", "/bin", "/lib", "/opt", "/nix")):
                 parent_dir = str(Path(p_str).parent)
                 builder.args.extend(["--ro-bind-try", parent_dir, parent_dir])
@@ -130,13 +141,19 @@ class BubblewrapSandbox:
     Enforces namespace isolation (mount, PID, IPC, network) and workspace confinement.
     """
 
+    _AVAILABLE: bool | None = None
+
     @classmethod
     def is_available(cls) -> bool:
         """Check if bubblewrap (bwrap) executable is present and working."""
+        if cls._AVAILABLE is not None:
+            return cls._AVAILABLE
         if sys.platform != "linux":
+            cls._AVAILABLE = False
             return False
         bwrap_path = shutil.which("bwrap")
         if not bwrap_path:
+            cls._AVAILABLE = False
             return False
         try:
             res = subprocess.run(
@@ -146,8 +163,10 @@ class BubblewrapSandbox:
                 timeout=2.0,
                 check=False,
             )
-            return res.returncode == 0
+            cls._AVAILABLE = res.returncode == 0
+            return cls._AVAILABLE
         except OSError, subprocess.SubprocessError:
+            cls._AVAILABLE = False
             return False
 
     @staticmethod

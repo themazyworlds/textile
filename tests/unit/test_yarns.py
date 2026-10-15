@@ -103,49 +103,65 @@ class TestYarnArchitecture(unittest.TestCase):
 
     def test_process_isolation_and_crash_recovery(self):
         dummy = DummyYarn()
-        # 1. Normal strand execution
-        self.assertEqual(dummy.execute_sync("normal_tool", {}), "normal_ok")
+        skein.register_yarn(dummy)
+        loom._rebuild_active()
 
-        # 2. Isolated process execution
-        res = dummy.execute_sync("isolated_tool", {"x": "val"})
+        # 1. Normal strand execution
+        self.assertEqual(loom.execute_sync("normal_tool", {}), "normal_ok")
+
+        # 2. Isolated process execution (system_exec requires 2FA confirmation)
+        import pyotp
+
+        from textile.core.security.context import global_otp_manager
+
+        totp = pyotp.TOTP(global_otp_manager._get_secret())
+        otp_code = totp.now()
+        res = loom.execute_sync("isolated_tool", {"x": "val"}, otp=otp_code)
         self.assertEqual(res, "isolated_val")
 
         # 3. Crash recovery: child os._exit(11) must NOT crash host parent
-        crash_res = dummy.execute_sync("crashing_tool", {})
+        global_otp_manager.clear()
+        crash_otp = totp.now()
+        crash_res = loom.execute_sync("crashing_tool", {}, otp=crash_otp)
         self.assertIn("crashed", crash_res)
         self.assertIn("Host process preserved", crash_res)
 
     def test_strict_parameter_validation(self):
         dummy = DummyYarn()
+        skein.register_yarn(dummy)
+        loom._rebuild_active()
 
         # Missing required parameter 'count'
-        missing_res = dummy.execute_sync("typed_tool", {})
+        missing_res = loom.execute_sync("typed_tool", {})
         self.assertIn("Validation Hint", missing_res)
         self.assertIn("missing in action", missing_res)
 
         # Invalid enum choice
-        enum_res = dummy.execute_sync("typed_tool", {"count": 5, "mode": "invalid_mode"})
+        enum_res = loom.execute_sync("typed_tool", {"count": 5, "mode": "invalid_mode"})
         self.assertIn("Validation Hint", enum_res)
         self.assertIn("Available options", enum_res)
 
         # Successful typed call
-        valid_res = dummy.execute_sync("typed_tool", {"count": 5, "mode": "fast"})
+        valid_res = loom.execute_sync("typed_tool", {"count": 5, "mode": "fast"})
         self.assertEqual(valid_res, "typed_ok")
 
     def test_pydantic_schema_validation(self):
         dummy = DummyYarn()
+        skein.register_yarn(dummy)
+        loom._rebuild_active()
+
         # Missing message
-        res = dummy.execute_sync("pydantic_tool", {})
+        res = loom.execute_sync("pydantic_tool", {})
         self.assertIn("Validation Hint", res)
         self.assertIn("missing in action", res)
 
         # Invalid priority enum
-        res2 = dummy.execute_sync("pydantic_tool", {"message": "hello", "priority": "invalid"})
+        res2 = loom.execute_sync("pydantic_tool", {"message": "hello", "priority": "invalid"})
         self.assertIn("Validation Hint", res2)
         self.assertIn("Available options", res2)
 
         # Valid call
-        res3 = dummy.execute_sync("pydantic_tool", {"message": "hello", "priority": "high"})
+        res3 = loom.execute_sync("pydantic_tool", {"message": "hello", "priority": "high"})
         self.assertEqual(res3, "pydantic_hello_high")
 
         # Test MCP schema conversion
@@ -180,7 +196,7 @@ class TestYarnArchitecture(unittest.TestCase):
         loom._rebuild_active()
 
     def test_name_collision_without_capability_not_overridden(self):
-        from textile.core.definitions.errors import StrandCollisionError
+        from needle.errors import StrandCollisionError
 
         pa = YarnNoCapA()
         pb = YarnNoCapB()
@@ -247,68 +263,6 @@ class TestYarnArchitecture(unittest.TestCase):
         self.assertEqual(strands["read_stat"].tier, "observe")
         self.assertEqual(strands["admin_task"].tier, "privileged")
         self.assertEqual(strands["exec_task"].tier, "system_exec")
-
-    def test_weft_attunements_and_pydantic_coercion(self):
-        from textile import weft
-
-        events_received = []
-
-        class WeftTestYarn(Yarn):
-            def __init__(self):
-                super().__init__(name="weft_test", layer=50)
-
-            def is_available(self):
-                return True
-
-            @weft(pattern=r"<target:(?P<name>[a-zA-Z0-9_-]+),(?P<count>\d+)>")
-            def on_target(self, name: str, count: int):
-                events_received.append(("target", name, count))
-
-            @weft(pattern=r"<coord:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)>")
-            def on_coord(self, x: float, y: float):
-                events_received.append(("coord", x, y))
-
-        y = WeftTestYarn()
-        wefts = y.get_wefts()
-        from textile.core.orchestration.stream import stream_engine
-
-        self.assertEqual(len(wefts), 2)
-        skein.register_yarn(y)
-        loom._rebuild_active()
-
-        # Process a stream containing both wefts
-        raw_stream = "Tracking <target:alpha_1,42> in sector <coord:12.5,-8.75> immediately!"
-        clean_stream = stream_engine.process_stream(raw_stream, loom.wefts)
-
-        self.assertEqual(clean_stream, "Tracking  in sector  immediately!")
-        self.assertEqual(len(events_received), 2)
-        # Verify Pydantic coercion to int and float
-        self.assertEqual(events_received[0], ("target", "alpha_1", 42))
-        self.assertEqual(events_received[1], ("coord", 12.5, -8.75))
-
-    def test_weave_mood_tag_parsing(self):
-        import time
-
-        from canvas.canvas import Canvas
-
-        from textile.core.orchestration.loom import loom
-        from textile.core.orchestration.skein import skein
-        from textile.core.orchestration.stream import stream_engine
-        from textile.core.telemetry.blackboard import sensory_tapestry
-
-        canvas = Canvas()
-        canvas.is_available = lambda: True
-        skein.register_yarn(canvas)
-        loom._rebuild_active()
-
-        # Simulate Gemini returning speech text with inline semantic mood tags
-        gemini_speech = "<mood:curious> Let me check that system log for you... <mood:thinking> analyzing now... <mood:happy> everything looks clean!"
-        clean_text = stream_engine.process_stream(gemini_speech, loom.wefts)
-        time.sleep(0.1)
-
-        self.assertNotIn("<mood:", clean_text)
-        # The final tag should be applied to canvas slot in tapestry
-        self.assertEqual(sensory_tapestry.get_slot("canvas.mood"), "happy")
 
     def test_packagekit_pure_dbus_yarn(self):
         pytest.importorskip("dbus_fast")

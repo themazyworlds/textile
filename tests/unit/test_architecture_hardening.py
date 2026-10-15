@@ -5,8 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pyotp
 from needle import Strand, Yarn
+from needle.errors import StrandCollisionError
 
-from textile.core.definitions.errors import SandboxUnavailableError, StrandCollisionError
+from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.execution.invoker import execute_direct
 from textile.core.execution.runner import execute_strand
 from textile.core.orchestration.loom import Loom

@@ -6,7 +6,6 @@ Invoked for dependency-isolated, sandbox-confined strand executions.
 import contextlib
 import inspect
 import os
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -19,9 +18,6 @@ from needle import CapabilityTier
 from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.security.sandbox import BubblewrapSandbox
 
-WORKER_SCRIPT = Path(__file__).parent / "worker.py"
-PROBE_SCRIPT = Path(__file__).parent / "probe.py"
-
 
 def _format_handler_result(res: Any) -> str:
     """Format handler execution output into string or formatted JSON."""
@@ -32,7 +28,6 @@ def _format_handler_result(res: Any) -> str:
 
 @dataclass(slots=True)
 class _WorkerExecutionSpec:
-    uv_bin: str
     yarn: Any
     strand_name: str
     args: dict[str, Any]
@@ -76,7 +71,8 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
     class_name = getattr(spec.yarn, "_class_name", spec.yarn.__class__.__name__)
     cmd = [
         python_bin,
-        str(WORKER_SCRIPT),
+        "-m",
+        "needle.worker",
         target_spec,
         class_name,
         spec.strand_name,
@@ -90,10 +86,12 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
                 "Bubblewrap ('bwrap') is not installed or operational on this system. "
                 "Sandboxed strands require bubblewrap for isolation."
             )
-        matching_strand = next((s for s in spec.yarn.get_strands() if s.name == spec.strand_name), None)
-        res_list = matching_strand.resources if matching_strand else getattr(spec.yarn, "resources", [])
         cmd = BubblewrapSandbox.wrap_command(
-            cmd, tier=spec.tier_str, env=env, workspace_root=spec.cwd, resources=res_list
+            cmd,
+            tier=spec.tier_str,
+            env=env,
+            workspace_root=spec.cwd,
+            resources=getattr(spec.yarn, "resources", []),
         )
 
     return cmd
@@ -109,7 +107,7 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
             if payload.get("success"):
                 return _format_handler_result(payload.get("result"))
             return f"Error: {payload.get('error', 'Execution failed')}"
-        except (orjson.JSONDecodeError, ValueError, TypeError):
+        except orjson.JSONDecodeError, ValueError, TypeError:
             if res.returncode == 0:
                 return out
 
@@ -125,12 +123,9 @@ def execute_strand(
     tier: CapabilityTier | str = CapabilityTier.INTERACT,
 ) -> str:
     """Run a strand in an isolated ephemeral subprocess with sandbox confinement."""
-    uv_bin = shutil.which("uv") or sys.executable
-
     tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
     cwd = str(Path.cwd())
     spec = _WorkerExecutionSpec(
-        uv_bin=uv_bin,
         yarn=yarn,
         strand_name=strand_name,
         args=args,

@@ -11,21 +11,16 @@ from typing import Any
 
 import platformdirs
 import typer
-from pydantic import BaseModel
-from rich.tree import Tree
+from pydantic import BaseModel, Field
+lazy from rich.tree import Tree
 
-from textile.core.cli.app import (
-    TapestryStateModel,
-    app,
-    console,
-    ensure_initialized,
-)
+from textile.core.cli.app import app, console, ensure_initialized
 from textile.core.cli.ui import Column, print_table
-from textile.core.definitions.settings import _format_type_name
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
-from textile.core.telemetry.blackboard import sensory_tapestry
-from textile.core.telemetry.ledger import core_tapestry
+lazy from textile.core.definitions.settings import _format_type_name
+lazy from textile.core.telemetry.blackboard import sensory_tapestry
+lazy from textile.core.telemetry.ledger import core_tapestry
 
 
 @app.command("skein")
@@ -242,6 +237,11 @@ def cmd_tapestry(
 ):
     """Inspect engine task ledger and sensory blackboard."""
     if json_output:
+
+        class TapestryStateModel(BaseModel):
+            engine: dict[str, Any] = Field(default_factory=dict)
+            sensory: dict[str, Any] = Field(default_factory=dict)
+
         model = TapestryStateModel(
             engine=core_tapestry.get_state(),
             sensory=sensory_tapestry.get_state(),

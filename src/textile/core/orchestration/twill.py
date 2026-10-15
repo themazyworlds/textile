@@ -11,8 +11,8 @@ from typing import Any
 from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
+from needle.errors import SAFE_EXCEPTIONS, StrandOperationalError
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS, StrandOperationalError
 from textile.core.orchestration.instructions import fabric_instructions
 from textile.core.orchestration.loom import loom
 from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError

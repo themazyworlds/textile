@@ -7,7 +7,7 @@ license = { text = "Apache-2.0" }
 authors = [
     { name = "themazyworlds", email = "meerahemant9086@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 dependencies = [
     "desktop-notifier>=6.2.0",
     "mcp>=2.0.0",
@@ -25,7 +25,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Environment :: Console",
     "Topic :: System :: Systems Administration",
-    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 
 [project.scripts]
@@ -60,7 +60,7 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py314"
+target-version = "py315"
 
 [tool.ruff.lint]
 select = [
@@ -108,5 +108,5 @@ venv = ".venv"
 typeCheckingMode = "standard"
 include = ["src"]
 extraPaths = ["src", "../textile-needle/src", "../textile-yarns/yarns"]
-pythonVersion = "3.14"
+pythonVersion = "3.15"
 pythonPlatform = "Linux"

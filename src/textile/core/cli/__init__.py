@@ -4,7 +4,6 @@ Provides discovery, layer hierarchy, strand inspection, execution, IPC, and heal
 """
 
 from textile.core.cli.app import (
-    TapestryStateModel,
     app,
     console,
     ensure_initialized,
@@ -12,7 +11,6 @@ from textile.core.cli.app import (
 from textile.core.cli.commands import execution, registry
 
 __all__ = [
-    "TapestryStateModel",
     "app",
     "console",
     "ensure_initialized",

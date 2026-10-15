@@ -176,3 +176,25 @@ def generate_documented_toml(
             _render_dict_section(sections, schema_or_dict, yarn_current)
 
     return "\n".join(sections).strip() + "\n"
+
+
+def dumps_toml(data: dict[str, Any]) -> str:
+    """Format an arbitrary settings dictionary into valid TOML format."""
+    lines: list[str] = [
+        "# Textile settings",
+        "# Edit any setting below to customize per-yarn configuration.",
+        "",
+    ]
+    top_level = [f"{k} = {_format_toml_literal(v)}" for k, v in data.items() if not isinstance(v, dict)]
+    if top_level:
+        lines.extend(top_level)
+        lines.append("")
+
+    for section, table in data.items():
+        if isinstance(table, dict):
+            lines.append(f"[{section}]")
+            for k, v in table.items():
+                lines.append(f"{k} = {_format_toml_literal(v)}")
+            lines.append("")
+
+    return "\n".join(lines).strip() + "\n"

@@ -130,7 +130,7 @@ def verify_security_policy(
 ) -> bool:
     """Canonical security policy gate for 2FA TOTP."""
     tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
-    if tier_val in ("observe", "interact"):
+    if tier_val in {"observe", "interact"}:
         return False
 
     if otp:

@@ -1,84 +1,36 @@
 """
-Textile Strand & Weft Reflection, Factory, and Execution Directives.
-Converts @strand and @weft decorated methods on Yarn instances into Strand and Weft objects.
+Textile Strand Reflection, Factory, and Execution Directives.
+Converts @strand decorated methods on Yarn instances into Strand objects.
 """
 
-import asyncio
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
-from needle import CapabilityTier, Strand, Weft
+from needle import CapabilityTier, Strand
 from needle import parse_capability_tier as _parse_tier
-from pydantic import BaseModel
+from needle.errors import SAFE_EXCEPTIONS
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS
 from textile.core.execution.invoker import (
     InvokerConfig,
-    _build_args_model,
     _create_invoker,
     execute_direct,
 )
 from textile.core.execution.runner import execute_strand
 from textile.core.execution.validation import (
     _extract_docstring_info,
-    schema_to_model,
-    validate_strand_arguments,
 )
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
 
 
-@dataclass(slots=True)
-class StrandConfig:
-    args_schema: type[BaseModel] | None = None
-    parameters: dict[str, Any] | None = None
-    required: list[str] | None = None
-    timeout: float = 30.0
-    capability: str | None = None
-    tier: CapabilityTier | str = CapabilityTier.INTERACT
-    resources: list[str] | None = None
-    no_timeout: bool = False
-
-
 __all__ = [
-    "StrandConfig",
-    "build_dynamic_strand",
+    "bind_strand_to_core",
     "execute_direct",
     "method_to_strand",
-    "method_to_weft",
     "reflect_strands",
-    "reflect_wefts",
 ]
-
-
-def method_to_weft(_yarn: Any, method: Callable[..., Any]) -> Weft:
-    """Convert a @weft decorated method into a Weft instance."""
-    sig = inspect.signature(method)
-    weft_name = getattr(method, "_weft_name", method.__name__)
-    weft_pattern = getattr(method, "_weft_pattern")
-    doc = inspect.getdoc(method) or ""
-    raw_desc = getattr(method, "_weft_description", None) or doc or weft_name
-    weft_desc = " ".join(raw_desc.split()) if raw_desc else weft_name
-    weft_strip = getattr(method, "_weft_strip", True)
-    weft_priority = getattr(method, "_weft_priority", 100)
-
-    param_names = [p_name for p_name in sig.parameters if p_name not in ("self", "cls")]
-    args_model = _build_args_model(method, f"{weft_name}_WeftArgs", is_strand=False)
-
-    return Weft(
-        name=weft_name,
-        pattern=weft_pattern,
-        description=weft_desc,
-        strip=weft_strip,
-        priority=weft_priority,
-        handler=method,
-        raw_handler=method,
-        args_schema=args_model,
-        param_names=param_names,
-    )
 
 
 def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
@@ -90,23 +42,39 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
     strand_cap = getattr(method, "_strand_capability", None)
     tier_val = _parse_tier(getattr(method, "_strand_tier", CapabilityTier.INTERACT), strand_name)
 
-    yarn_resources = getattr(yarn, "resources", [])
-    strand_resources = getattr(method, "_strand_resources", None) or yarn_resources
-
     no_timeout = getattr(method, "_strand_no_timeout", False)
     timeout = None if no_timeout else getattr(method, "_strand_timeout", 30.0)
 
-    args_model = _build_args_model(method, f"{strand_name}_Args", param_docs)
-    schema = args_model.model_json_schema() if args_model else {"type": "object", "properties": {}, "required": []}
-    params, req_list = schema.get("properties", {}), schema.get("required", [])
-    runner = execute_strand
+    sig = inspect.signature(method)
+    params: dict[str, Any] = {}
+    req_list: list[str] = []
+    type_map = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", dict: "object"}
+    for p_name, param in sig.parameters.items():
+        if p_name in {"self", "cls"}:
+            continue
+        ann = param.annotation
+        p_type = type_map.get(ann, "string") if ann is not inspect.Parameter.empty else "string"
+        prop: dict[str, Any] = {"type": p_type}
+        if p_desc := param_docs.get(p_name):
+            prop["description"] = p_desc
+        if param.default is inspect.Parameter.empty:
+            req_list.append(p_name)
+        else:
+            prop["default"] = param.default
+        params[p_name] = prop
 
+    params["otp"] = {
+        "type": "string",
+        "description": "Optional single-use 4-digit Visual OTP confirmation code displayed on user screen",
+    }
+
+    runner = execute_strand
     invoker = _create_invoker(
         yarn,
         method,
         strand_name,
         InvokerConfig(
-            args_model=args_model,
+            args_model=None,
             params=params,
             req_list=req_list,
             timeout=timeout,
@@ -123,14 +91,65 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
         handler=invoker,
         raw_handler=method,
         capability=strand_cap,
-        args_schema=args_model,
+        args_schema=None,
         tier=tier_val,
-        resources=strand_resources,
+    )
+
+
+def bind_strand_to_core(yarn: Any, strand: Strand) -> Strand:
+    """Bind a raw SDK or custom strand to Core invoker, runner, and security policies."""
+    raw_fn = strand.raw_handler or strand.handler
+    if raw_fn is None:
+        return strand
+
+    # If raw_fn is an unwrapped method or function, wrap it into a Core invoker
+    params = dict(strand.parameters) if strand.parameters else {}
+    if "otp" not in params:
+        params["otp"] = {
+            "type": "string",
+            "description": "Optional single-use 4-digit Visual OTP confirmation code displayed on user screen",
+        }
+
+    tier_val = _parse_tier(strand.tier, strand.name)
+    timeout = None if strand.no_timeout else (strand.timeout or 30.0)
+
+    runner = execute_strand
+    invoker = _create_invoker(
+        yarn,
+        raw_fn,
+        strand.name,
+        InvokerConfig(
+            args_model=strand.args_schema,
+            params=params,
+            req_list=list(strand.required) if strand.required else [],
+            timeout=timeout,
+            tier=tier_val,
+        ),
+        runner=runner,
+    )
+
+    return Strand(
+        name=strand.name,
+        description=strand.description,
+        parameters=params,
+        required=list(strand.required) if strand.required else [],
+        handler=invoker,
+        raw_handler=raw_fn,
+        capability=strand.capability,
+        args_schema=strand.args_schema,
+        tier=tier_val,
+        timeout=timeout,
+        no_timeout=strand.no_timeout,
     )
 
 
 def reflect_strands(yarn: Any) -> list[Strand]:
-    """Inspect class-level attributes on yarn to discover @strand decorated methods."""
+    """Discover strands on yarn and bind them to Core execution invokers."""
+    # If the yarn defines or discovers strands via get_strands(), bind them
+    if hasattr(yarn, "get_strands") and callable(yarn.get_strands):
+        raw_strands = cast(list[Strand], yarn.get_strands())
+        return [bind_strand_to_core(yarn, s) for s in raw_strands]
+
     discovered = []
     cls = type(yarn)
     for attr_name in dir(cls):
@@ -145,67 +164,3 @@ def reflect_strands(yarn: Any) -> list[Strand]:
             bound = getattr(yarn, attr_name)
             discovered.append(method_to_strand(yarn, bound))
     return discovered
-
-
-def reflect_wefts(yarn: Any) -> list[Weft]:
-    """Inspect class-level attributes on yarn to discover @weft decorated methods."""
-    discovered = []
-    cls = type(yarn)
-    for attr_name in dir(cls):
-        if attr_name.startswith("__"):
-            continue
-        try:
-            unbound = getattr(cls, attr_name, None)
-        except SAFE_EXCEPTIONS as e:
-            logger.debug("weft.reflection_attribute_error", attribute=attr_name, error=str(e))
-            continue
-        if callable(unbound) and getattr(unbound, "_is_weft", False):
-            bound = getattr(yarn, attr_name)
-            discovered.append(method_to_weft(yarn, bound))
-    return discovered
-
-
-def build_dynamic_strand(
-    yarn: Any,
-    name: str,
-    description: str,
-    handler: Callable[[dict[str, Any]], Any],
-    config: StrandConfig | None = None,
-    **kwargs: Any,
-) -> Strand:
-    """Dynamically construct a Strand instance."""
-    cfg = config or StrandConfig(**kwargs)
-    tier_val = _parse_tier(cfg.tier, name)
-    schema_model: type[BaseModel] | None = cfg.args_schema or (
-        schema_to_model(name, cfg.parameters or {}, cfg.required or []) if cfg.parameters else None
-    )
-    schema = schema_model.model_json_schema() if schema_model else {"type": "object", "properties": {}, "required": []}
-    params = schema.get("properties", {})
-    req_list = schema.get("required", []) if schema_model else (cfg.required or [])
-    yarn_resources = getattr(yarn, "resources", [])
-    res_list = cfg.resources or yarn_resources
-
-    eff_timeout = None if cfg.no_timeout else cfg.timeout
-
-    async def _safe_handler(args: dict[str, Any]) -> str:
-        val_err, coerced = validate_strand_arguments(
-            name, args, schema_model=schema_model, parameters=params, required=req_list
-        )
-        if val_err:
-            return val_err
-        return await asyncio.to_thread(execute_strand, yarn, name, coerced, timeout=eff_timeout, tier=tier_val)
-
-    return Strand(
-        name=name,
-        description=description,
-        parameters=params,
-        required=req_list,
-        handler=_safe_handler,
-        raw_handler=handler,
-        capability=cfg.capability,
-        args_schema=schema_model,
-        tier=tier_val,
-        resources=res_list,
-        timeout=eff_timeout,
-        no_timeout=cfg.no_timeout,
-    )

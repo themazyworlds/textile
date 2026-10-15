@@ -4,31 +4,30 @@ Provides Intent DAG nodes, layer priority definitions,
 error hierarchy, and system feature detection.
 """
 
-from textile.core.definitions import shims
 from textile.core.definitions.errors import (
+    STRAND_EXEC_ERRORS,
     OTPChallengeRequiredError,
     PolicyViolationError,
     SandboxUnavailableError,
-    StrandCollisionError,
-    StrandNotFoundError,
-    StrandOperationalError,
     TextileError,
-    YarnNotFoundError,
 )
-from textile.core.definitions.layers import LayerTier, get_layer_info
-from textile.core.execution.validation import detects_native_ffi
+from textile.core.definitions.settings import (
+    YarnSettings,
+    dumps_toml,
+    generate_documented_toml,
+    get_settings_file_path,
+    get_user_yarn_settings,
+)
 
 __all__ = [
-    "LayerTier",
     "OTPChallengeRequiredError",
     "PolicyViolationError",
+    "STRAND_EXEC_ERRORS",
     "SandboxUnavailableError",
-    "StrandCollisionError",
-    "StrandNotFoundError",
-    "StrandOperationalError",
     "TextileError",
-    "YarnNotFoundError",
-    "detects_native_ffi",
-    "get_layer_info",
-    "shims",
+    "YarnSettings",
+    "dumps_toml",
+    "generate_documented_toml",
+    "get_settings_file_path",
+    "get_user_yarn_settings",
 ]

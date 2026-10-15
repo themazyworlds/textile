@@ -18,16 +18,11 @@ class FabricInstructions:
         return [strand.to_mcp_definition() for strand in active_strands]
 
     def build_instructions(self, active_yarns: dict[str, Yarn]) -> str:
-        """Deliver active strand tools, weft stream attunements, and security governance prompt text."""
-        weft_docs: list[str] = []
+        """Deliver active strand tools and security governance prompt text."""
         strand_docs: list[str] = []
 
         for name, yarn in active_yarns.items():
             pub_tag = f"[{yarn.tailor}/{name}]" if getattr(yarn, "tailor", None) else f"[{name}]"
-            for weft in yarn.get_wefts():
-                if weft.description:
-                    tag_prefix = weft.name.removeprefix("on_stream_").removeprefix("stream_")
-                    weft_docs.append(f"- `<{tag_prefix}:...>` ({weft.name}) {pub_tag}: {weft.description}")
             for s in yarn.get_strands():
                 if s.description:
                     strand_docs.append(f"- `{s.name}` {pub_tag}: {s.description}")
@@ -67,15 +62,6 @@ class FabricInstructions:
         )
         if strand_docs:
             header += "## Available Desktop Strands (Tools)\n" + "\n".join(strand_docs) + "\n\n"
-        if weft_docs:
-            header += (
-                "## Real-Time Streaming Semantic Attunements & Stream Directives\n"
-                "- Do NOT invoke discrete tool functions for actions covered by streaming tags.\n"
-                "- ALWAYS use inline semantic tags directly in your speech/output text stream.\n"
-                "- Inline stream tags are dynamically intercepted with zero latency and "
-                "automatically stripped before output synthesis.\n"
-                "Available stream tags:\n" + "\n".join(weft_docs) + "\n"
-            )
         return header
 
 

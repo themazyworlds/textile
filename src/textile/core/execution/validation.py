@@ -1,10 +1,9 @@
 """
-Textile Core Argument Validation, Schema Synthesis, and FFI Inspection.
+Textile Core Argument Validation and Schema Synthesis.
 """
 
 import logging
 import re
-import sys
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, create_model
@@ -12,52 +11,22 @@ from pydantic import BaseModel, Field, ValidationError, create_model
 logger = logging.getLogger(__name__)
 
 
-def detects_native_ffi(target: Any) -> bool:
-    """Detect if a class or module imports native C-FFI modules (ctypes, cffi)."""
-    try:
-        mod_name = target.__class__.__module__ if hasattr(target, "__class__") else getattr(target, "__module__", "")
-        if mod := sys.modules.get(mod_name):
-            for val in mod.__dict__.values():
-                if getattr(val, "__name__", "") in ("ctypes", "cffi", "_ctypes"):
-                    return True
-                if isinstance(val, type) and getattr(val, "__module__", "") in ("ctypes", "cffi", "_ctypes"):
-                    return True
-    except (AttributeError, TypeError, ValueError, RuntimeError) as e:
-        logger.debug(f"detects_native_ffi inspection error: {e}")
-    return False
-
-
 def schema_to_model(strand_name: str, parameters: dict[str, Any], required: list[str]) -> type[BaseModel]:
     """Dynamically synthesize a Pydantic BaseModel from JSON schema parameters."""
     fields: dict[str, Any] = {}
     type_map = {"string": str, "integer": int, "number": float, "boolean": bool, "array": list, "object": dict}
+    req_set = set(required)
     for p_name, p_spec in parameters.items():
         desc = p_spec.get("description", "")
         enum_vals = p_spec.get("enum")
         t_str = str(p_spec.get("type", "string")).lower()
         _literal_maker: Any = Literal
         field_type: Any = _literal_maker[tuple(enum_vals)] if enum_vals else type_map.get(t_str, Any)
-        if p_name in required:
+        if p_name in req_set:
             fields[p_name] = (field_type, Field(..., description=desc))
         else:
             fields[p_name] = (field_type | None, Field(default=None, description=desc))
     return create_model(f"{strand_name}_Args", **fields)
-
-
-def validate_strand_schema(strand_name: str, parameters: Any, required: Any) -> list[str]:
-    if not isinstance(parameters, dict):
-        return [f"Strand '{strand_name}' parameters must be a dictionary."]
-    valid_types = {"string", "number", "integer", "boolean", "array", "object"}
-    errors = [
-        f"Parameter '{p_name}' has invalid specification."
-        for p_name, p_spec in parameters.items()
-        if not isinstance(p_spec, dict) or str(p_spec.get("type", "")).lower() not in valid_types
-    ]
-    if isinstance(required, list):
-        for req in required:
-            if req not in parameters:
-                errors.append(f"Required field '{req}' not in parameters.")
-    return errors
 
 
 def _check_empty_required_args(
@@ -114,12 +83,13 @@ def validate_strand_arguments(
     """Strictly validates arguments using Pydantic v2."""
     model = schema_model
     if not model:
-        if not parameters:
-            return None, args
+        real_params = {k: v for k, v in (parameters or {}).items() if k != "otp"}
+        if not real_params:
+            return None, args.copy()
         try:
-            model = schema_to_model(strand_name, parameters, required or [])
+            model = schema_to_model(strand_name, parameters or {}, required or [])
         except AttributeError, TypeError, ValueError, KeyError, ValidationError:
-            return None, args
+            return None, args.copy()
 
     clean_args = args.copy()
     if empty_err := _check_empty_required_args(strand_name, clean_args, parameters, required):

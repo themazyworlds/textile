@@ -4,6 +4,7 @@ import unittest
 
 from mcp import ClientSession, types
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from needle import get_layer_info
 
 from textile import (
     LAYER_BASE,
@@ -12,7 +13,6 @@ from textile import (
     LAYER_SESSION_MANAGER,
     LAYER_USER_OVERRIDE,
 )
-from textile.core.definitions.layers import get_layer_info
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.twill import create_twill_server
 

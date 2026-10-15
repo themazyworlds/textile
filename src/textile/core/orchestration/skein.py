@@ -2,12 +2,9 @@
 Textile Skein - Layer 3 Symbolic Intent Compiler, Policy Engine, and Yarn Registry.
 """
 
-import contextlib
-import importlib
+import importlib.metadata
 import importlib.util
 import inspect
-import os
-import subprocess
 import sys
 import threading
 import tomllib
@@ -15,213 +12,21 @@ from pathlib import Path
 from typing import Any
 
 import orjson
-import platformdirs
-from needle import CapabilityTier, Strand, Yarn
-from needle import parse_capability_tier as _parse_tier
+from needle import Strand, Yarn
+from needle.errors import SAFE_EXCEPTIONS
 
-from textile.core.definitions.errors import SAFE_EXCEPTIONS, PolicyViolationError
-from textile.core.definitions.settings import generate_documented_toml
-from textile.core.execution.runner import PROBE_SCRIPT, execute_strand
+from textile.core.definitions.errors import PolicyViolationError
+from textile.core.definitions.settings import dumps_toml, generate_documented_toml
+from textile.core.orchestration.discovery import (
+    find_yarn_files,
+    get_yarn_search_paths,
+    try_probe_isolated_yarn,
+)
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
 
-__all__ = ["PolicyViolationError", "Skein", "skein"]
-
-
-def _format_toml_val(val: Any) -> str:
-    if isinstance(val, bool):
-        return "true" if val else "false"
-    if isinstance(val, (int, float)):
-        return str(val)
-    if isinstance(val, str):
-        escaped = val.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-        return f'"{escaped}"'
-    if isinstance(val, (list, tuple, set)):
-        items = ", ".join(_format_toml_val(x) for x in val)
-        return f"[{items}]"
-    if isinstance(val, dict):
-        items = ", ".join(f"{k} = {_format_toml_val(v)}" for k, v in val.items())
-        return f"{{{items}}}"
-    return f'"{str(val)}"'
-
-
-def _dumps_toml(data: dict[str, Any]) -> str:
-    lines: list[str] = [
-        "# Textile settings",
-        "# Edit any setting below to customize per-yarn configuration.",
-        "",
-    ]
-    top_level = [f"{k} = {_format_toml_val(v)}" for k, v in data.items() if not isinstance(v, dict)]
-    if top_level:
-        lines.extend(top_level)
-        lines.append("")
-
-    # 2. Table sections
-    for section, table in data.items():
-        if isinstance(table, dict):
-            lines.append(f"[{section}]")
-            for k, v in table.items():
-                lines.append(f"{k} = {_format_toml_val(v)}")
-            lines.append("")
-
-    return "\n".join(lines).strip() + "\n"
-
-
-def get_yarn_search_paths(config_dir: Path | None = None) -> list[Path]:
-    """Retrieve ordered list of filesystem search paths for yarn discovery using platformdirs."""
-    paths: list[Path] = []
-
-    # 1. Explicit environment variable override
-    env_paths = os.environ.get("TEXTILE_YARN_PATH")
-    if env_paths:
-        for p in env_paths.split(":"):
-            if p.strip():
-                paths.append(Path(p.strip()).expanduser().resolve())
-
-    # 2. User custom / override directory (~/.config/textile/yarns)
-    user_config = config_dir or (Path(platformdirs.user_config_dir("textile")) / "yarns")
-    paths.append(user_config.expanduser().resolve())
-
-    # 3. User installed plugins directory (~/.local/share/textile/yarns)
-    user_data = Path(platformdirs.user_data_dir("textile")) / "yarns"
-    paths.append(user_data.expanduser().resolve())
-
-    # 4. System-wide installed directories (/usr/local/share/textile/yarns, /usr/share/textile/yarns)
-    site_dirs = platformdirs.site_data_dir("textile", multipath=True)
-    for site_dir in site_dirs.split(":"):
-        if site_dir.strip():
-            paths.append((Path(site_dir.strip()) / "yarns").resolve())
-
-    # 5. Sibling textile-yarns repo or workspace dev directory (if running from git source tree)
-    with contextlib.suppress(Exception):
-        sibling_yarns = Path(__file__).resolve().parents[5] / "textile-yarns" / "yarns"
-        if sibling_yarns.exists():
-            paths.append(sibling_yarns.resolve())
-        repo_yarns = Path(__file__).resolve().parents[4] / "yarns"
-        if repo_yarns.exists():
-            paths.append(repo_yarns.resolve())
-
-    # Deduplicate while preserving priority order
-    seen: set[Path] = set()
-    unique_paths: list[Path] = []
-    for path in paths:
-        if path not in seen:
-            seen.add(path)
-            unique_paths.append(path)
-
-    return unique_paths
-
-
-class ProbedYarn(Yarn):
-    """Dynamically created Yarn representing a capability package probed in an isolated venv."""
-
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        layer: int,
-        source_file: Path,
-        meta: dict[str, Any],
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(name=name, description=description, layer=layer, **kwargs)
-        self._source_file = source_file
-        self._class_name = meta.get("class_name", self.__class__.__name__)
-        self._probed_strands_data = meta.get("strands", [])
-        self._cached_strands: list[Strand] | None = None
-
-    def get_strands(self) -> list[Strand]:
-        if self._cached_strands is not None:
-            return self._cached_strands
-
-        strands: list[Strand] = []
-        for s_data in self._probed_strands_data:
-            s_name = s_data["name"]
-            tier_val = _parse_tier(s_data.get("tier", CapabilityTier.INTERACT), s_name)
-            params = s_data.get("parameters", {})
-            req_list = s_data.get("required", [])
-            strand_desc = s_data.get("description", s_name)
-            strand_res = s_data.get("resources", list(self.resources))
-            no_timeout = bool(s_data.get("no_timeout", False))
-            timeout = None if no_timeout else s_data.get("timeout", 30.0)
-
-            async def _handler(args: dict[str, Any], _sname=s_name, _tier=tier_val, _timeout=timeout) -> str:
-                return execute_strand(
-                    self,
-                    _sname,
-                    args,
-                    tier=_tier,
-                    timeout=_timeout,
-                )
-
-            strands.append(
-                Strand(
-                    name=s_name,
-                    description=strand_desc,
-                    parameters=params,
-                    required=req_list,
-                    handler=_handler,
-                    raw_handler=_handler,
-                    capability=s_data.get("capability"),
-                    tier=tier_val,
-                    resources=strand_res,
-                )
-            )
-
-        self._cached_strands = strands
-        return strands
-
-
-def _get_probe_cache_file() -> Path:
-    cache_dir = Path(platformdirs.user_cache_dir("textile"))
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / "probed_yarns_cache.json"
-
-
-def _read_probe_cache() -> dict[str, Any]:
-    cache_file = _get_probe_cache_file()
-    if not cache_file.exists():
-        return {}
-    with contextlib.suppress(OSError, orjson.JSONDecodeError):
-        return orjson.loads(cache_file.read_bytes())
-    return {}
-
-
-def _write_probe_cache(cache: dict[str, Any]) -> None:
-    cache_file = _get_probe_cache_file()
-    with contextlib.suppress(OSError, orjson.JSONEncodeError):
-        tmp_file = cache_file.with_suffix(".tmp")
-        tmp_file.write_bytes(orjson.dumps(cache, option=orjson.OPT_INDENT_2))
-        tmp_file.replace(cache_file)
-
-
-def _find_yarn_files(target_dir: Path) -> list[Path]:
-    """Discover Yarn Python entrypoint files in target_dir without scanning site-packages."""
-    candidates: list[Path] = []
-    with contextlib.suppress(OSError):
-        for entry in target_dir.iterdir():
-            if entry.name.startswith((".", "_")):
-                continue
-            if entry.is_file() and entry.suffix == ".py":
-                candidates.append(entry)
-            elif entry.is_dir() and entry.name not in (
-                ".venv",
-                "venv",
-                "__pycache__",
-                "site-packages",
-                "node_modules",
-                "dist",
-                "build",
-            ):
-                named_py = entry / f"{entry.name}.py"
-                if named_py.is_file():
-                    candidates.append(named_py)
-                else:
-                    init_py = entry / "__init__.py"
-                    if init_py.is_file():
-                        candidates.append(init_py)
-    return candidates
+__all__ = ["PolicyViolationError", "Skein", "get_yarn_search_paths", "skein"]
 
 
 class Skein:
@@ -254,83 +59,21 @@ class Skein:
                 except SAFE_EXCEPTIONS as e:
                     logger.debug("skein.yarn_instantiation_failed", yarn_class=attr.__name__, error=str(e))
 
-    def _try_probe_isolated_yarn(self, py_file: Path, override: bool) -> bool:
-        """Attempt to discover Yarn using its private virtualenv probe with schema disk cache."""
-        yarn_venv_py = py_file.parent / ".venv" / "bin" / "python"
-        if not yarn_venv_py.exists():
-            return False
-
-        resolved_path = py_file.resolve()
-        path_str = str(resolved_path)
-        try:
-            mtime = resolved_path.stat().st_mtime
-        except OSError:
-            return False
-
-        cache = _read_probe_cache()
-        cached_entry = cache.get(path_str)
-        if cached_entry and cached_entry.get("mtime") == mtime and "probe_data" in cached_entry:
-            data = cached_entry["probe_data"]
-            probed_inst = ProbedYarn(
-                name=data["name"],
-                description=data["description"],
-                layer=data["layer"],
-                source_file=resolved_path,
-                meta=data,
-                tailor=data.get("tailor", "textile"),
-                version=data.get("version", "1.0.0"),
-                resources=data.get("resources", []),
-            )
-            with self._lock:
-                if override or probed_inst.name not in self.all_yarns:
-                    self.all_yarns[probed_inst.name] = probed_inst
-            return True
-
-        try:
-            res = subprocess.run(
-                [
-                    str(yarn_venv_py),
-                    str(PROBE_SCRIPT),
-                    path_str,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10.0,
-                check=False,
-            )
-            registered_any = False
-            for line in res.stdout.splitlines():
-                if line.startswith("__TEXTILE_PROBE_JSON__:"):
-                    raw_json = line.removeprefix("__TEXTILE_PROBE_JSON__:")
-                    data = orjson.loads(raw_json)
-                    probed_inst = ProbedYarn(
-                        name=data["name"],
-                        description=data["description"],
-                        layer=data["layer"],
-                        source_file=resolved_path,
-                        meta=data,
-                        tailor=data.get("tailor", "textile"),
-                        version=data.get("version", "1.0.0"),
-                        resources=data.get("resources", []),
-                    )
-                    with self._lock:
-                        if override or probed_inst.name not in self.all_yarns:
-                            self.all_yarns[probed_inst.name] = probed_inst
-                    cache[path_str] = {"mtime": mtime, "probe_data": data}
-                    _write_probe_cache(cache)
-                    registered_any = True
-            return registered_any
-        except (subprocess.SubprocessError, OSError, orjson.JSONDecodeError) as e:
-            logger.debug("skein.yarn_venv_probe_failed", path=str(py_file), error=str(e))
-            return False
-
     def load_yarns_from_dir(self, target_dir: Path, override: bool = False) -> None:
         """Discover and register Yarns from a target directory."""
         if not target_dir.exists() or not target_dir.is_dir():
             return
 
-        for py_file in _find_yarn_files(target_dir):
-            # 1. First try fast in-process import
+        for py_file in find_yarn_files(target_dir):
+            # 1. Prefer isolated venv probe with schema disk cache when private venv exists
+            probed_inst = try_probe_isolated_yarn(py_file)
+            if probed_inst is not None:
+                with self._lock:
+                    if override or probed_inst.name not in self.all_yarns:
+                        self.all_yarns[probed_inst.name] = probed_inst
+                continue
+
+            # 2. Otherwise try in-process import
             try:
                 rel_stem = py_file.relative_to(target_dir).with_suffix("").as_posix().replace("/", "_")
                 mod_name = f"textile_yarn_{rel_stem}"
@@ -344,14 +87,34 @@ class Skein:
             except SAFE_EXCEPTIONS as e:
                 logger.debug("skein.yarn_inprocess_load_failed", path=str(py_file), error=str(e))
 
-            # 2. Fall back to isolated venv probe if in-process import failed or requires external packages
-            self._try_probe_isolated_yarn(py_file, override)
+    def load_entry_point_yarns(self) -> None:
+        """Discover and register Yarns via standard PEP 621 entry points (textile.yarns)."""
+        try:
+            discovered = importlib.metadata.entry_points(group="textile.yarns")
+        except SAFE_EXCEPTIONS as e:
+            logger.debug("skein.entry_points_query_failed", error=str(e))
+            return
+
+        for ep in discovered:
+            try:
+                loaded = ep.load()
+                if isinstance(loaded, type) and issubclass(loaded, Yarn) and loaded is not Yarn:
+                    instance = loaded()
+                    with self._lock:
+                        if instance.name not in self.all_yarns:
+                            self.all_yarns[instance.name] = instance
+                elif isinstance(loaded, Yarn):
+                    with self._lock:
+                        if loaded.name not in self.all_yarns:
+                            self.all_yarns[loaded.name] = loaded
+            except SAFE_EXCEPTIONS as e:
+                logger.debug("skein.entry_point_load_failed", name=ep.name, error=str(e))
 
     def load_yarns(self) -> None:
-        """Discover and register all Yarns across XDG search paths."""
-        # Scan all standard search paths (in reverse order so higher-priority paths override lower-priority)
-        for search_path in reversed(self.get_search_paths()):
-            self.load_yarns_from_dir(search_path, override=True)
+        """Discover and register all Yarns across entry points and XDG search paths."""
+        self.load_entry_point_yarns()
+        for search_path in self.get_search_paths():
+            self.load_yarns_from_dir(search_path, override=False)
 
     def initialize(self) -> None:
         with self._lock:
@@ -364,6 +127,12 @@ class Skein:
     def register_yarn(self, yarn: Yarn) -> None:
         with self._lock:
             self.all_yarns[yarn.name] = yarn
+            if yarn.name in self._settings:
+                if hasattr(yarn, "set_user_settings"):
+                    yarn.set_user_settings(self._settings[yarn.name])
+                else:
+                    yarn._user_settings = dict(self._settings[yarn.name])
+                    yarn.reload_settings()
 
     def unregister_yarn(self, name: str) -> Yarn | None:
         with self._lock:
@@ -450,7 +219,12 @@ class Skein:
                 self._settings.pop(name, None)
             self._save_settings()
             if name in self.all_yarns:
-                self.all_yarns[name].reload_settings()
+                yarn_instance = self.all_yarns[name]
+                if hasattr(yarn_instance, "set_user_settings"):
+                    yarn_instance.set_user_settings(settings)
+                else:
+                    yarn_instance._user_settings = dict(settings)
+                    yarn_instance.reload_settings()
 
     def get_all_settings(self) -> dict[str, Any]:
         self.initialize()
@@ -493,7 +267,7 @@ class Skein:
             if schemas:
                 content = generate_documented_toml(schemas, current_settings=self._settings)
             else:
-                content = _dumps_toml(self._settings)
+                content = dumps_toml(self._settings)
 
             tmp_file.write_text(content, encoding="utf-8")
             tmp_file.replace(self._settings_file)
