@@ -134,10 +134,10 @@ Yarns are discovered dynamically using ordered XDG-compliant search locations:
 
 ## Authoring Capability Yarns
 
-To author new capability packages, use the standalone SDK: [**Needle**](../textile-needle).
+To author new capability packages, use the standalone SDK: [**Needle**](https://github.com/themazyworlds/textile-needle).
 
 ```bash
 uv add textile-needle
 ```
 
-See the [Needle documentation](../textile-needle/README.md) for `@strand` and `Yarn` contracts.
+See the [Needle documentation](https://github.com/themazyworlds/textile-needle) for `@strand` and `Yarn` contracts.
