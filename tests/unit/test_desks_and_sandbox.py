@@ -1,5 +1,5 @@
 """
-Unit tests for Textile Landlock & Bubblewrap Sandbox.
+Unit tests for Textile Bubblewrap Sandbox.
 """
 
 import os
@@ -11,16 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from textile.core.security.sandbox import BubblewrapSandbox, LandlockSandbox
-
-
-class TestLandlockSandbox:
-    def test_landlock_is_supported_on_linux(self):
-        if sys.platform == "linux":
-            # On Linux kernels >= 5.13 Landlock is supported
-            assert LandlockSandbox.is_supported() is True
-        else:
-            assert LandlockSandbox.is_supported() is False
+from textile.core.security.sandbox import BubblewrapSandbox
 
 
 class TestBubblewrapSandbox:

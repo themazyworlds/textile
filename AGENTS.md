@@ -31,7 +31,7 @@ All tools (Strands) are categorized into explicit security tiers:
 
 * **`OBSERVE`**: Read-only inspection (window lists, hardware sensors, system logs, active workspaces). Executes without user disruption.
 * **`INTERACT`**: Non-destructive UI actions (focusing windows, switching workspaces, moving windows, setting timers).
-* **`MUTATE` / `PRIVILEGED` / `SYSTEM_EXEC`**: State-altering and privileged operations (session finalization, root execution, process termination). May require a single-use 4-digit Visual OTP.
+* **`MUTATE` / `PRIVILEGED` / `SYSTEM_EXEC`**: State-altering and privileged operations (session finalization, root execution, process termination). May require a single-use 6-digit 2FA code.
 
 ---
 

@@ -65,7 +65,7 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
 
     params["otp"] = {
         "type": "string",
-        "description": "Optional single-use 4-digit Visual OTP confirmation code displayed on user screen",
+        "description": "Optional single-use 6-digit 2FA confirmation code displayed on user screen",
     }
 
     runner = execute_strand
@@ -83,6 +83,10 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
         runner=runner,
     )
 
+    s_reason = getattr(method, "_strand_reason", None)
+    s_fallback = getattr(method, "_strand_fallback", None)
+    s_resources = getattr(method, "_strand_resources", list(getattr(yarn, "resources", [])))
+
     return Strand(
         name=strand_name,
         description=strand_desc,
@@ -93,6 +97,11 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
         capability=strand_cap,
         args_schema=None,
         tier=tier_val,
+        resources=s_resources,
+        timeout=timeout,
+        no_timeout=no_timeout,
+        reason=s_reason,
+        fallback=s_fallback,
     )
 
 
@@ -107,7 +116,7 @@ def bind_strand_to_core(yarn: Any, strand: Strand) -> Strand:
     if "otp" not in params:
         params["otp"] = {
             "type": "string",
-            "description": "Optional single-use 4-digit Visual OTP confirmation code displayed on user screen",
+            "description": "Optional single-use 6-digit 2FA confirmation code displayed on user screen",
         }
 
     tier_val = _parse_tier(strand.tier, strand.name)
@@ -138,8 +147,11 @@ def bind_strand_to_core(yarn: Any, strand: Strand) -> Strand:
         capability=strand.capability,
         args_schema=strand.args_schema,
         tier=tier_val,
+        resources=list(strand.resources) if strand.resources else [],
         timeout=timeout,
         no_timeout=strand.no_timeout,
+        reason=strand.reason,
+        fallback=strand.fallback,
     )
 
 

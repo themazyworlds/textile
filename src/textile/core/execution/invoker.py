@@ -57,7 +57,7 @@ def _build_args_model(
             str | None,
             Field(
                 default=None,
-                description="Optional single-use 4-digit Visual OTP confirmation code displayed on user screen",
+                description="Optional single-use 6-digit 2FA confirmation code displayed on user screen",
             ),
         )
 

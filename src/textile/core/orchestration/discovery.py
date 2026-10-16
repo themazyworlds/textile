@@ -81,6 +81,11 @@ class ProbedYarn(Yarn):
                     raw_handler=_handler,
                     capability=s_data.get("capability"),
                     tier=tier_val,
+                    resources=list(s_data.get("resources", [])),
+                    timeout=timeout,
+                    no_timeout=no_timeout,
+                    reason=s_data.get("reason"),
+                    fallback=s_data.get("fallback"),
                 )
             )
 
