@@ -37,4 +37,5 @@ KMS
 .cursor/chat/
 .cursor/rules/*.local.mdc
 .github/personal-instructions.md
+.serena/
 

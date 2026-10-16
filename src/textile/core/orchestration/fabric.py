@@ -7,7 +7,7 @@ Layer 0 (Core Fabric).
 import logging
 from typing import Any
 
-from needle import CapabilityTier, Yarn, strand
+from needle import Yarn, strand
 
 from textile.core.orchestration.skein import skein
 from textile.core.telemetry.elastic import elastic
@@ -28,17 +28,17 @@ class CoreFabricYarn(Yarn):
     def is_available(self) -> bool:
         return True
 
-    @strand(tier=CapabilityTier.OBSERVE)
+    @strand.observe
     def textile_get_state(self) -> dict[str, Any]:
         """Get full snapshot of the sensory blackboard state slots and notices."""
         return elastic.get_state()
 
-    @strand(tier=CapabilityTier.OBSERVE)
+    @strand.observe
     def textile_get_engine_state(self) -> dict[str, Any]:
         """Get the core engine execution state (active running tasks and execution history)."""
         return core_tapestry.get_state()
 
-    @strand(tier=CapabilityTier.MUTATE)
+    @strand.mutate
     def cancel_live_task(self, strand_name: str) -> str:
         """Cancel/terminate a currently running strand execution by its task ID or strand name.
 

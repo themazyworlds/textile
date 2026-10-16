@@ -16,6 +16,7 @@ import orjson
 from needle import CapabilityTier
 
 from textile.core.definitions.errors import SandboxUnavailableError
+from textile.core.security.policy import get_tier_policy
 from textile.core.security.sandbox import BubblewrapSandbox
 
 
@@ -80,7 +81,8 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
         spec.tier_str,
     ]
 
-    if spec.tier_str.upper() != "PRIVILEGED":
+    policy = get_tier_policy(spec.tier_str)
+    if policy.requires_sandbox:
         if not BubblewrapSandbox.is_available():
             raise SandboxUnavailableError(
                 "Bubblewrap ('bwrap') is not installed or operational on this system. "
@@ -88,7 +90,7 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
             )
         cmd = BubblewrapSandbox.wrap_command(
             cmd,
-            tier=spec.tier_str,
+            writable=policy.workspace_writable,
             env=env,
             workspace_root=spec.cwd,
             resources=getattr(spec.yarn, "resources", []),

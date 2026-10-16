@@ -21,6 +21,11 @@ lazy from textile.core.security.context import (
     global_otp_manager,
     verify_security_policy,
 )
+lazy from textile.core.security.policy import (
+    TIER_POLICIES,
+    TierPolicy,
+    get_tier_policy,
+)
 
 __all__ = [
     "AccessBoundaryError",
@@ -29,6 +34,9 @@ __all__ = [
     "PolicyViolationError",
     "ScopedPath",
     "SessionProcessGuard",
+    "TIER_POLICIES",
+    "TierPolicy",
+    "get_tier_policy",
     "get_totp_secret",
     "get_totp_uri",
     "global_otp_manager",

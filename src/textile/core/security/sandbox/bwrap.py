@@ -172,23 +172,19 @@ class BubblewrapSandbox:
     @staticmethod
     def wrap_command(
         cmd: list[str],
-        tier: str,
         *,
+        writable: bool = False,
         env: dict[str, str] | None = None,
         workspace_root: str | Path | None = None,
         resources: list[str] | None = None,
     ) -> list[str]:
-        """Wrap command in a bwrap sandbox container tailored to the capability tier."""
+        """Wrap command in a bwrap sandbox container."""
         bwrap_path = shutil.which("bwrap")
-        tier_upper = tier.upper()
-        if "PRIVILEGED" in tier_upper:
-            return cmd
-
         if not bwrap_path:
             raise SandboxUnavailableError("bwrap binary not found in system PATH.")
 
         target_env = env if env is not None else dict(os.environ)
-        is_writable = "MUTATE" in tier_upper
+        is_writable = writable
         ws = Path(workspace_root or Path.cwd()).resolve()
         container_tmp = os.path.join("/", "tmp")
         container_home = os.path.join("/", "home")

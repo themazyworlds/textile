@@ -4,14 +4,13 @@ Organized into 5 functional domains: orchestration, security, telemetry, executi
 """
 
 from needle import (
+    DEFAULT_LAYER,
     CapabilityTier,
     EventOptions,
-    LayerTier,
     Strand,
     StrandNotFoundError,
     Yarn,
     YarnNotFoundError,
-    get_layer_info,
     strand,
 )
 lazy from needle.guardrails import (
@@ -44,6 +43,11 @@ lazy from textile.core.security.context import (
     global_otp_manager,
     verify_security_policy,
 )
+lazy from textile.core.security.policy import (
+    TIER_POLICIES,
+    TierPolicy,
+    get_tier_policy,
+)
 
 # Telemetry
 lazy from textile.core.telemetry.blackboard import SensoryTapestry, sensory_tapestry
@@ -51,6 +55,7 @@ lazy from textile.core.telemetry.elastic import ElasticEngine, EventFrame, Event
 lazy from textile.core.telemetry.ledger import CoreTapestry, core_tapestry
 
 __all__ = [
+    "DEFAULT_LAYER",
     "AccessBoundaryError",
     "CapabilityTier",
     "CoreTapestry",
@@ -59,7 +64,6 @@ __all__ = [
     "EventOptions",
     "EventUrgency",
     "InvokerConfig",
-    "LayerTier",
     "Loom",
     "OTPChallengeRequiredError",
     "OTPManager",
@@ -70,14 +74,16 @@ __all__ = [
     "Skein",
     "Strand",
     "StrandNotFoundError",
+    "TIER_POLICIES",
     "TextileError",
+    "TierPolicy",
     "Yarn",
     "YarnNotFoundError",
     "core_fabric_yarn",
     "core_tapestry",
     "create_twill_server",
     "elastic",
-    "get_layer_info",
+    "get_tier_policy",
     "get_totp_secret",
     "get_totp_uri",
     "global_otp_manager",

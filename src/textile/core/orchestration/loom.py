@@ -11,8 +11,7 @@ import time
 import uuid
 from typing import Any
 
-from needle import LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE
-from needle import Strand, Yarn
+from needle import DEFAULT_LAYER, Strand, Yarn
 from needle.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 
 from textile.core.execution.reflector import reflect_strands
@@ -102,7 +101,7 @@ class Loom:
         new_cap_map: dict[str, tuple[Strand, Yarn]] = {}
 
         # Higher layer yarns override lower layers
-        sorted_yarns = sorted(new_active.values(), key=lambda p: getattr(p, "layer", LAYER_BASE))
+        sorted_yarns = sorted(new_active.values(), key=lambda p: getattr(p, "layer", DEFAULT_LAYER))
         for yarn in sorted_yarns:
             try:
                 self._register_yarn_strands(yarn, new_strands, new_strand_map, new_cap_map)
@@ -183,7 +182,7 @@ class Loom:
             return f"Error: {val_err}"
         clean_args = coerced
 
-        verify_security_policy(strand.tier, strand.name, otp=effective_otp)
+        verify_security_policy(strand.tier, strand.name, otp=effective_otp, reason=strand.reason)
 
         effective_caller = caller or os.getenv("TEXTILE_CALLER", "")
         task_id = str(uuid.uuid4())[:8]
@@ -209,6 +208,9 @@ class Loom:
             err = "Security Policy Gate Failure"
             raise
         except Exception as e:
+            if strand.fallback is not None:
+                logger.info("loom.strand_fallback", strand=strand_name, fallback=strand.fallback)
+                return str(strand.fallback) if not isinstance(strand.fallback, str) else strand.fallback
             success = False
             err = str(e)
             raise StrandOperationalError(

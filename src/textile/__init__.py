@@ -3,21 +3,7 @@ Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 """
 
 from needle import (
-    LAYER_COMPOSITOR_DE_THRESHOLD as LAYER_COMPOSITOR_DE,
-)
-from needle import (
-    LAYER_CORE_POSIX_THRESHOLD as LAYER_BASE,
-)
-from needle import (
-    LAYER_DESKTOP_PROTOCOL_THRESHOLD as LAYER_DESKTOP_PROTOCOL,
-)
-from needle import (
-    LAYER_SESSION_MANAGER_THRESHOLD as LAYER_SESSION_MANAGER,
-)
-from needle import (
-    LAYER_USER_OVERRIDE_THRESHOLD as LAYER_USER_OVERRIDE,
-)
-from needle import (
+    DEFAULT_LAYER,
     CapabilityTier,
     Strand,
     StrandCollisionError,
@@ -45,11 +31,7 @@ lazy from textile.core.telemetry.elastic import EventFrame, EventUrgency, elasti
 lazy from textile.core.telemetry.ledger import core_tapestry
 
 __all__ = [
-    "LAYER_BASE",
-    "LAYER_COMPOSITOR_DE",
-    "LAYER_DESKTOP_PROTOCOL",
-    "LAYER_SESSION_MANAGER",
-    "LAYER_USER_OVERRIDE",
+    "DEFAULT_LAYER",
     "CapabilityTier",
     "EventFrame",
     "EventUrgency",

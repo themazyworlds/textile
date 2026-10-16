@@ -19,18 +19,20 @@ from textile.core.definitions.errors import (
     OTPChallengeRequiredError,
     PolicyViolationError,
 )
+from textile.core.security.policy import get_tier_policy
 from textile.core.telemetry.database import TapestryDatabase
 
 
-def _display_totp_osd(code: str, strand_name: str) -> None:
+def _display_totp_osd(code: str, strand_name: str, reason: str | None = None) -> None:
     """Displays 2FA TOTP code on desktop screen via native D-Bus desktop-notifier."""
 
     async def _send() -> None:
         with contextlib.suppress(OSError, RuntimeError):
             notifier = DesktopNotifier(app_name="Textile")
+            msg = f"Strand: {strand_name}\nReason: {reason}" if reason else f"Strand: {strand_name}"
             await notifier.send(
                 title=f"Textile 2FA: {code}",
-                message=f"Strand: {strand_name}",
+                message=msg,
                 urgency=Urgency.Critical,
                 timeout=30,
             )
@@ -127,10 +129,11 @@ def verify_security_policy(
     tier: Any,
     strand_name: str,
     otp: str | None = None,
+    reason: str | None = None,
 ) -> bool:
     """Canonical security policy gate for 2FA TOTP."""
-    tier_val = tier.value if hasattr(tier, "value") else str(tier).lower()
-    if tier_val in {"observe", "interact"}:
+    policy = get_tier_policy(tier)
+    if not policy.requires_2fa:
         return False
 
     if otp:
@@ -141,5 +144,5 @@ def verify_security_policy(
         )
 
     code = pyotp.TOTP(global_otp_manager._get_secret()).now()
-    _display_totp_osd(code, strand_name)
+    _display_totp_osd(code, strand_name, reason=reason)
     raise OTPChallengeRequiredError(strand_name=strand_name)

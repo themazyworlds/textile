@@ -4,66 +4,54 @@ import unittest
 
 from mcp import ClientSession, types
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from needle import get_layer_info
+from needle import CapabilityTier
 
-from textile import (
-    LAYER_BASE,
-    LAYER_COMPOSITOR_DE,
-    LAYER_DESKTOP_PROTOCOL,
-    LAYER_SESSION_MANAGER,
-    LAYER_USER_OVERRIDE,
-)
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.twill import create_twill_server
+from textile.core.security.policy import get_tier_policy
 
 
-class TestLayerHierarchy(unittest.TestCase):
-    """Unit tests for get_layer_info() layer metadata resolution."""
+class TestTierPolicy(unittest.TestCase):
+    """Unit tests for TierPolicy security matrix and get_tier_policy()."""
 
-    def test_core_posix_layer(self):
-        t = get_layer_info(LAYER_BASE).to_dict()
-        self.assertEqual(t["name"], "Core POSIX")
-        self.assertEqual(t["level"], 1)
+    def test_observe_tier_policy(self):
+        policy = get_tier_policy(CapabilityTier.OBSERVE)
+        self.assertFalse(policy.requires_2fa)
+        self.assertTrue(policy.requires_sandbox)
+        self.assertFalse(policy.workspace_writable)
+        self.assertEqual(policy.default_timeout, 10.0)
 
-    def test_below_base_falls_back_to_core_posix(self):
-        t = get_layer_info(1).to_dict()
-        self.assertEqual(t["level"], 1)
+    def test_interact_tier_policy(self):
+        policy = get_tier_policy("interact")
+        self.assertFalse(policy.requires_2fa)
+        self.assertTrue(policy.requires_sandbox)
+        self.assertFalse(policy.workspace_writable)
+        self.assertEqual(policy.default_timeout, 15.0)
 
-    def test_desktop_protocol_layer(self):
-        t = get_layer_info(LAYER_DESKTOP_PROTOCOL).to_dict()
-        self.assertEqual(t["name"], "Desktop Protocol")
-        self.assertEqual(t["level"], 2)
+    def test_mutate_tier_policy(self):
+        policy = get_tier_policy(CapabilityTier.MUTATE)
+        self.assertTrue(policy.requires_2fa)
+        self.assertTrue(policy.requires_sandbox)
+        self.assertTrue(policy.workspace_writable)
+        self.assertEqual(policy.default_timeout, 60.0)
 
-    def test_compositor_de_layer(self):
-        t = get_layer_info(LAYER_COMPOSITOR_DE).to_dict()
-        self.assertEqual(t["name"], "Compositor / DE")
-        self.assertEqual(t["level"], 3)
+    def test_privileged_tier_policy(self):
+        policy = get_tier_policy("privileged")
+        self.assertTrue(policy.requires_2fa)
+        self.assertFalse(policy.requires_sandbox)
+        self.assertTrue(policy.workspace_writable)
+        self.assertEqual(policy.default_timeout, 300.0)
 
-    def test_session_manager_layer(self):
-        t = get_layer_info(LAYER_SESSION_MANAGER).to_dict()
-        self.assertEqual(t["name"], "Session Manager")
-        self.assertEqual(t["level"], 4)
+    def test_system_exec_tier_policy(self):
+        policy = get_tier_policy(CapabilityTier.SYSTEM_EXEC)
+        self.assertTrue(policy.requires_2fa)
+        self.assertTrue(policy.requires_sandbox)
+        self.assertFalse(policy.workspace_writable)
+        self.assertEqual(policy.default_timeout, 120.0)
 
-    def test_user_override_layer(self):
-        t = get_layer_info(LAYER_USER_OVERRIDE).to_dict()
-        self.assertEqual(t["name"], "User Override")
-        self.assertEqual(t["level"], 5)
-
-    def test_above_user_override(self):
-        t = get_layer_info(9999).to_dict()
-        self.assertEqual(t["level"], 5)
-
-    def test_layer_ordering(self):
-        """Higher numeric layer must always produce a higher or equal level."""
-        layers = [
-            LAYER_BASE,
-            LAYER_DESKTOP_PROTOCOL,
-            LAYER_COMPOSITOR_DE,
-            LAYER_SESSION_MANAGER,
-            LAYER_USER_OVERRIDE,
-        ]
-        levels = [get_layer_info(p).level for p in layers]
-        self.assertEqual(levels, sorted(levels))
+    def test_invalid_tier_fails_closed(self):
+        with self.assertRaises(ValueError):
+            get_tier_policy("invalid_untrusted_tier")
 
 
 class TestTwillServer(unittest.TestCase):

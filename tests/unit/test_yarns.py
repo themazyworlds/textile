@@ -245,15 +245,15 @@ class TestYarnArchitecture(unittest.TestCase):
             def is_available(self):
                 return True
 
-            @strand(description="Read telemetry", tier="observe")
+            @strand.observe(description="Read telemetry")
             def read_stat(self) -> str:
                 return "stat_ok"
 
-            @strand(description="Elevated command execution", tier="privileged")
+            @strand.privileged(description="Elevated command execution")
             def admin_task(self) -> str:
                 return "admin_ok"
 
-            @strand(description="Custom command runner", tier="system_exec")
+            @strand.system_exec(description="Custom command runner")
             def exec_task(self) -> str:
                 return "exec_ok"
 

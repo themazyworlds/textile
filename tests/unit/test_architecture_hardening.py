@@ -53,7 +53,7 @@ class TestArchitectureHardening(unittest.TestCase):
 
     def test_sandbox_fail_closed_when_bwrap_missing(self):
         with patch("shutil.which", return_value=None), self.assertRaises(SandboxUnavailableError):
-            BubblewrapSandbox.wrap_command(["python", "-c", "print(1)"], tier="MUTATE")
+            BubblewrapSandbox.wrap_command(["python", "-c", "print(1)"], writable=True)
 
     def test_isolated_strand_fail_closed_when_bwrap_unavailable(self):
         mock_yarn = MagicMock()
