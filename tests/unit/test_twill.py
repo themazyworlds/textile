@@ -4,7 +4,6 @@ import unittest
 
 from mcp import ClientSession, types
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from needle import CapabilityTier
 
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.twill import create_twill_server
@@ -15,7 +14,7 @@ class TestTierPolicy(unittest.TestCase):
     """Unit tests for TierPolicy security matrix and get_tier_policy()."""
 
     def test_observe_tier_policy(self):
-        policy = get_tier_policy(CapabilityTier.OBSERVE)
+        policy = get_tier_policy("observe")
         self.assertFalse(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertFalse(policy.workspace_writable)
@@ -29,7 +28,7 @@ class TestTierPolicy(unittest.TestCase):
         self.assertEqual(policy.default_timeout, 15.0)
 
     def test_mutate_tier_policy(self):
-        policy = get_tier_policy(CapabilityTier.MUTATE)
+        policy = get_tier_policy("mutate")
         self.assertTrue(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertTrue(policy.workspace_writable)
@@ -43,7 +42,7 @@ class TestTierPolicy(unittest.TestCase):
         self.assertEqual(policy.default_timeout, 300.0)
 
     def test_system_exec_tier_policy(self):
-        policy = get_tier_policy(CapabilityTier.SYSTEM_EXEC)
+        policy = get_tier_policy("system_exec")
         self.assertTrue(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertFalse(policy.workspace_writable)

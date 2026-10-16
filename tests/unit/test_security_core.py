@@ -10,7 +10,7 @@ from typing import Any
 import pyotp
 import pytest
 
-from textile import CapabilityTier, Strand, Yarn
+from textile import Strand, Yarn
 from textile.core.orchestration.loom import loom
 from textile.core.orchestration.skein import skein
 from textile.core.security.context import (
@@ -67,7 +67,7 @@ class MockElevatedYarn(Yarn):
             Strand(
                 name="mock_privileged_install",
                 description="Mock install",
-                tier=CapabilityTier.PRIVILEGED,
+                tier="privileged",
                 parameters={"packages": {"type": "string", "description": "Package name"}},
                 handler=_dummy_install,
                 raw_handler=_dummy_install,
@@ -90,7 +90,7 @@ class MockValidatedYarn(Yarn):
             Strand(
                 name="mock_strict_strand",
                 description="Mock strict strand",
-                tier=CapabilityTier.MUTATE,
+                tier="mutate",
                 parameters={"target": {"type": "string", "description": "Target path"}},
                 required=["target"],
                 handler=_dummy_fn,
@@ -105,7 +105,7 @@ class TestSecurityPolicyGate:
 
     def test_observe_tier_allows_without_otp(self):
         # OBSERVE tier executes freely
-        verify_security_policy(CapabilityTier.OBSERVE, "sensors_get_telemetry")
+        verify_security_policy("observe", "sensors_get_telemetry")
 
     def test_mutate_tier_requires_2fa(self):
         strand = "file_op"
@@ -115,16 +115,16 @@ class TestSecurityPolicyGate:
 
         # Without 2FA code, raises OTPChallengeRequiredError
         with pytest.raises(OTPChallengeRequiredError) as exc_info:
-            verify_security_policy(CapabilityTier.MUTATE, strand)
+            verify_security_policy("mutate", strand)
 
         assert exc_info.value.strand_name == strand
 
         # With correct 2FA code, passes cleanly
-        assert verify_security_policy(CapabilityTier.MUTATE, strand, otp=code) is True
+        assert verify_security_policy("mutate", strand, otp=code) is True
 
         # Replaying the same code fails
         with pytest.raises(PolicyViolationError):
-            verify_security_policy(CapabilityTier.MUTATE, strand, otp=code)
+            verify_security_policy("mutate", strand, otp=code)
 
     def test_otp_drift_and_monotonic_replay_protection(self):
         secret = global_otp_manager._get_secret()
@@ -155,9 +155,9 @@ class TestSecurityPolicyGate:
         code = totp.now()
 
         with pytest.raises(OTPChallengeRequiredError):
-            verify_security_policy(CapabilityTier.PRIVILEGED, strand)
+            verify_security_policy("privileged", strand)
 
-        assert verify_security_policy(CapabilityTier.PRIVILEGED, strand, otp=code) is True
+        assert verify_security_policy("privileged", strand, otp=code) is True
 
     @pytest.mark.asyncio
     async def test_loom_unmasked_error_propagation(self):

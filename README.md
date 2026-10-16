@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/themazyworlds/textile/actions/workflows/ci.yml/badge.svg)](https://github.com/themazyworlds/textile/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/themazyworlds/textile.svg)](LICENSE)
-[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.15+](https://img.shields.io/badge/python-3.15%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type checked: Pyright](https://img.shields.io/badge/type%20checked-pyright-blue.svg)](https://github.com/microsoft/pyright)
 
@@ -17,13 +17,13 @@ Layered Linux automation runtime, security supervisor, and Model Context Protoco
 - **Elastic (Event Fabric)**: Low-latency cross-process event bus featuring urgency-based filtering (`AMBIENT`, `NOTICE`, `ALERT`, `FLASH`), retained slot state storage, and SQLite WAL IPC synchronization.
 - **Sensory Tapestry**: System blackboard recording real-time ambient status, process metadata, and tool execution history.
 - **Bubblewrap Sandboxing**: Kernel namespace isolation for strand execution, enforcing read-only mounts, network restrictions, and workspace confinement.
-- **TOTP 2FA Verification**: RFC 6238 time-based one-time password gate protecting `MUTATE` and `PRIVILEGED` execution tiers against unauthorized or accidental mutation.
+- **TOTP 2FA Verification**: RFC 6238 time-based one-time password gate protecting `MUTATE`, `PRIVILEGED`, and `SYSTEM_EXEC` execution tiers against unauthorized or accidental mutation.
 
 ---
 
 ## Prerequisites
 
-- **Python 3.14+** and [**uv**](https://github.com/astral-sh/uv)
+- **Python 3.15+** and [**uv**](https://github.com/astral-sh/uv)
 - **Bubblewrap (`bwrap`)** (Required for sandboxed strand execution):
 
 ```bash
@@ -118,6 +118,7 @@ Every strand declares an explicit capability tier governing execution privileges
 | `INTERACT` | Open (No 2FA) | Workspace / Network mounts | Desktop notifications, window focus, clipboard |
 | `MUTATE` | 2FA Required | Isolated write mounts | Persistent file modifications, config updates |
 | `PRIVILEGED` | 2FA Required | Host execution boundary | Session exit, power management, system reboots |
+| `SYSTEM_EXEC` | 2FA Required | Full host access | Package management, kernel modules, system-level execution |
 
 ---
 
@@ -137,7 +138,7 @@ Yarns are discovered dynamically using ordered XDG-compliant search locations:
 To author new capability packages, use the standalone SDK: [**Needle**](https://github.com/themazyworlds/textile-needle).
 
 ```bash
-uv add textile-needle
+uv add needle
 ```
 
 See the [Needle documentation](https://github.com/themazyworlds/textile-needle) for `@strand` and `Yarn` contracts.

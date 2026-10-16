@@ -4,7 +4,6 @@ Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 
 from needle import (
     DEFAULT_LAYER,
-    CapabilityTier,
     Strand,
     StrandCollisionError,
     StrandNotFoundError,
@@ -32,7 +31,6 @@ lazy from textile.core.telemetry.ledger import core_tapestry
 
 __all__ = [
     "DEFAULT_LAYER",
-    "CapabilityTier",
     "EventFrame",
     "EventUrgency",
     "OTPChallengeRequiredError",

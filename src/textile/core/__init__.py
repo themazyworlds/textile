@@ -5,7 +5,6 @@ Organized into 5 functional domains: orchestration, security, telemetry, executi
 
 from needle import (
     DEFAULT_LAYER,
-    CapabilityTier,
     EventOptions,
     Strand,
     StrandNotFoundError,
@@ -57,7 +56,6 @@ lazy from textile.core.telemetry.ledger import CoreTapestry, core_tapestry
 __all__ = [
     "DEFAULT_LAYER",
     "AccessBoundaryError",
-    "CapabilityTier",
     "CoreTapestry",
     "ElasticEngine",
     "EventFrame",
