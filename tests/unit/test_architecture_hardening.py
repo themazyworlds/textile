@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import unittest
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -107,6 +108,27 @@ class TestArchitectureHardening(unittest.TestCase):
         err_str = str(err)
         self.assertIn("2FA Confirmation Required", err_str)
         self.assertIn("hyprland_exit_session", err_str)
+
+    def test_loom_execute_sync_handler_thread_offload(self):
+        main_thread_ident = threading.get_ident()
+        handler_thread_ident = None
+
+        def sync_blocking_handler(args: dict[str, Any]) -> str:
+            nonlocal handler_thread_ident
+            handler_thread_ident = threading.get_ident()
+            return f"sync_done_{args.get('x', '')}"
+
+        test_loom = Loom()
+        test_loom.strands["sync_strand"] = Strand(
+            name="sync_strand", description="Sync", tier="observe", handler=sync_blocking_handler
+        )
+        test_loom._strand_to_yarn["sync_strand"] = MagicMock()
+        test_loom._initialized = True
+
+        res = asyncio.run(test_loom.execute("sync_strand", {"x": "ok"}))
+        self.assertEqual(res, "sync_done_ok")
+        self.assertIsNotNone(handler_thread_ident)
+        self.assertNotEqual(handler_thread_ident, main_thread_ident)
 
 
 if __name__ == "__main__":

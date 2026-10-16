@@ -201,8 +201,13 @@ class Loom:
         success = True
         err = None
         try:
-            res = handler(clean_args)
-            return await res if inspect.iscoroutine(res) else str(res)
+            if inspect.iscoroutinefunction(handler) or inspect.iscoroutinefunction(getattr(handler, "__call__", None)):
+                res = await handler(clean_args)
+            else:
+                res = await asyncio.to_thread(handler, clean_args)
+                if inspect.iscoroutine(res):
+                    res = await res
+            return str(res)
         except PolicyViolationError, OTPChallengeRequiredError:
             success = False
             err = "Security Policy Gate Failure"

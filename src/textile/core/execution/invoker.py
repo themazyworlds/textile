@@ -102,7 +102,7 @@ def _create_invoker(
             if is_coro:
                 res = await method(**coerced)
             else:
-                res = method(**coerced)
+                res = await asyncio.to_thread(method, **coerced)
             return _format_handler_result(res)
         except STRAND_EXEC_ERRORS as e:
             return f"Error executing strand '{strand_name}': {e}"
