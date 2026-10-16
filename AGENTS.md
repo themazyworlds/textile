@@ -15,7 +15,7 @@ uv run textile twill
 ```
 
 ### 2. Loom (Runtime Dispatcher)
-Loom handles in-memory strand execution, argument validation via Pydantic v2, and priority layer resolution (0 to 1000). Higher layers (e.g. specialized compositors or session managers) cleanly override lower OS fallbacks.
+Loom handles in-memory strand execution, argument validation via Pydantic v2, and priority layer resolution (0 to 1000). Higher numeric layers cleanly override lower layers.
 
 ### 3. Skein (Capability Lifecycle & Registry)
 Skein discovers and registers capability yarns from installed packages and custom user directories (`~/.config/textile/yarns/`). It handles settings persistence (`~/.config/textile/settings.toml`), dependency validation, and availability probes.
@@ -56,9 +56,6 @@ uv run textile inspect <strand_name>
 
 # Execute any strand directly with parameter validation
 uv run textile call <strand_name> key=value
-
-# Run automated health and dependency audits
-uv run textile seams
 
 # View documented settings and allowed options
 uv run textile settings docs [yarn_name]

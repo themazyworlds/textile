@@ -13,7 +13,7 @@ Layered Linux automation runtime, security supervisor, and Model Context Protoco
 ## Architecture
 
 - **Twill (MCP Server)**: Exposes active capability strands over Model Context Protocol (stdio) to external assistants, clients, and IDEs.
-- **Loom & Skein (Orchestration Engine)**: Compiles and dispatches capability strands across a prioritized layer hierarchy (0 to 1000). Higher layers (compositors, session managers, user scripts) deterministically override lower OS fallbacks.
+- **Loom & Skein (Orchestration Engine)**: Compiles and dispatches capability strands across a prioritized layer hierarchy (0 to 1000). Higher numeric layers deterministically override lower layers.
 - **Elastic (Event Fabric)**: Low-latency cross-process event bus featuring urgency-based filtering (`AMBIENT`, `NOTICE`, `ALERT`, `FLASH`), retained slot state storage, and SQLite WAL IPC synchronization.
 - **Sensory Tapestry**: System blackboard recording real-time ambient status, process metadata, and tool execution history.
 - **Bubblewrap Sandboxing**: Kernel namespace isolation for strand execution, enforcing read-only mounts, network restrictions, and workspace confinement.
