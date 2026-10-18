@@ -27,15 +27,24 @@ from textile.core.security.policy import get_tier_policy
 
 
 def _get_textile_config_binds() -> list[Path]:
-    """Resolve user configuration (~/.config/textile) and local share (~/.local) paths."""
+    """Resolve user configuration (~/.config/textile/settings.toml) and local share (~/.local) paths."""
     binds: list[Path] = []
-    textile_config = Path.home() / ".config" / "textile"
-    if textile_config.exists():
-        binds.append(textile_config)
+    settings_file = Path.home() / ".config" / "textile" / "settings.toml"
+    if settings_file.exists():
+        binds.append(settings_file)
     local_share = Path.home() / ".local"
     if local_share.exists():
         binds.append(local_share)
     return binds
+
+
+def _build_worker_env() -> dict[str, str]:
+    """Construct clean execution environment for worker process, stripping host security credentials."""
+    env = os.environ.copy()
+    for key in list(env.keys()):
+        if key.startswith("TEXTILE_TOTP_") or key == "TEXTILE_TOTP_SECRET":
+            env.pop(key, None)
+    return env
 
 
 def _format_handler_result(res: Any) -> str:
@@ -155,7 +164,7 @@ async def execute_strand_async(
         tier_str=tier_str,
         cwd=cwd,
     )
-    env = os.environ.copy()
+    env = _build_worker_env()
 
     try:
         builder, raw_cmd = _prepare_execution(spec, env)
@@ -191,7 +200,7 @@ def execute_strand(
         tier_str=tier_str,
         cwd=cwd,
     )
-    env = os.environ.copy()
+    env = _build_worker_env()
 
     try:
         builder, raw_cmd = _prepare_execution(spec, env)

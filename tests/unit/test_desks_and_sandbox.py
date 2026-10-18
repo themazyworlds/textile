@@ -147,3 +147,54 @@ class TestBubblewrapSandbox:
         assert "--unshare-net" in cmd
         assert "--die-with-parent" in cmd
         assert cmd[-2:] == ["echo", "hello"]
+
+    def test_totp_secret_isolation_in_sandbox(self):
+        from textile.core.execution.runner import _build_worker_env, _get_textile_config_binds
+
+        # 1. Verify config binds do not include ~/.config/textile directory or totp.secret
+        binds = _get_textile_config_binds()
+        textile_dir = Path.home() / ".config" / "textile"
+        totp_file = textile_dir / "totp.secret"
+        assert textile_dir not in binds
+        assert totp_file not in binds
+
+        # 2. Verify _build_worker_env strips TEXTILE_TOTP secrets
+        with unittest.mock.patch.dict("os.environ", {"TEXTILE_TOTP_SECRET": "secret_abc", "TEXTILE_TOTP_TMP": "xyz"}):
+            clean_env = _build_worker_env()
+            assert "TEXTILE_TOTP_SECRET" not in clean_env
+            assert "TEXTILE_TOTP_TMP" not in clean_env
+
+        # 3. If bwrap is available, verify totp.secret is inaccessible inside container
+        if hem.is_available():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                probe_cmd = [
+                    sys.executable,
+                    "-c",
+                    """
+import os
+from pathlib import Path
+totp_path = Path.home() / ".config" / "textile" / "totp.secret"
+if totp_path.exists():
+    print("LEAK_FILE")
+try:
+    with open("/proc/1/environ", "rb") as f:
+        env_content = f.read()
+        if b"TEXTILE_TOTP_SECRET" in env_content:
+            print("LEAK_ENV")
+except Exception:
+    pass
+print("SANDBOX_SECURE")
+""",
+                ]
+                builder = create_sandbox(
+                    probe_cmd,
+                    writable=False,
+                    workspace=tmpdir,
+                    extra_ro_binds=_get_textile_config_binds(),
+                    env=clean_env,
+                )
+                res = builder.run(probe_cmd, capture_output=True, text=True, check=False)
+                assert res.returncode == 0
+                assert "LEAK_FILE" not in res.stdout
+                assert "LEAK_ENV" not in res.stdout
+                assert "SANDBOX_SECURE" in res.stdout
