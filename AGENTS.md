@@ -54,8 +54,9 @@ uv run textile strands --tier observe
 # Inspect parameter schema for a specific strand
 uv run textile inspect <strand_name>
 
-# Execute any strand directly with parameter validation
-uv run textile call <strand_name> key=value
+# Execute any strand directly with positional parameters or JSON
+uv run textile call <strand_name> [args]...
+uv run textile call <strand_name> --json '{"key": "value"}'
 
 # View documented settings and allowed options
 uv run textile settings docs [yarn_name]

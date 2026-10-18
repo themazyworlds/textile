@@ -26,18 +26,7 @@ lazy from textile.core.orchestration.loom import loom
 def _parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:
     target = loom.get_strand(strand_name)
     param_names = list(target.parameters.keys()) if target and target.parameters else []
-    kwargs: dict[str, Any] = {}
-    pos_idx = 0
-
-    for arg in args:
-        if "=" in arg:
-            k, v = arg.split("=", 1)
-            kwargs[k] = v.strip("\"'")
-        elif pos_idx < len(param_names):
-            kwargs[param_names[pos_idx]] = arg.strip("\"'")
-            pos_idx += 1
-
-    return kwargs
+    return dict(zip(param_names, args))
 
 
 @quill.command("strands")
@@ -85,8 +74,8 @@ def call_strand(
         ...,
         help="Name of the strand to execute",
     ),
-    args: list[str] = typer.Argument(None, help="Key=Value parameters (e.g. text='Hello World' target=1)"),
-    json_args: str | None = typer.Option(None, "--json", "-j", help="Raw JSON string of arguments"),
+    args: list[str] = typer.Argument(None, help="Positional arguments passed to the strand in schema order"),
+    json_args: str | None = typer.Option(None, "--json", "-j", help="Raw JSON string of arguments for complex schemas"),
 ):
     """Execute any registered Textile strand directly with parameter validation."""
     parsed_kwargs = {}

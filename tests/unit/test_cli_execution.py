@@ -18,22 +18,25 @@ class TestCliExecution(unittest.TestCase):
         self.runner = CliRunner()
 
     def test_call_strand_positional_args(self):
-        with patch.object(loom, "execute", return_value="ok"):
+        with patch.object(loom, "execute", return_value="ok") as mock_exec:
             result = self.runner.invoke(quill, ["call", "hyprland_focus_workspace", "8"])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("ok", result.stdout)
+            mock_exec.assert_called_once_with("hyprland_focus_workspace", {"workspace": "8"}, caller=None, otp=None)
 
-    def test_call_strand_key_value_args(self):
-        with patch.object(loom, "execute", return_value="ok"):
-            result = self.runner.invoke(quill, ["call", "hyprland_focus_workspace", "workspace=2"])
+    def test_call_strand_multi_positional_args(self):
+        with patch.object(loom, "execute", return_value="ok") as mock_exec:
+            result = self.runner.invoke(quill, ["call", "file_find", "/tmp", "*.log"])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("ok", result.stdout)
+            mock_exec.assert_called_once_with("file_find", {"path": "/tmp", "pattern": "*.log"}, caller=None, otp=None)
 
     def test_call_strand_json_args(self):
-        with patch.object(loom, "execute", return_value="ok"):
+        with patch.object(loom, "execute", return_value="ok") as mock_exec:
             result = self.runner.invoke(quill, ["call", "hyprland_focus_workspace", "--json", '{"workspace": "3"}'])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("ok", result.stdout)
+            mock_exec.assert_called_once_with("hyprland_focus_workspace", {"workspace": "3"}, caller=None, otp=None)
 
     def test_yarns_install_via_dulwich(self):
         from unittest.mock import MagicMock
