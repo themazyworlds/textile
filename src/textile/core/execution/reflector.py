@@ -16,7 +16,7 @@ from textile.core.execution.invoker import (
     _create_invoker,
     execute_direct,
 )
-from textile.core.execution.runner import execute_strand
+from textile.core.execution.runner import execute_strand_async
 from textile.core.execution.validation import (
     _extract_docstring_info,
 )
@@ -68,7 +68,7 @@ def method_to_strand(yarn: Any, method: Callable[..., Any]) -> Strand:
         "description": "Optional single-use 6-digit 2FA confirmation code displayed on user screen",
     }
 
-    runner = execute_strand
+    runner = execute_strand_async
     invoker = _create_invoker(
         yarn,
         method,
@@ -122,7 +122,7 @@ def bind_strand_to_core(yarn: Any, strand: Strand) -> Strand:
     tier_val = _parse_tier(strand.tier, strand.name)
     timeout = None if strand.no_timeout else (strand.timeout or 30.0)
 
-    runner = execute_strand
+    runner = execute_strand_async
     invoker = _create_invoker(
         yarn,
         raw_fn,

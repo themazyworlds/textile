@@ -6,13 +6,19 @@ Invoked for dependency-isolated, sandbox-confined strand executions.
 import contextlib
 import inspect
 import os
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import orjson
+from hem import (
+    BubblewrapBuilder,
+    CompletedProcess,
+    TimeoutExpired,
+    async_run_command,
+    run_command,
+)
 from needle import CapabilityTier
 
 from textile.core.definitions.errors import SandboxUnavailableError
@@ -65,12 +71,12 @@ def _resolve_yarn_python(yarn: Any) -> str:
     return sys.executable
 
 
-def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None = None) -> list[str]:
-    """Construct isolated subprocess command with sandbox wrapping if applicable."""
+def _build_worker_command(spec: _WorkerExecutionSpec) -> list[str]:
+    """Construct isolated worker arguments."""
     target_spec = _resolve_target_spec(spec.yarn)
     python_bin = _resolve_yarn_python(spec.yarn)
     class_name = getattr(spec.yarn, "_class_name", spec.yarn.__class__.__name__)
-    cmd = [
+    return [
         python_bin,
         "-m",
         "needle.worker",
@@ -81,6 +87,13 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
         spec.tier_str,
     ]
 
+
+def _prepare_execution(
+    spec: _WorkerExecutionSpec,
+    env: dict[str, str],
+) -> tuple[BubblewrapBuilder | None, list[str]]:
+    """Prepare sandbox builder or direct command according to tier policy."""
+    raw_cmd = _build_worker_command(spec)
     policy = get_tier_policy(spec.tier_str)
     if policy.requires_sandbox:
         if not BubblewrapSandbox.is_available():
@@ -88,18 +101,18 @@ def _build_worker_command(spec: _WorkerExecutionSpec, env: dict[str, str] | None
                 "Bubblewrap ('bwrap') is not installed or operational on this system. "
                 "Sandboxed strands require bubblewrap for isolation."
             )
-        cmd = BubblewrapSandbox.wrap_command(
-            cmd,
+        builder = BubblewrapSandbox.create_builder(
+            raw_cmd,
             writable=policy.workspace_writable,
             env=env,
             workspace_root=spec.cwd,
             resources=getattr(spec.yarn, "resources", []),
         )
+        return builder, raw_cmd
+    return None, raw_cmd
 
-    return cmd
 
-
-def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str) -> str:
+def _parse_worker_output(res: CompletedProcess[str], strand_name: str) -> str:
     """Parse JSON stdout response from worker process."""
     out = res.stdout.strip()
     err = res.stderr.strip()
@@ -109,7 +122,7 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
             if payload.get("success"):
                 return _format_handler_result(payload.get("result"))
             return f"Error: {payload.get('error', 'Execution failed')}"
-        except orjson.JSONDecodeError, ValueError, TypeError:
+        except (orjson.JSONDecodeError, ValueError, TypeError):
             if res.returncode == 0:
                 return out
 
@@ -117,14 +130,14 @@ def _parse_worker_output(res: subprocess.CompletedProcess[str], strand_name: str
     return f"Error: Strand '{strand_name}' worker process crashed ({err_msg}). Host process preserved."
 
 
-def execute_strand(
+async def execute_strand_async(
     yarn: Any,
     strand_name: str,
     args: dict[str, Any],
     timeout: float | None = 300.0,
     tier: CapabilityTier | str = CapabilityTier.INTERACT,
 ) -> str:
-    """Run a strand in an isolated ephemeral subprocess with sandbox confinement."""
+    """Run a strand asynchronously in an isolated ephemeral process with sandbox confinement."""
     tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
     cwd = str(Path.cwd())
     spec = _WorkerExecutionSpec(
@@ -137,14 +150,53 @@ def execute_strand(
     env = os.environ.copy()
 
     try:
-        cmd = _build_worker_command(spec, env=env)
+        builder, raw_cmd = _prepare_execution(spec, env)
         proc_timeout = None if (timeout is None or timeout <= 0) else timeout
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=proc_timeout, check=False, env=env)
+        if builder is not None:
+            res = await builder.async_run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        else:
+            res = await async_run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
         return _parse_worker_output(res, strand_name)
-    except subprocess.TimeoutExpired:
+    except (TimeoutExpired, TimeoutError):
         return f"Error: Strand '{strand_name}' worker process timed out after {timeout} seconds."
     except SandboxUnavailableError as e:
         hint = f" (Hint: {e.hint})" if e.hint else ""
         return f"Error executing isolated strand '{strand_name}': {e.message}{hint}"
-    except (subprocess.SubprocessError, OSError, ValueError) as e:
+    except (OSError, ValueError) as e:
+        return f"Error executing isolated strand '{strand_name}': {e}"
+
+
+def execute_strand(
+    yarn: Any,
+    strand_name: str,
+    args: dict[str, Any],
+    timeout: float | None = 300.0,
+    tier: CapabilityTier | str = CapabilityTier.INTERACT,
+) -> str:
+    """Run a strand synchronously in an isolated ephemeral process with sandbox confinement."""
+    tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
+    cwd = str(Path.cwd())
+    spec = _WorkerExecutionSpec(
+        yarn=yarn,
+        strand_name=strand_name,
+        args=args,
+        tier_str=tier_str,
+        cwd=cwd,
+    )
+    env = os.environ.copy()
+
+    try:
+        builder, raw_cmd = _prepare_execution(spec, env)
+        proc_timeout = None if (timeout is None or timeout <= 0) else timeout
+        if builder is not None:
+            res = builder.run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        else:
+            res = run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        return _parse_worker_output(res, strand_name)
+    except (TimeoutExpired, TimeoutError):
+        return f"Error: Strand '{strand_name}' worker process timed out after {timeout} seconds."
+    except SandboxUnavailableError as e:
+        hint = f" (Hint: {e.hint})" if e.hint else ""
+        return f"Error executing isolated strand '{strand_name}': {e.message}{hint}"
+    except (OSError, ValueError) as e:
         return f"Error executing isolated strand '{strand_name}': {e}"

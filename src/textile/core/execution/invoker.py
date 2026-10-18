@@ -80,7 +80,7 @@ def _create_invoker(
     method: Callable,
     strand_name: str,
     config: InvokerConfig,
-    runner: Callable[..., str] | None = None,
+    runner: Callable[..., Any] | None = None,
 ) -> Callable[[dict[str, Any]], Any]:
     """Create unified asynchronous execution invoker for a strand."""
 
@@ -97,6 +97,8 @@ def _create_invoker(
             return val_err
         coerced.pop("otp", None)
         if runner is not None:
+            if inspect.iscoroutinefunction(runner):
+                return await runner(yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier)
             return await asyncio.to_thread(runner, yarn, strand_name, coerced, timeout=config.timeout, tier=config.tier)
         try:
             if is_coro:

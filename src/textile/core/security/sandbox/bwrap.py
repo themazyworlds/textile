@@ -86,15 +86,15 @@ class BubblewrapSandbox:
         return BubblewrapBuilder.is_available()
 
     @staticmethod
-    def wrap_command(
+    def create_builder(
         cmd: list[str],
         *,
         writable: bool = False,
         env: dict[str, str] | None = None,
         workspace_root: str | Path | None = None,
         resources: list[str] | None = None,
-    ) -> list[str]:
-        """Wrap command in a bwrap sandbox container."""
+    ) -> BubblewrapBuilder:
+        """Create and configure a BubblewrapBuilder sandbox container for cmd."""
         bwrap_path = shutil.which("bwrap")
         if not bwrap_path:
             raise SandboxUnavailableError("bwrap binary not found in system PATH.")
@@ -153,4 +153,25 @@ class BubblewrapSandbox:
                 p_arg = Path(arg).resolve()
                 builder.ro_bind(p_arg.parent, try_ok=True)
 
+        return builder
+
+    @classmethod
+    def wrap_command(
+        cls,
+        cmd: list[str],
+        *,
+        writable: bool = False,
+        env: dict[str, str] | None = None,
+        workspace_root: str | Path | None = None,
+        resources: list[str] | None = None,
+    ) -> list[str]:
+        """Wrap command in a bwrap sandbox container."""
+        builder = cls.create_builder(
+            cmd,
+            writable=writable,
+            env=env,
+            workspace_root=workspace_root,
+            resources=resources,
+        )
         return builder.build(cmd)
+

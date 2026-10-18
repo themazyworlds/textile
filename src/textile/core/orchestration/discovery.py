@@ -15,7 +15,7 @@ import platformdirs
 from needle import CapabilityTier, Strand, Yarn
 from needle import parse_capability_tier as _parse_tier
 
-from textile.core.execution.runner import execute_strand
+from textile.core.execution.runner import execute_strand_async
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
@@ -65,7 +65,7 @@ class ProbedYarn(Yarn):
             timeout = None if no_timeout else s_data.get("timeout", 30.0)
 
             async def _handler(args: dict[str, Any], _sname=s_name, _tier=tier_val, _timeout=timeout) -> str:
-                return execute_strand(
+                return await execute_strand_async(
                     self,
                     _sname,
                     args,

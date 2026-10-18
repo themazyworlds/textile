@@ -12,7 +12,7 @@ lazy from textile.core.execution.reflector import (
     method_to_strand,
     reflect_strands,
 )
-lazy from textile.core.execution.runner import execute_strand
+lazy from textile.core.execution.runner import execute_strand, execute_strand_async
 
 __all__ = [
     "InvokerConfig",
@@ -20,6 +20,7 @@ __all__ = [
     "bind_strand_to_core",
     "execute_direct",
     "execute_strand",
+    "execute_strand_async",
     "method_to_strand",
     "reflect_strands",
     "validate_strand_arguments",

@@ -2,8 +2,8 @@
 Unit tests for Textile Bubblewrap Sandbox.
 """
 
+import asyncio
 import os
-import subprocess
 import sys
 import tempfile
 import unittest.mock
@@ -47,16 +47,21 @@ class TestBubblewrapSandbox:
 
             # In read-only mode, reading succeeds
             read_cmd = [sys.executable, "-c", f'print(open("{f}").read())']
-            wrapped_read = BubblewrapSandbox.wrap_command(read_cmd, writable=False, workspace_root=tmpdir)
+            builder_read = BubblewrapSandbox.create_builder(read_cmd, writable=False, workspace_root=tmpdir)
 
-            res_read = subprocess.run(wrapped_read, capture_output=True, text=True, check=False)
+            res_read = builder_read.run(read_cmd, capture_output=True, text=True, check=False)
             assert res_read.returncode == 0
             assert "observe this" in res_read.stdout
 
+            # Test async_run on builder
+            res_async = asyncio.run(builder_read.async_run(read_cmd, capture_output=True, text=True, check=False))
+            assert res_async.returncode == 0
+            assert "observe this" in res_async.stdout
+
             # In read-only mode, writing fails with Read-only file system
             write_cmd = [sys.executable, "-c", f'open("{f}", "w").write("fail")']
-            wrapped_write = BubblewrapSandbox.wrap_command(write_cmd, writable=False, workspace_root=tmpdir)
-            res_write = subprocess.run(wrapped_write, capture_output=True, text=True, check=False)
+            builder_write = BubblewrapSandbox.create_builder(write_cmd, writable=False, workspace_root=tmpdir)
+            res_write = builder_write.run(write_cmd, capture_output=True, text=True, check=False)
             assert res_write.returncode != 0
             assert "Read-only file system" in res_write.stderr
 

@@ -10,7 +10,7 @@ from needle.errors import StrandCollisionError
 
 from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.execution.invoker import execute_direct
-from textile.core.execution.runner import execute_strand
+from textile.core.execution.runner import execute_strand, execute_strand_async
 from textile.core.orchestration.loom import Loom
 from textile.core.security.context import OTPChallengeRequiredError, OTPManager
 from textile.core.security.sandbox import BubblewrapSandbox
@@ -70,6 +70,17 @@ class TestArchitectureHardening(unittest.TestCase):
             )
             self.assertIn("Sandbox isolation unavailable", res)
             self.assertIn("Sandboxed strands require bubblewrap", res)
+
+            res_async = asyncio.run(
+                execute_strand_async(
+                    mock_yarn,
+                    "mock_tool",
+                    {"a": 1},
+                    tier="MUTATE",
+                )
+            )
+            self.assertIn("Sandbox isolation unavailable", res_async)
+            self.assertIn("Sandboxed strands require bubblewrap", res_async)
 
     def test_strand_collision_raises_error(self):
         class MockSkein:
