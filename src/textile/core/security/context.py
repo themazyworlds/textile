@@ -3,6 +3,8 @@ Textile Security Context & 2FA TOTP Verification Manager.
 Provides RFC 6238 Time-Based One-Time Password (TOTP) verification and single-use replay protection.
 """
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import os
@@ -12,15 +14,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import pyotp
-from desktop_notifier import DesktopNotifier, Urgency
+lazy import pyotp
+lazy from desktop_notifier import DesktopNotifier, Urgency
 
 from textile.core.definitions.errors import (
     OTPChallengeRequiredError,
     PolicyViolationError,
 )
 from textile.core.security.policy import get_tier_policy
-from textile.core.telemetry.database import TapestryDatabase
+lazy from textile.core.telemetry.database import TapestryDatabase
 
 
 def _display_totp_osd(code: str, strand_name: str, reason: str | None = None) -> None:
@@ -81,9 +83,15 @@ class OTPManager:
     """Manages thread-safe, multi-process RFC 6238 TOTP verification and replay protection."""
 
     def __init__(self, database: TapestryDatabase | None = None, secret: str | None = None) -> None:
-        self._database = database or TapestryDatabase(persist=True)
+        self._database = database
         self._lock = threading.Lock()
         self._secret = secret
+
+    @property
+    def database(self) -> TapestryDatabase:
+        if self._database is None:
+            self._database = TapestryDatabase(persist=True)
+        return self._database
 
     def _get_secret(self) -> str:
         return self._secret or get_totp_secret()
@@ -102,7 +110,8 @@ class OTPManager:
             step = base_step + window
             step_time = datetime.fromtimestamp(step * 30, tz=UTC)
             if totp.verify(clean_code, for_time=step_time):
-                with self._lock, self._database._lock, self._database.get_connection() as conn:
+                db = self.database
+                with self._lock, db._lock, db.get_connection() as conn:
                     cursor = conn.execute("SELECT val_int FROM otp_gate_state WHERE key = 'last_used_timestep'")
                     row = cursor.fetchone()
                     if row and int(row[0]) >= step:
@@ -118,7 +127,8 @@ class OTPManager:
         return False
 
     def clear(self) -> None:
-        with self._lock, self._database._lock, self._database.get_connection() as conn:
+        db = self.database
+        with self._lock, db._lock, db.get_connection() as conn:
             conn.execute("DELETE FROM otp_gate_state")
 
 

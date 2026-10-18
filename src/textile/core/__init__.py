@@ -3,7 +3,7 @@ Textile Core Fabric Package.
 Organized into 5 functional domains: orchestration, security, telemetry, execution, and definitions.
 """
 
-from needle import (
+lazy from needle import (
     DEFAULT_LAYER,
     EventOptions,
     Strand,
@@ -18,14 +18,14 @@ lazy from needle.guardrails import (
     SessionProcessGuard,
 )
 
-from textile.core.definitions.errors import (
+lazy from textile.core.definitions.errors import (
     PolicyViolationError,
     TextileError,
 )
-from textile.core.execution.validation import validate_strand_arguments
 
 # Execution
 lazy from textile.core.execution.invoker import InvokerConfig
+lazy from textile.core.execution.validation import validate_strand_arguments
 
 # Orchestration
 lazy from textile.core.orchestration.fabric import core_fabric_yarn

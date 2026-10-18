@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from rich import box
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from textile.core.cli.app import console
+console = Console()
 
 JustifyType = Literal["default", "left", "center", "right", "full"]
 

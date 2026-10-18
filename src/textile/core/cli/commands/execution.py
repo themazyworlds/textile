@@ -6,14 +6,13 @@ import time
 from typing import Any
 
 import orjson
-import pyotp
 import typer
 from needle.errors import StrandNotFoundError
+lazy import pyotp
 
-from textile.core.cli.app import app, console, ensure_initialized
-from textile.core.cli.ui import Column, print_table
+from textile.core.cli.app import app
+from textile.core.cli.ui import Column, console, print_table
 from textile.core.definitions.errors import TextileError
-from textile.core.orchestration.loom import loom
 from textile.core.security.context import (
     OTPChallengeRequiredError,
     PolicyViolationError,
@@ -21,6 +20,7 @@ from textile.core.security.context import (
     get_totp_uri,
 )
 lazy from textile.core.orchestration import twill
+lazy from textile.core.orchestration.loom import loom
 
 
 def _parse_cli_arg_val(val: str) -> Any:
@@ -74,7 +74,6 @@ def list_strands(
     ),
 ):
     """List all registered and executable Textile Strands."""
-    ensure_initialized()
     strands = loom.get_all_strands()
     query = (filter_query or "").strip().lower()
 
@@ -113,7 +112,6 @@ def call_strand(
     json_args: str | None = typer.Option(None, "--json", "-j", help="Raw JSON string of arguments"),
 ):
     """Execute any registered Textile strand directly with parameter validation."""
-    ensure_initialized()
     parsed_kwargs = {}
 
     if json_args:
@@ -148,7 +146,6 @@ def inspect_strand(
     strand_name: str = typer.Argument(..., help="Name of strand to inspect parameter schema"),
 ):
     """Inspect detailed parameter schema and help for a specific strand."""
-    ensure_initialized()
     target = loom.get_strand(strand_name)
 
     if not target:

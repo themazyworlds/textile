@@ -5,8 +5,8 @@ Provides structured, diagnostic domain exceptions specific to Textile core runti
 
 from typing import Any
 
-from hem import SandboxUnavailableError
 from needle.errors import NeedleError
+lazy from hem import SandboxUnavailableError
 
 
 class TextileError(NeedleError):

@@ -2,7 +2,7 @@
 Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 """
 
-from needle import (
+lazy from needle import (
     DEFAULT_LAYER,
     Strand,
     StrandCollisionError,
@@ -13,7 +13,7 @@ from needle import (
     strand,
 )
 
-from textile.core.definitions.errors import (
+lazy from textile.core.definitions.errors import (
     OTPChallengeRequiredError,
     PolicyViolationError,
     SandboxUnavailableError,

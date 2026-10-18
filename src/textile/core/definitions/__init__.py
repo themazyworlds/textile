@@ -11,7 +11,7 @@ from textile.core.definitions.errors import (
     SandboxUnavailableError,
     TextileError,
 )
-from textile.core.definitions.settings import (
+lazy from textile.core.definitions.settings import (
     YarnSettings,
     dumps_toml,
     generate_documented_toml,

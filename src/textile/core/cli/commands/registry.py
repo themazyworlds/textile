@@ -11,15 +11,15 @@ from typing import Any
 
 import platformdirs
 import typer
-from dulwich import errors, porcelain
-from pydantic import BaseModel, Field
+lazy from dulwich import errors, porcelain
+lazy from pydantic import BaseModel, Field
 lazy from rich.tree import Tree
 
-from textile.core.cli.app import app, console, ensure_initialized
-from textile.core.cli.ui import Column, print_table
-from textile.core.orchestration.loom import loom
-from textile.core.orchestration.skein import skein
+from textile.core.cli.app import app
+from textile.core.cli.ui import Column, console, print_table
 lazy from textile.core.definitions.settings import _format_type_name
+lazy from textile.core.orchestration.loom import loom
+lazy from textile.core.orchestration.skein import skein
 lazy from textile.core.telemetry.blackboard import sensory_tapestry
 lazy from textile.core.telemetry.ledger import core_tapestry
 
@@ -30,7 +30,7 @@ def cmd_skein(
     yarn_target: str | None = typer.Argument(None, help="Target yarn name for enable/disable/toggle"),
 ):
     """Inspect and manage the Skein runtime layer hierarchy, policy engine, and yarn activation."""
-    ensure_initialized()
+    skein.initialize()
 
     if action == "enable" and yarn_target:
         skein.set_yarn_enabled(yarn_target, True)
@@ -208,7 +208,7 @@ def cmd_settings(
     value: str | None = typer.Argument(None, help="Setting value"),
 ):
     """Inspect and manage per-yarn user configuration (~/.config/textile/settings.toml)."""
-    ensure_initialized()
+    skein.initialize()
 
     if action == "init":
         _handle_settings_init()
@@ -356,7 +356,7 @@ def _handle_yarn_install(target: str, user_yarns: Path) -> None:
         console.print(f"    Destination: {dest}")
 
     skein._initialized = False
-    ensure_initialized()
+    skein.initialize()
 
 
 def _handle_yarn_remove(target: str, user_yarns: Path) -> None:
@@ -403,7 +403,7 @@ def cmd_yarns(
     target: str | None = typer.Argument(None, help="Yarn name, git repository URL, or local path"),
 ):
     """Manage installed capability yarns, inspection, and discovery search paths."""
-    ensure_initialized()
+    skein.initialize()
     user_yarns = Path(platformdirs.user_data_dir("textile")) / "yarns"
 
     if action in ("paths", "search-paths"):
