@@ -19,11 +19,14 @@ logger = logging.getLogger(__name__)
 class CoreFabricYarn(Yarn):
     """Native Core Fabric Administration & Health Diagnostics."""
 
-    name = "core"
-    tailor = "textile"
-    version = "1.0.0"
-    layer = 0
-    description = "Textile Core runtime engine diagnostics and state inspection"
+    def __init__(self) -> None:
+        super().__init__(
+            name="core",
+            layer=0,
+            description="Textile Core runtime engine diagnostics and state inspection",
+            tailor="textile",
+            version="1.0.0",
+        )
 
     def is_available(self) -> bool:
         return True

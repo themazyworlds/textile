@@ -511,7 +511,20 @@ class SampleSensorYarn(Yarn):
         return "ok"
 '''
         with tempfile.TemporaryDirectory() as tmp_dir:
-            sample_file = Path(tmp_dir) / "sample_sensor.py"
+            sample_dir = Path(tmp_dir)
+            pyproject_file = sample_dir / "pyproject.toml"
+            pyproject_file.write_text(
+                """[project]
+name = "sample_sensor"
+description = "A sample sensor for testing AST parsing."
+
+[tool.textile]
+layer = 25
+resources = ["sensors", "dbus:system"]
+""",
+                encoding="utf-8",
+            )
+            sample_file = sample_dir / "sample_sensor.py"
             sample_file.write_text(sample_code, encoding="utf-8")
 
             manifest = parse_yarn_manifest_ast(sample_file)

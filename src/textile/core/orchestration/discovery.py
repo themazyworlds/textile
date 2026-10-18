@@ -307,51 +307,37 @@ def _read_accompanying_pyproject(py_file: Path) -> dict[str, Any]:
 
 def _inspect_class_body(
     node: ast.ClassDef,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    class_attrs: dict[str, Any] = {}
+) -> list[dict[str, Any]]:
     strands_data: list[dict[str, Any]] = []
 
     for item in node.body:
-        if isinstance(item, ast.Assign):
-            for target in item.targets:
-                if isinstance(target, ast.Name):
-                    with contextlib.suppress(Exception):
-                        class_attrs[target.id] = ast.literal_eval(item.value)
-        elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name) and item.value:
-            with contextlib.suppress(Exception):
-                class_attrs[item.target.id] = ast.literal_eval(item.value)
-        elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
             strand_info = _extract_strand_data(item)
             if strand_info:
                 strands_data.append(strand_info)
 
-    return class_attrs, strands_data
+    return strands_data
 
 
 def _build_yarn_manifest(
     node: ast.ClassDef,
-    class_attrs: dict[str, Any],
     strands_data: list[dict[str, Any]],
     proj_meta: dict[str, Any],
 ) -> dict[str, Any]:
-    class_doc = ast.get_docstring(node) or ""
-    first_doc_line = class_doc.splitlines()[0].strip() if class_doc else ""
-
     raw_name = (
-        class_attrs.get("name")
-        or proj_meta.get("name", "").removeprefix("textile-yarn-").removeprefix("yarn-")
+        proj_meta.get("name", "").removeprefix("textile-yarn-").removeprefix("yarn-")
         or node.name.lower().removesuffix("yarn")
     )
-    yarn_desc = class_attrs.get("description") or proj_meta.get("description") or first_doc_line or raw_name
+    yarn_desc = proj_meta.get("description", "") or raw_name
 
     return {
         "class_name": node.name,
         "name": raw_name,
         "description": yarn_desc,
-        "layer": int(class_attrs.get("layer", proj_meta.get("layer", 50))),
-        "tailor": class_attrs.get("tailor", proj_meta.get("tailor", "textile")),
-        "version": str(class_attrs.get("version", proj_meta.get("version", "1.0.0"))),
-        "resources": list(class_attrs.get("resources", proj_meta.get("resources", []))),
+        "layer": int(proj_meta.get("layer", 50)),
+        "tailor": str(proj_meta.get("tailor", "textile")),
+        "version": str(proj_meta.get("version", "1.0.0")),
+        "resources": list(proj_meta.get("resources", [])),
         "strands": strands_data,
     }
 
@@ -375,11 +361,11 @@ def parse_yarn_manifest_ast(py_file: Path) -> dict[str, Any] | None:
             for b in node.bases
         )
 
-        class_attrs, strands_data = _inspect_class_body(node)
+        strands_data = _inspect_class_body(node)
         if not is_yarn_class and not strands_data:
             continue
 
-        return _build_yarn_manifest(node, class_attrs, strands_data, proj_meta)
+        return _build_yarn_manifest(node, strands_data, proj_meta)
 
     return None
 
