@@ -13,7 +13,6 @@ from needle.errors import StrandNotFoundError
 from textile.core.cli.app import app, console, ensure_initialized
 from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.errors import TextileError
-from textile.core.orchestration import twill
 from textile.core.orchestration.loom import loom
 from textile.core.security.context import (
     OTPChallengeRequiredError,
@@ -21,6 +20,7 @@ from textile.core.security.context import (
     get_totp_secret,
     get_totp_uri,
 )
+lazy from textile.core.orchestration import twill
 
 
 def _parse_cli_arg_val(val: str) -> Any:
