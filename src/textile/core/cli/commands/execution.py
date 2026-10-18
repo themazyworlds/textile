@@ -23,44 +23,21 @@ lazy from textile.core.orchestration import twill
 lazy from textile.core.orchestration.loom import loom
 
 
-def _parse_cli_arg_val(val: str) -> Any:
-    clean_val = val.strip("\"'")
-    if clean_val.lower() == "true":
-        return True
-    if clean_val.lower() == "false":
-        return False
-    return clean_val
-
-
 def _parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:
-    target_strand = loom.get_strand(strand_name)
-    param_names = list(target_strand.parameters.keys()) if target_strand and target_strand.parameters else []
-
-    named_kwargs: dict[str, Any] = {}
-    positional_vals: list[Any] = []
+    target = loom.get_strand(strand_name)
+    param_names = list(target.parameters.keys()) if target and target.parameters else []
+    kwargs: dict[str, Any] = {}
+    pos_idx = 0
 
     for arg in args:
         if "=" in arg:
             k, v = arg.split("=", 1)
-            named_kwargs[k] = _parse_cli_arg_val(v)
-        else:
-            positional_vals.append(_parse_cli_arg_val(arg))
-
-    parsed_kwargs = named_kwargs.copy()
-    pos_idx = 0
-    for p_name in param_names:
-        if pos_idx >= len(positional_vals):
-            break
-        if p_name not in parsed_kwargs:
-            parsed_kwargs[p_name] = positional_vals[pos_idx]
+            kwargs[k] = v.strip("\"'")
+        elif pos_idx < len(param_names):
+            kwargs[param_names[pos_idx]] = arg.strip("\"'")
             pos_idx += 1
 
-    while pos_idx < len(positional_vals):
-        if "target" not in parsed_kwargs and pos_idx == 0:
-            parsed_kwargs["target"] = positional_vals[pos_idx]
-        pos_idx += 1
-
-    return parsed_kwargs
+    return kwargs
 
 
 @quill.command("strands")
