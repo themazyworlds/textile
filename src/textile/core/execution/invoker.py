@@ -1,18 +1,19 @@
 """
 Textile Core Strand Invoker & Argument Synthesis Factory.
 """
+from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import inspect
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, get_type_hints
+lazy import asyncio
+lazy import concurrent.futures
 
 import orjson
 from needle import CapabilityTier
-from pydantic import BaseModel, Field, create_model
+lazy from pydantic import BaseModel, Field, create_model
 
 from textile.core.definitions.errors import STRAND_EXEC_ERRORS
 from textile.core.execution.validation import validate_strand_arguments

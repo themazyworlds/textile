@@ -3,13 +3,16 @@ Textile Strand Reflection, Factory, and Execution Directives.
 Converts @strand decorated methods on Yarn instances into Strand objects.
 """
 
+from __future__ import annotations
+
 import inspect
 from collections.abc import Callable
 from typing import Any, cast
 
-from needle import CapabilityTier, Strand
+from needle import CapabilityTier
 from needle import parse_capability_tier as _parse_tier
 from needle.errors import SAFE_EXCEPTIONS
+lazy from needle import Strand
 
 from textile.core.execution.invoker import (
     InvokerConfig,

@@ -1,12 +1,13 @@
 """
 Textile Core Argument Validation and Schema Synthesis.
 """
+from __future__ import annotations
 
 import logging
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, create_model
+lazy from pydantic import BaseModel, Field, ValidationError, create_model
 
 logger = logging.getLogger(__name__)
 
