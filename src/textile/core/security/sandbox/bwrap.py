@@ -4,13 +4,11 @@ Enforces mount isolation, network namespaces, and capability tier bounds.
 """
 
 import os
-import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
 from hem import BubblewrapBuilder
 
-from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.security.sandbox.resources import apply_sandbox_resources
 
 
@@ -50,10 +48,6 @@ def create_sandbox_builder(
     resources: list[str] | None = None,
 ) -> BubblewrapBuilder:
     """Create and configure a BubblewrapBuilder sandbox container for cmd."""
-    bwrap_path = shutil.which("bwrap")
-    if not bwrap_path:
-        raise SandboxUnavailableError("bwrap binary not found in system PATH.")
-
     ws = Path(workspace_root or Path.cwd()).resolve()
     allow_network = bool(resources and any("net" in str(r).lower() for r in resources))
     needs_host_session = _requires_host_session(resources)
@@ -62,7 +56,7 @@ def create_sandbox_builder(
     container_home = os.path.join("/", "home")
 
     builder = (
-        BubblewrapBuilder(bwrap_path)
+        BubblewrapBuilder()
         .clearenv()
         .bind_system_base()
         .bind_tmpfs_paths([container_tmp, container_home])

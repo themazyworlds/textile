@@ -5,6 +5,7 @@ Provides structured, diagnostic domain exceptions specific to Textile core runti
 
 from typing import Any
 
+from hem import SandboxUnavailableError
 from needle.errors import NeedleError
 
 
@@ -19,17 +20,6 @@ class TextileError(NeedleError):
         details: dict[str, Any] | None = None,
     ):
         super().__init__(message=message, hint=hint, code=code, details=details)
-
-
-class SandboxUnavailableError(TextileError):
-    """Raised when process isolation is requested or required, but sandbox tools (bwrap) are unavailable."""
-
-    def __init__(self, reason: str):
-        super().__init__(
-            message=f"Sandbox isolation unavailable: {reason}",
-            hint="Install 'bubblewrap' (bwrap) or run in an environment with container namespace support.",
-            code="ERR_SANDBOX_UNAVAILABLE",
-        )
 
 
 class PolicyViolationError(PermissionError):

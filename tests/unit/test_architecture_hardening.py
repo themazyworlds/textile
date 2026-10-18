@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pyotp
+from hem import BubblewrapBuilder
 from needle import Strand, Yarn
 from needle.errors import StrandCollisionError
 
@@ -13,7 +14,7 @@ from textile.core.execution.invoker import execute_direct
 from textile.core.execution.runner import execute_strand, execute_strand_async
 from textile.core.orchestration.loom import Loom
 from textile.core.security.context import OTPChallengeRequiredError, OTPManager
-from textile.core.security.sandbox import BubblewrapSandbox
+from textile.core.security.sandbox import create_sandbox_builder
 
 
 class TestArchitectureHardening(unittest.TestCase):
@@ -53,15 +54,17 @@ class TestArchitectureHardening(unittest.TestCase):
         self.assertEqual(res, "async_result_123")
 
     def test_sandbox_fail_closed_when_bwrap_missing(self):
-        with patch("shutil.which", return_value=None), self.assertRaises(SandboxUnavailableError):
-            BubblewrapSandbox.wrap_command(["python", "-c", "print(1)"], writable=True)
+        with patch.object(BubblewrapBuilder, "is_available", return_value=False):
+            builder = create_sandbox_builder(["python", "-c", "print(1)"], writable=True)
+            with self.assertRaises(SandboxUnavailableError):
+                builder.run()
 
     def test_isolated_strand_fail_closed_when_bwrap_unavailable(self):
         mock_yarn = MagicMock()
         mock_yarn.__class__.__name__ = "MockYarn"
         mock_yarn.get_strands.return_value = [Strand(name="mock_tool", description="Mock", handler=lambda args: "ok")]
 
-        with patch.object(BubblewrapSandbox, "is_available", return_value=False):
+        with patch.object(BubblewrapBuilder, "is_available", return_value=False):
             res = execute_strand(
                 mock_yarn,
                 "mock_tool",
@@ -69,7 +72,7 @@ class TestArchitectureHardening(unittest.TestCase):
                 tier="MUTATE",
             )
             self.assertIn("Sandbox isolation unavailable", res)
-            self.assertIn("Sandboxed strands require bubblewrap", res)
+            self.assertIn("Install 'bubblewrap'", res)
 
             res_async = asyncio.run(
                 execute_strand_async(
@@ -80,7 +83,7 @@ class TestArchitectureHardening(unittest.TestCase):
                 )
             )
             self.assertIn("Sandbox isolation unavailable", res_async)
-            self.assertIn("Sandboxed strands require bubblewrap", res_async)
+            self.assertIn("Install 'bubblewrap'", res_async)
 
     def test_strand_collision_raises_error(self):
         class MockSkein:
