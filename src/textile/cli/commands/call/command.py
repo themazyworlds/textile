@@ -1,5 +1,5 @@
 """
-Call Command Definition (`textile call`).
+Call Command Definition (`quill call`).
 """
 
 import orjson

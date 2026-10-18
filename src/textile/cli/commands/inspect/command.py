@@ -1,5 +1,5 @@
 """
-Inspect Command Definition (`textile inspect`).
+Inspect Command Definition (`quill inspect`).
 """
 
 import typer

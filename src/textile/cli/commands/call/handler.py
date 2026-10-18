@@ -31,7 +31,7 @@ def execute_strand_call(strand_name: str, parsed_kwargs: dict[str, Any]) -> None
     except OTPChallengeRequiredError as e:
         console.print("\n  [bold bright_yellow]2FA Confirmation Required[/bold bright_yellow]")
         console.print("  [dim]Enter your 6-digit Authenticator / TOTP code to authorize this action.[/dim]")
-        console.print(f"  [bold cyan]Confirm:[/bold cyan] textile call {strand_name} otp=<6_digit_code>\n")
+        console.print(f"  [bold cyan]Confirm:[/bold cyan] quill call {strand_name} otp=<6_digit_code>\n")
         raise typer.Exit(code=1) from e
     except PolicyViolationError as e:
         console.print(f"\n  [bold red]Security Policy Violation:[/bold red] {e}\n")

@@ -1,5 +1,5 @@
 """
-Settings Command Definition (`textile settings`).
+Settings Command Definition (`quill settings`).
 """
 
 import typer

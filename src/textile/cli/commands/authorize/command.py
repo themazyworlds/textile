@@ -1,5 +1,5 @@
 """
-Authorize Command Definition (`textile authorize`).
+Authorize Command Definition (`quill authorize`).
 """
 
 import typer

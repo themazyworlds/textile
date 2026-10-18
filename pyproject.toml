@@ -31,7 +31,7 @@ classifiers = [
 ]
 
 [project.scripts]
-textile = "textile.cli:main"
+quill = "textile.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

@@ -1,5 +1,5 @@
 """
-Twill Command Definition (`textile twill`).
+Twill Command Definition (`quill twill`).
 """
 
 from textile.cli.commands.twill.handler import run_twill_handler

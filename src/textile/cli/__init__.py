@@ -16,7 +16,7 @@ __all__ = [
 
 
 def main():
-    """CLI entrypoint function invoked by textile script."""
+    """CLI entrypoint function invoked by quill script."""
     quill()
 
 

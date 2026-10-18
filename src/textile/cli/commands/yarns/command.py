@@ -1,5 +1,5 @@
 """
-Yarns Command Definition (`textile yarns`).
+Yarns Command Definition (`quill yarns`).
 """
 
 from pathlib import Path

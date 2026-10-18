@@ -1,5 +1,5 @@
 """
-Tapestry Command Definition (`textile tapestry`).
+Tapestry Command Definition (`quill tapestry`).
 """
 
 import typer

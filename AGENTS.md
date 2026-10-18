@@ -11,7 +11,7 @@ Textile is a layered Linux automation fabric exposing desktop capabilities, syst
 ### 1. Twill (MCP Server over Stdio)
 Twill is the primary interface for external AI assistants (Claude, Cursor, Antigravity, etc.). It aggregates all active Strands into a standard Model Context Protocol server:
 ```bash
-uv run textile twill
+uv run quill twill
 ```
 
 ### 2. Loom (Runtime Dispatcher)
@@ -37,27 +37,27 @@ All tools (Strands) are categorized into explicit security tiers:
 
 ## Agent CLI Commands
 
-Agents can query and inspect the fabric directly using the Textile CLI:
+Agents can query and inspect the fabric directly using the Quill CLI:
 
 ```bash
 # Start MCP server over stdio
-uv run textile twill
+uv run quill twill
 
 # List all discovered capability yarns and layer status
-uv run textile skein
-uv run textile yarns
+uv run quill skein
+uv run quill yarns
 
 # List all callable tools (strands)
-uv run textile strands
-uv run textile strands --tier observe
+uv run quill strands
+uv run quill strands --tier observe
 
 # Inspect parameter schema for a specific strand
-uv run textile inspect <strand_name>
+uv run quill inspect <strand_name>
 
 # Execute any strand directly with positional parameters or JSON
-uv run textile call <strand_name> [args]...
-uv run textile call <strand_name> --json '{"key": "value"}'
+uv run quill call <strand_name> [args]...
+uv run quill call <strand_name> --json '{"key": "value"}'
 
 # View documented settings and allowed options
-uv run textile settings docs [yarn_name]
+uv run quill settings docs [yarn_name]
 ```

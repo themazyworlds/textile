@@ -1,5 +1,5 @@
 """
-Skein Command Definition (`textile skein`).
+Skein Command Definition (`quill skein`).
 """
 
 import typer

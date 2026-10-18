@@ -5,8 +5,8 @@ Textile Quill - Command-Line Interface (CLI) Dispatcher & Interactive Command Dr
 import typer
 
 quill = typer.Typer(
-    name="textile",
-    help="Textile Linux Desktop AI Engine CLI - High performance desktop capabilities and IPC bus.",
+    name="quill",
+    help="Quill - Interactive Command Driver for the Textile Linux Desktop AI Subsystem.",
     add_completion=True,
     no_args_is_help=True,
 )

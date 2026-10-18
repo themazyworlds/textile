@@ -1,5 +1,5 @@
 """
-Strands Command Definition (`textile strands`).
+Strands Command Definition (`quill strands`).
 """
 
 import typer
