@@ -4,6 +4,7 @@ Textile CLI Registry, Health Audit, and Blackboard Diagnostics Commands.
 
 import contextlib
 import inspect
+import io
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 
 import platformdirs
 import typer
+from dulwich import errors, porcelain
 from pydantic import BaseModel, Field
 lazy from rich.tree import Tree
 
@@ -333,19 +335,38 @@ def _handle_yarn_install(target: str, user_yarns: Path) -> None:
         raw_name = target.rstrip("/").split("/")[-1].replace(".git", "")
         repo_name = raw_name.replace("textile-yarn-", "").replace("textile-", "")
         dest = user_yarns / repo_name
-        git_bin = shutil.which("git")
-        if not git_bin:
-            console.print("  [bold red]Error:[/bold red] git binary not found in PATH.")
+
+        cloned = False
+        err_msg = ""
+        # 1. Pure-Python clone via dulwich (no subprocess overhead)
+        err_stream = io.BytesIO()
+        try:
+            repo = porcelain.clone(repo_url, str(dest), depth=1, errstream=err_stream)
+            repo.close()
+            cloned = True
+        except (errors.GitProtocolError, OSError, ValueError, KeyError, RuntimeError) as e:
+            err_msg = err_stream.getvalue().decode(errors="replace").strip() or str(e)
+
+        # 2. Host git CLI fallback (e.g. for custom SSH agent configs or credential helpers)
+        if not cloned:
+            git_bin = shutil.which("git")
+            if git_bin:
+                shutil.rmtree(dest, ignore_errors=True)
+                res = subprocess.run(
+                    [git_bin, "clone", "--depth", "1", repo_url, str(dest)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if res.returncode == 0:
+                    cloned = True
+                else:
+                    err_msg = res.stderr.strip() or err_msg
+
+        if not cloned:
+            console.print(f"  [bold red]Error installing yarn:[/bold red] {err_msg}")
             return
-        res = subprocess.run(
-            [git_bin, "clone", "--depth", "1", repo_url, str(dest)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res.returncode != 0:
-            console.print(f"  [bold red]Error installing yarn:[/bold red] {res.stderr.strip()}")
-            return
+
         console.print(
             f"  [bold green]✓[/bold green] Installed yarn [bold white]{repo_name}[/bold white] from {repo_url}"
         )
