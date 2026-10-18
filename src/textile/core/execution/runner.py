@@ -13,11 +13,11 @@ from typing import Any
 
 import orjson
 from hem import (
-    BubblewrapBuilder,
     CompletedProcess,
+    PathGrant,
+    Sandbox,
     TimeoutExpired,
     async_run_command,
-    create_sandbox,
     run_command,
 )
 from needle import CapabilityTier
@@ -112,20 +112,21 @@ def _build_worker_command(spec: _WorkerExecutionSpec) -> list[str]:
 def _prepare_execution(
     spec: _WorkerExecutionSpec,
     env: dict[str, str],
-) -> tuple[BubblewrapBuilder | None, list[str]]:
-    """Prepare sandbox builder or direct command according to tier policy."""
+) -> tuple[Sandbox | None, list[str]]:
+    """Prepare sandbox or direct command according to tier policy."""
     raw_cmd = _build_worker_command(spec)
     policy = get_tier_policy(spec.tier_str)
     if policy.requires_sandbox:
-        builder = create_sandbox(
-            raw_cmd,
-            writable=policy.workspace_writable,
-            env=env,
+        box = Sandbox(
+            profile="strict",
             workspace=spec.cwd,
+            writable=policy.workspace_writable,
             resources=getattr(spec.yarn, "resources", []),
-            extra_ro_binds=_get_textile_config_binds(),
+            env=env,
         )
-        return builder, raw_cmd
+        for bind_path in _get_textile_config_binds():
+            box = box.allow(PathGrant(bind_path, writable=False))
+        return box, raw_cmd
     return None, raw_cmd
 
 
@@ -167,10 +168,10 @@ async def execute_strand_async(
     env = _build_worker_env()
 
     try:
-        builder, raw_cmd = _prepare_execution(spec, env)
+        box, raw_cmd = _prepare_execution(spec, env)
         proc_timeout = None if (timeout is None or timeout <= 0) else timeout
-        if builder is not None:
-            res = await builder.async_run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        if box is not None:
+            res = await box.async_run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout)
         else:
             res = await async_run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
         return _parse_worker_output(res, strand_name)
@@ -203,10 +204,10 @@ def execute_strand(
     env = _build_worker_env()
 
     try:
-        builder, raw_cmd = _prepare_execution(spec, env)
+        box, raw_cmd = _prepare_execution(spec, env)
         proc_timeout = None if (timeout is None or timeout <= 0) else timeout
-        if builder is not None:
-            res = builder.run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        if box is not None:
+            res = box.run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout)
         else:
             res = run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
         return _parse_worker_output(res, strand_name)

@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pyotp
-from hem import BubblewrapBuilder, create_sandbox
+from hem import Sandbox
 from needle import Strand, Yarn
 from needle.errors import StrandCollisionError
 
@@ -53,17 +53,17 @@ class TestArchitectureHardening(unittest.TestCase):
         self.assertEqual(res, "async_result_123")
 
     def test_sandbox_fail_closed_when_bwrap_missing(self):
-        with patch.object(BubblewrapBuilder, "is_available", return_value=False):
-            builder = create_sandbox(["python", "-c", "print(1)"], writable=True)
+        with patch.object(Sandbox, "is_available", return_value=False):
+            box = Sandbox(writable=True)
             with self.assertRaises(SandboxUnavailableError):
-                builder.run()
+                box.run(["python", "-c", "print(1)"])
 
     def test_isolated_strand_fail_closed_when_bwrap_unavailable(self):
         mock_yarn = MagicMock()
         mock_yarn.__class__.__name__ = "MockYarn"
         mock_yarn.get_strands.return_value = [Strand(name="mock_tool", description="Mock", handler=lambda args: "ok")]
 
-        with patch.object(BubblewrapBuilder, "is_available", return_value=False):
+        with patch.object(Sandbox, "is_available", return_value=False):
             res = execute_strand(
                 mock_yarn,
                 "mock_tool",

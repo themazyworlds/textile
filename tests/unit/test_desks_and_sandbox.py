@@ -186,14 +186,15 @@ except Exception:
 print("SANDBOX_SECURE")
 """,
                 ]
-                builder = create_sandbox(
-                    probe_cmd,
-                    writable=False,
+                box = hem.Sandbox(
+                    profile="strict",
                     workspace=tmpdir,
-                    extra_ro_binds=_get_textile_config_binds(),
+                    writable=False,
                     env=clean_env,
                 )
-                res = builder.run(probe_cmd, capture_output=True, text=True, check=False)
+                for b in _get_textile_config_binds():
+                    box = box.allow(hem.PathGrant(b, writable=False))
+                res = box.run(probe_cmd, capture_output=True, text=True, check=False)
                 assert res.returncode == 0
                 assert "LEAK_FILE" not in res.stdout
                 assert "LEAK_ENV" not in res.stdout
