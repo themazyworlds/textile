@@ -29,39 +29,12 @@ class LazyLogger:
         self._name = name
         self._logger: Any = None
 
-    def _get_logger(self) -> Any:
+    def __getattr__(self, item: str) -> Any:
         if self._logger is None:
             if not _state.initialized:
                 configure_logging()
             self._logger = structlog.get_logger(self._name) if self._name else structlog.get_logger()
-        return self._logger
-
-    def debug(self, event: str | None = None, **kw: Any) -> Any:
-        return self._get_logger().debug(event, **kw)
-
-    def info(self, event: str | None = None, **kw: Any) -> Any:
-        return self._get_logger().info(event, **kw)
-
-    def warning(self, event: str | None = None, **kw: Any) -> Any:
-        return self._get_logger().warning(event, **kw)
-
-    def error(self, event: str | None = None, **kw: Any) -> Any:
-        return self._get_logger().error(event, **kw)
-
-    def critical(self, event: str | None = None, **kw: Any) -> Any:
-        return self._get_logger().critical(event, **kw)
-
-    def exception(self, event: str | None = None, **kw: Any) -> Any:
-        return self._get_logger().exception(event, **kw)
-
-    def bind(self, **kw: Any) -> Any:
-        return self._get_logger().bind(**kw)
-
-    def unbind(self, *keys: str) -> Any:
-        return self._get_logger().unbind(*keys)
-
-    def __getattr__(self, item: str) -> Any:
-        return getattr(self._get_logger(), item)
+        return getattr(self._logger, item)
 
 
 def configure_logging(level: int = logging.INFO) -> None:
