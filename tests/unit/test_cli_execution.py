@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from textile.core.cli.quill import quill
+from textile.cli.quill import quill
 from textile.core.orchestration.loom import loom
 
 
