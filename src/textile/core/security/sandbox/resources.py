@@ -9,7 +9,8 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
-from textile.core.security.sandbox.builder import BubblewrapBuilder
+from hem import BubblewrapBuilder
+
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)

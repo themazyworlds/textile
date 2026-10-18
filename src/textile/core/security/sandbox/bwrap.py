@@ -6,13 +6,13 @@ Enforces mount isolation, network namespaces, and capability tier bounds.
 import contextlib
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from hem import BubblewrapBuilder
+
 from textile.core.definitions.errors import SandboxUnavailableError
-from textile.core.security.sandbox.builder import BubblewrapBuilder
 from textile.core.security.sandbox.resources import apply_sandbox_resources
 
 
@@ -80,33 +80,10 @@ class BubblewrapSandbox:
     Enforces namespace isolation (mount, PID, IPC, network) and workspace confinement.
     """
 
-    _AVAILABLE: bool | None = None
-
     @classmethod
     def is_available(cls) -> bool:
         """Check if bubblewrap (bwrap) executable is present and working."""
-        if cls._AVAILABLE is not None:
-            return cls._AVAILABLE
-        if sys.platform != "linux":
-            cls._AVAILABLE = False
-            return False
-        bwrap_path = shutil.which("bwrap")
-        if not bwrap_path:
-            cls._AVAILABLE = False
-            return False
-        try:
-            res = subprocess.run(
-                [bwrap_path, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=2.0,
-                check=False,
-            )
-            cls._AVAILABLE = res.returncode == 0
-            return cls._AVAILABLE
-        except OSError, subprocess.SubprocessError:
-            cls._AVAILABLE = False
-            return False
+        return BubblewrapBuilder.is_available()
 
     @staticmethod
     def wrap_command(

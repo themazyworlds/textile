@@ -11,6 +11,7 @@ requires-python = ">=3.15"
 dependencies = [
     "desktop-notifier>=6.2.0",
     "dulwich>=1.2.17",
+    "hem",
     "mcp>=2.0.0",
     "needle",
     "orjson>=3.10.0",
@@ -47,6 +48,7 @@ filterwarnings = [
 source-include = ["tests/**", "AGENTS.md"]
 
 [tool.uv.sources]
+hem = { path = "../../hem", editable = true }
 needle = { path = "../textile-needle", editable = true }
 
 [dependency-groups]

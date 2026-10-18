@@ -389,6 +389,20 @@ wheels = [
 ]
 
 [[package]]
+name = "hem"
+version = "0.1.0"
+source = { editable = "../../hem" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyright", specifier = ">=1.1.414" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.16.8" },
+]
+
+[[package]]
 name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1196,6 +1210,7 @@ source = { editable = "." }
 dependencies = [
     { name = "desktop-notifier" },
     { name = "dulwich" },
+    { name = "hem" },
     { name = "mcp" },
     { name = "needle" },
     { name = "orjson" },
@@ -1222,6 +1237,7 @@ dev = [
 requires-dist = [
     { name = "desktop-notifier", specifier = ">=6.2.0" },
     { name = "dulwich", specifier = ">=1.2.17" },
+    { name = "hem", editable = "../../hem" },
     { name = "mcp", specifier = ">=2.0.0" },
     { name = "needle", editable = "../textile-needle" },
     { name = "orjson", specifier = ">=3.10.0" },

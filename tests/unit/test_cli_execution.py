@@ -39,31 +39,19 @@ class TestCliExecution(unittest.TestCase):
         from unittest.mock import MagicMock
 
         mock_repo = MagicMock()
-        with (
-            patch("dulwich.porcelain.clone", return_value=mock_repo) as mock_clone,
-            patch("subprocess.run") as mock_subproc,
-        ):
+        with patch("dulwich.porcelain.clone", return_value=mock_repo) as mock_clone:
             result = self.runner.invoke(app, ["yarns", "install", "https://github.com/test/textile-yarn-dummy.git"])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("Installed yarn", result.stdout)
             mock_clone.assert_called_once()
             mock_repo.close.assert_called_once()
-            mock_subproc.assert_not_called()
 
-    def test_yarns_install_dulwich_failure_fallback_to_git(self):
-        from unittest.mock import MagicMock
-
-        mock_subproc_res = MagicMock()
-        mock_subproc_res.returncode = 0
-        with (
-            patch("dulwich.porcelain.clone", side_effect=RuntimeError("Dulwich error")),
-            patch("shutil.which", return_value="/usr/bin/git"),
-            patch("subprocess.run", return_value=mock_subproc_res) as mock_subproc,
-        ):
+    def test_yarns_install_dulwich_failure(self):
+        with patch("dulwich.porcelain.clone", side_effect=RuntimeError("Dulwich network error")):
             result = self.runner.invoke(app, ["yarns", "install", "https://github.com/test/textile-yarn-dummy.git"])
             self.assertEqual(result.exit_code, 0)
-            self.assertIn("Installed yarn", result.stdout)
-            mock_subproc.assert_called_once()
+            self.assertIn("Error installing yarn", result.stdout)
+            self.assertIn("Dulwich network error", result.stdout)
 
 
 if __name__ == "__main__":
