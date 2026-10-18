@@ -5,9 +5,9 @@ prompt instructions (FabricInstructions), core fabric (Fabric), and MCP protocol
 """
 
 from textile.core.orchestration.fabric import core_fabric_yarn
-from textile.core.orchestration.instructions import FabricInstructions, fabric_instructions
-from textile.core.orchestration.loom import Loom, loom
-from textile.core.orchestration.skein import Skein, skein
+lazy from textile.core.orchestration.instructions import FabricInstructions, fabric_instructions
+lazy from textile.core.orchestration.loom import Loom, loom
+lazy from textile.core.orchestration.skein import Skein, skein
 lazy from textile.core.orchestration.twill import create_twill_server, run_twill
 
 __all__ = [

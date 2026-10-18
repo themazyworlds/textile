@@ -4,7 +4,6 @@ Provides Yarn abstract base class, Strand models, Strand decorators,
 invoker factory, and isolated subprocess runner.
 """
 
-from textile.core.execution.validation import validate_strand_arguments
 lazy from textile.core.definitions.errors import STRAND_EXEC_ERRORS
 lazy from textile.core.execution.invoker import InvokerConfig, execute_direct
 lazy from textile.core.execution.reflector import (
@@ -13,6 +12,7 @@ lazy from textile.core.execution.reflector import (
     reflect_strands,
 )
 lazy from textile.core.execution.runner import execute_strand, execute_strand_async
+lazy from textile.core.execution.validation import validate_strand_arguments
 
 __all__ = [
     "InvokerConfig",

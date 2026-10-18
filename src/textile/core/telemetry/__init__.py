@@ -3,9 +3,8 @@ Textile Telemetry Functional Domain Package.
 Provides sensory blackboard & task ledger (Tapestry) and cross-process event bus (Elastic).
 """
 
-from needle import EventUrgency
+lazy from needle import EventUrgency
 
-from textile.core.telemetry.log import configure_logging, get_logger
 lazy from textile.core.telemetry.blackboard import (
     SensoryTapestry,
     sensory_tapestry,
@@ -16,6 +15,7 @@ lazy from textile.core.telemetry.ledger import (
     CoreTapestry,
     core_tapestry,
 )
+lazy from textile.core.telemetry.log import configure_logging, get_logger
 
 __all__ = [
     "CoreTapestry",
