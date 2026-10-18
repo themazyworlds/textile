@@ -3,24 +3,33 @@ Textile Core Settings Subsystem & Auto-Documented Configuration Generator.
 Powered by Pydantic v2 and pydantic-settings.
 """
 
+from __future__ import annotations
+
 import os
 import tomllib
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
-from pydantic import BaseModel
-from pydantic_core import PydanticUndefined
-from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from pydantic import BaseModel
+lazy from pydantic_core import PydanticUndefined
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class YarnSettings(BaseSettings):
-    """Base class for all Textile Capability Yarn settings schemas."""
+def __getattr__(name: str) -> Any:
+    if name == "YarnSettings":
 
-    model_config = SettingsConfigDict(
-        extra="ignore",
-        case_sensitive=False,
-        arbitrary_types_allowed=True,
-    )
+        class YarnSettings(BaseSettings):
+            """Base class for all Textile Capability Yarn settings schemas."""
+
+            model_config = SettingsConfigDict(
+                extra="ignore",
+                case_sensitive=False,
+                arbitrary_types_allowed=True,
+            )
+
+        globals()["YarnSettings"] = YarnSettings
+        return YarnSettings
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_settings_file_path() -> Path:
