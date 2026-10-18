@@ -13,6 +13,7 @@ from needle.errors import StrandNotFoundError
 from textile.core.cli.app import app, console, ensure_initialized
 from textile.core.cli.ui import Column, print_table
 from textile.core.definitions.errors import TextileError
+from textile.core.orchestration import twill
 from textile.core.orchestration.loom import loom
 from textile.core.security.context import (
     OTPChallengeRequiredError,
@@ -181,8 +182,6 @@ def inspect_strand(
 @app.command("twill")
 def cmd_twill():
     """Launch official Twill / MCP stdio server."""
-    from textile.core.orchestration import twill  # noqa: PLC0415
-
     twill.run_twill()
 
 
