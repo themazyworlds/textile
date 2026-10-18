@@ -81,7 +81,7 @@ select = [
     "N",      # pep8-naming
     "A",      # flake8-builtins (prevents shadowing built-in names)
 ]
-ignore = ["S603", "S606", "S607"]
+ignore = ["S603"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
