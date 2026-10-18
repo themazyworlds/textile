@@ -12,11 +12,12 @@ from typing import Any
 
 import orjson
 import platformdirs
-from needle import CapabilityTier, Strand, Yarn
+from needle import CapabilityTier, Yarn
 from needle import parse_capability_tier as _parse_tier
+lazy from needle import Strand
 
-from textile.core.execution.runner import execute_strand_async
 from textile.core.telemetry.log import get_logger
+lazy from textile.core.execution.runner import execute_strand_async
 
 logger = get_logger(__name__)
 

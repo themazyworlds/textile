@@ -10,8 +10,8 @@ from typing import Any
 from needle import Yarn, strand
 
 from textile.core.orchestration.skein import skein
-from textile.core.telemetry.elastic import elastic
-from textile.core.telemetry.ledger import core_tapestry
+lazy from textile.core.telemetry.elastic import elastic
+lazy from textile.core.telemetry.ledger import core_tapestry
 
 logger = logging.getLogger(__name__)
 

@@ -6,10 +6,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from rich import box
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+lazy from rich import box
+lazy from rich.panel import Panel
+lazy from rich.table import Table
 
 console = Console()
 

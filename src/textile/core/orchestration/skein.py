@@ -12,8 +12,9 @@ from typing import Any
 lazy import importlib.metadata
 
 import orjson
-from needle import Strand, Yarn
+from needle import Yarn
 from needle.errors import SAFE_EXCEPTIONS
+lazy from needle import Strand
 
 from textile.core.orchestration.discovery import (
     find_yarn_files,

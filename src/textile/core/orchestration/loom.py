@@ -11,8 +11,9 @@ import time
 import uuid
 from typing import Any
 
-from needle import DEFAULT_LAYER, Strand, Yarn
+from needle import DEFAULT_LAYER, Yarn
 from needle.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
+lazy from needle import Strand
 
 from textile.core.orchestration.skein import Skein, skein
 from textile.core.telemetry.log import get_logger
