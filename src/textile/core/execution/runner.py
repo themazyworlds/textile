@@ -17,13 +17,25 @@ from hem import (
     CompletedProcess,
     TimeoutExpired,
     async_run_command,
+    create_sandbox,
     run_command,
 )
 from needle import CapabilityTier
 
 from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.security.policy import get_tier_policy
-from textile.core.security.sandbox import create_sandbox_builder
+
+
+def _get_textile_config_binds() -> list[Path]:
+    """Resolve user configuration (~/.config/textile) and local share (~/.local) paths."""
+    binds: list[Path] = []
+    textile_config = Path.home() / ".config" / "textile"
+    if textile_config.exists():
+        binds.append(textile_config)
+    local_share = Path.home() / ".local"
+    if local_share.exists():
+        binds.append(local_share)
+    return binds
 
 
 def _format_handler_result(res: Any) -> str:
@@ -96,12 +108,13 @@ def _prepare_execution(
     raw_cmd = _build_worker_command(spec)
     policy = get_tier_policy(spec.tier_str)
     if policy.requires_sandbox:
-        builder = create_sandbox_builder(
+        builder = create_sandbox(
             raw_cmd,
             writable=policy.workspace_writable,
             env=env,
-            workspace_root=spec.cwd,
+            workspace=spec.cwd,
             resources=getattr(spec.yarn, "resources", []),
+            extra_ro_binds=_get_textile_config_binds(),
         )
         return builder, raw_cmd
     return None, raw_cmd

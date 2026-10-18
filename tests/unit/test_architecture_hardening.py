@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pyotp
-from hem import BubblewrapBuilder
+from hem import BubblewrapBuilder, create_sandbox
 from needle import Strand, Yarn
 from needle.errors import StrandCollisionError
 
@@ -14,7 +14,6 @@ from textile.core.execution.invoker import execute_direct
 from textile.core.execution.runner import execute_strand, execute_strand_async
 from textile.core.orchestration.loom import Loom
 from textile.core.security.context import OTPChallengeRequiredError, OTPManager
-from textile.core.security.sandbox import create_sandbox_builder
 
 
 class TestArchitectureHardening(unittest.TestCase):
@@ -55,7 +54,7 @@ class TestArchitectureHardening(unittest.TestCase):
 
     def test_sandbox_fail_closed_when_bwrap_missing(self):
         with patch.object(BubblewrapBuilder, "is_available", return_value=False):
-            builder = create_sandbox_builder(["python", "-c", "print(1)"], writable=True)
+            builder = create_sandbox(["python", "-c", "print(1)"], writable=True)
             with self.assertRaises(SandboxUnavailableError):
                 builder.run()
 

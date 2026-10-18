@@ -11,9 +11,7 @@ from pathlib import Path
 
 import hem
 import pytest
-from hem import BubblewrapBuilder, apply_resources, wrap_command
-
-from textile.core.security.sandbox import create_sandbox_builder
+from hem import BubblewrapBuilder, apply_resources, create_sandbox, wrap_command
 
 
 class TestBubblewrapSandbox:
@@ -49,7 +47,7 @@ class TestBubblewrapSandbox:
 
             # In read-only mode, reading succeeds
             read_cmd = [sys.executable, "-c", f'print(open("{f}").read())']
-            builder_read = create_sandbox_builder(read_cmd, writable=False, workspace_root=tmpdir)
+            builder_read = create_sandbox(read_cmd, writable=False, workspace=tmpdir)
 
             res_read = builder_read.run(read_cmd, capture_output=True, text=True, check=False)
             assert res_read.returncode == 0
@@ -62,7 +60,7 @@ class TestBubblewrapSandbox:
 
             # In read-only mode, writing fails with Read-only file system
             write_cmd = [sys.executable, "-c", f'open("{f}", "w").write("fail")']
-            builder_write = create_sandbox_builder(write_cmd, writable=False, workspace_root=tmpdir)
+            builder_write = create_sandbox(write_cmd, writable=False, workspace=tmpdir)
             res_write = builder_write.run(write_cmd, capture_output=True, text=True, check=False)
             assert res_write.returncode != 0
             assert "Read-only file system" in res_write.stderr
