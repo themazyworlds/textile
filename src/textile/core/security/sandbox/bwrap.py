@@ -1,42 +1,25 @@
 """
-Bubblewrap (bwrap) unprivileged container builder and isolation manager.
-Enforces mount isolation, network namespaces, and capability tier bounds.
+Bubblewrap (bwrap) unprivileged container isolation for Textile strands.
+Configures Hem sandbox with Textile configuration paths.
 """
 
-import os
 from collections.abc import Sequence
 from pathlib import Path
 
+import hem
 from hem import BubblewrapBuilder
 
-from textile.core.security.sandbox.resources import apply_sandbox_resources
 
-
-def is_sandbox_available() -> bool:
-    """Check if bubblewrap (bwrap) executable is present and working on the host."""
-    return BubblewrapBuilder.is_available()
-
-
-def _bind_user_config_and_share(builder: BubblewrapBuilder) -> None:
-    """Bind user configuration (~/.config/textile) and local share (~/.local) into sandbox."""
+def get_textile_config_binds() -> list[Path]:
+    """Resolve user configuration (~/.config/textile) and local share (~/.local) paths."""
+    binds: list[Path] = []
     textile_config = Path.home() / ".config" / "textile"
     if textile_config.exists():
-        builder.ro_bind(textile_config, try_ok=True)
-
+        binds.append(textile_config)
     local_share = Path.home() / ".local"
     if local_share.exists():
-        builder.ro_bind(local_share, try_ok=True)
-
-
-def _requires_host_session(resources: Sequence[str] | None) -> bool:
-    """Check if granted resources require preserving the host session/user namespace."""
-    if not resources:
-        return False
-    session_indicators = ("dbus:session", "dbus-session", "display", "display:wayland")
-    return any(
-        str(r).lower() in session_indicators or str(r).lower().startswith("env:xdg_runtime_dir")
-        for r in resources
-    )
+        binds.append(local_share)
+    return binds
 
 
 def create_sandbox_builder(
@@ -45,62 +28,14 @@ def create_sandbox_builder(
     writable: bool = False,
     env: dict[str, str] | None = None,
     workspace_root: str | Path | None = None,
-    resources: list[str] | None = None,
+    resources: Sequence[str] | None = None,
 ) -> BubblewrapBuilder:
-    """Create and configure a BubblewrapBuilder sandbox container for cmd."""
-    ws = Path(workspace_root or Path.cwd()).resolve()
-    allow_network = bool(resources and any("net" in str(r).lower() for r in resources))
-    needs_host_session = _requires_host_session(resources)
-
-    container_tmp = os.path.join("/", "tmp")
-    container_home = os.path.join("/", "home")
-
-    builder = (
-        BubblewrapBuilder()
-        .clearenv()
-        .bind_system_base()
-        .bind_tmpfs_paths([container_tmp, container_home])
-        .set_namespaces(allow_network=allow_network, unshare_user=not needs_host_session)
-        .bind_workspace(ws, writable=writable)
-        .set_standard_env(env)
-        .bind_python_runtime()
-        .bind_executable_dependencies(cmd)
-        .bind_script_sources(cmd)
-    )
-
-    _bind_user_config_and_share(builder)
-
-    if resources:
-        apply_sandbox_resources(builder, resources)
-
-    return builder
-
-
-def wrap_sandboxed_command(
-    cmd: list[str],
-    *,
-    writable: bool = False,
-    env: dict[str, str] | None = None,
-    workspace_root: str | Path | None = None,
-    resources: list[str] | None = None,
-) -> list[str]:
-    """Wrap command in a bwrap sandbox container."""
-    builder = create_sandbox_builder(
+    """Create and configure a BubblewrapBuilder sandbox container tailored for Textile strands."""
+    return hem.create_sandbox(
         cmd,
+        workspace=workspace_root,
         writable=writable,
-        env=env,
-        workspace_root=workspace_root,
         resources=resources,
+        env=env,
+        extra_ro_binds=get_textile_config_binds(),
     )
-    return builder.build(cmd)
-
-
-class BubblewrapSandbox:
-    """
-    Linux Bubblewrap (bwrap) unprivileged container isolation manager.
-    Enforces namespace isolation (mount, PID, IPC, network) and workspace confinement.
-    """
-
-    is_available = staticmethod(is_sandbox_available)
-    create_builder = staticmethod(create_sandbox_builder)
-    wrap_command = staticmethod(wrap_sandboxed_command)

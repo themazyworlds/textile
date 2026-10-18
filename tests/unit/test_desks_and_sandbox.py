@@ -1,5 +1,5 @@
 """
-Unit tests for Textile Bubblewrap Sandbox.
+Unit tests for Textile Bubblewrap Sandbox and Hem integration.
 """
 
 import asyncio
@@ -9,20 +9,22 @@ import tempfile
 import unittest.mock
 from pathlib import Path
 
+import hem
 import pytest
+from hem import BubblewrapBuilder, apply_resources, wrap_command
 
-from textile.core.security.sandbox import BubblewrapSandbox
+from textile.core.security.sandbox import create_sandbox_builder
 
 
 class TestBubblewrapSandbox:
     def test_bwrap_availability(self):
         # On this system bwrap is installed
         if sys.platform == "linux":
-            assert BubblewrapSandbox.is_available() is True
+            assert hem.is_available() is True
 
     def test_wrap_command_read_only(self):
         cmd = ["python", "-c", "print(1)"]
-        wrapped = BubblewrapSandbox.wrap_command(cmd, writable=False, workspace_root="/tmp/test_ws")
+        wrapped = wrap_command(cmd, writable=False, workspace="/tmp/test_ws")
         assert "bwrap" in wrapped[0]
         assert "--unshare-user" in wrapped
         assert "--ro-bind" in wrapped
@@ -32,13 +34,13 @@ class TestBubblewrapSandbox:
 
     def test_wrap_command_writable(self):
         cmd = ["python", "-c", "print(1)"]
-        wrapped = BubblewrapSandbox.wrap_command(cmd, writable=True, workspace_root="/tmp/test_ws")
+        wrapped = wrap_command(cmd, writable=True, workspace="/tmp/test_ws")
         assert "bwrap" in wrapped[0]
         assert "--bind" in wrapped
         assert "/tmp/test_ws" in wrapped
 
     def test_bwrap_enforces_read_only_and_hides_home(self):
-        if not BubblewrapSandbox.is_available():
+        if not hem.is_available():
             pytest.skip("bwrap not available")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -47,7 +49,7 @@ class TestBubblewrapSandbox:
 
             # In read-only mode, reading succeeds
             read_cmd = [sys.executable, "-c", f'print(open("{f}").read())']
-            builder_read = BubblewrapSandbox.create_builder(read_cmd, writable=False, workspace_root=tmpdir)
+            builder_read = create_sandbox_builder(read_cmd, writable=False, workspace_root=tmpdir)
 
             res_read = builder_read.run(read_cmd, capture_output=True, text=True, check=False)
             assert res_read.returncode == 0
@@ -60,7 +62,7 @@ class TestBubblewrapSandbox:
 
             # In read-only mode, writing fails with Read-only file system
             write_cmd = [sys.executable, "-c", f'open("{f}", "w").write("fail")']
-            builder_write = BubblewrapSandbox.create_builder(write_cmd, writable=False, workspace_root=tmpdir)
+            builder_write = create_sandbox_builder(write_cmd, writable=False, workspace_root=tmpdir)
             res_write = builder_write.run(write_cmd, capture_output=True, text=True, check=False)
             assert res_write.returncode != 0
             assert "Read-only file system" in res_write.stderr
@@ -73,17 +75,13 @@ class TestBubblewrapSandbox:
         ):
             wl_name = os.path.basename(dummy_sock.name)
             with unittest.mock.patch.dict("os.environ", {"WAYLAND_DISPLAY": wl_name, "XDG_RUNTIME_DIR": tmp_dir}):
-                wrapped = BubblewrapSandbox.wrap_command(
-                    cmd, writable=False, workspace_root="/tmp", resources=["display", "invalid-resource"]
-                )
+                wrapped = wrap_command(cmd, writable=False, workspace="/tmp", resources=["display", "invalid-resource"])
                 assert "--ro-bind" in wrapped
                 assert dummy_sock.name in wrapped
                 assert "--setenv" in wrapped
                 assert "WAYLAND_DISPLAY" in wrapped
 
     def test_apply_declarative_sandbox_resources(self):
-        from textile.core.security.sandbox import BubblewrapBuilder, apply_sandbox_resources
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             sock_file = Path(tmp_dir) / "test.sock"
             sock_file.touch()
@@ -96,7 +94,7 @@ class TestBubblewrapSandbox:
             }
             with unittest.mock.patch.dict("os.environ", env_vars):
                 builder = BubblewrapBuilder("bwrap")
-                apply_sandbox_resources(
+                apply_resources(
                     builder,
                     [
                         "display:wayland",
@@ -115,8 +113,6 @@ class TestBubblewrapSandbox:
                 assert str(sock_file) in args
 
     def test_bubblewrap_builder_primitives(self):
-        from textile.core.security.sandbox import BubblewrapBuilder
-
         builder = (
             BubblewrapBuilder("/usr/bin/bwrap")
             .clearenv()

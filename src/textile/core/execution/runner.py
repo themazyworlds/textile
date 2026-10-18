@@ -117,7 +117,7 @@ def _parse_worker_output(res: CompletedProcess[str], strand_name: str) -> str:
             if payload.get("success"):
                 return _format_handler_result(payload.get("result"))
             return f"Error: {payload.get('error', 'Execution failed')}"
-        except (orjson.JSONDecodeError, ValueError, TypeError):
+        except orjson.JSONDecodeError, ValueError, TypeError:
             if res.returncode == 0:
                 return out
 
@@ -152,7 +152,7 @@ async def execute_strand_async(
         else:
             res = await async_run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
         return _parse_worker_output(res, strand_name)
-    except (TimeoutExpired, TimeoutError):
+    except TimeoutExpired, TimeoutError:
         return f"Error: Strand '{strand_name}' worker process timed out after {timeout} seconds."
     except SandboxUnavailableError as e:
         hint = f" (Hint: {e.hint})" if e.hint else ""
@@ -188,7 +188,7 @@ def execute_strand(
         else:
             res = run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
         return _parse_worker_output(res, strand_name)
-    except (TimeoutExpired, TimeoutError):
+    except TimeoutExpired, TimeoutError:
         return f"Error: Strand '{strand_name}' worker process timed out after {timeout} seconds."
     except SandboxUnavailableError as e:
         hint = f" (Hint: {e.hint})" if e.hint else ""

@@ -360,7 +360,7 @@ def parse_yarn_manifest_ast(py_file: Path) -> dict[str, Any] | None:
     try:
         source = py_file.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(py_file))
-    except (OSError, SyntaxError, UnicodeDecodeError):
+    except OSError, SyntaxError, UnicodeDecodeError:
         return None
 
     proj_meta = _read_accompanying_pyproject(py_file)
@@ -370,8 +370,7 @@ def parse_yarn_manifest_ast(py_file: Path) -> dict[str, Any] | None:
             continue
 
         is_yarn_class = any(
-            (isinstance(b, ast.Name) and b.id == "Yarn")
-            or (isinstance(b, ast.Attribute) and b.attr == "Yarn")
+            (isinstance(b, ast.Name) and b.id == "Yarn") or (isinstance(b, ast.Attribute) and b.attr == "Yarn")
             for b in node.bases
         )
 
