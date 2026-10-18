@@ -23,7 +23,10 @@ from needle import CapabilityTier
 
 from textile.core.definitions.errors import SandboxUnavailableError
 from textile.core.security.policy import get_tier_policy
-from textile.core.security.sandbox import BubblewrapSandbox
+from textile.core.security.sandbox import (
+    BubblewrapSandbox,
+    create_sandbox_builder,
+)
 
 
 def _format_handler_result(res: Any) -> str:
@@ -101,7 +104,7 @@ def _prepare_execution(
                 "Bubblewrap ('bwrap') is not installed or operational on this system. "
                 "Sandboxed strands require bubblewrap for isolation."
             )
-        builder = BubblewrapSandbox.create_builder(
+        builder = create_sandbox_builder(
             raw_cmd,
             writable=policy.workspace_writable,
             env=env,
