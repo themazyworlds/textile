@@ -7,14 +7,14 @@ from pathlib import Path
 import platformdirs
 import typer
 
-from textile.cli.commands.yarns.handler import (
+from textile.cli.quill import quill
+lazy from textile.cli.commands.yarns.handler import (
     handle_yarn_info,
     handle_yarn_install,
     handle_yarn_paths,
     handle_yarn_remove,
     render_yarns_list_table,
 )
-from textile.cli.quill import quill
 lazy from textile.core.orchestration.skein import skein
 
 

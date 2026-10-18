@@ -8,12 +8,12 @@ from typing import Any
 import typer
 
 from textile.cli.ui import console
-from textile.core.definitions.errors import TextileError
-from textile.core.security.context import (
+lazy from textile.core.definitions.errors import TextileError
+lazy from textile.core.orchestration.loom import loom
+lazy from textile.core.security.context import (
     OTPChallengeRequiredError,
     PolicyViolationError,
 )
-lazy from textile.core.orchestration.loom import loom
 
 
 def parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:

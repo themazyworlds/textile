@@ -16,11 +16,11 @@ from textile.core.execution.invoker import (
     _create_invoker,
     execute_direct,
 )
-from textile.core.execution.runner import execute_strand_async
 from textile.core.execution.validation import (
     _extract_docstring_info,
 )
 from textile.core.telemetry.log import get_logger
+lazy from textile.core.execution.runner import execute_strand_async
 
 logger = get_logger(__name__)
 

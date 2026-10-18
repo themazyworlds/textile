@@ -4,15 +4,15 @@ Settings Command Definition (`quill settings`).
 
 import typer
 
-from textile.cli.commands.settings.handler import (
+from textile.cli.quill import quill
+from textile.cli.ui import console
+lazy from textile.cli.commands.settings.handler import (
     handle_settings_init,
     parse_cli_setting_val,
     render_all_settings_table,
     render_schema_docs,
     render_yarn_settings_table,
 )
-from textile.cli.quill import quill
-from textile.cli.ui import console
 lazy from textile.core.orchestration.skein import skein
 
 

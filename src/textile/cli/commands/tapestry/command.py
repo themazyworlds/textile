@@ -4,8 +4,8 @@ Tapestry Command Definition (`quill tapestry`).
 
 import typer
 
-from textile.cli.commands.tapestry.handler import handle_tapestry
 from textile.cli.quill import quill
+lazy from textile.cli.commands.tapestry.handler import handle_tapestry
 
 
 @quill.command("tapestry")

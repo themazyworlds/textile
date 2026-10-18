@@ -4,7 +4,7 @@ Provides Intent DAG nodes, layer priority definitions,
 error hierarchy, and system feature detection.
 """
 
-from textile.core.definitions.errors import (
+lazy from textile.core.definitions.errors import (
     STRAND_EXEC_ERRORS,
     OTPChallengeRequiredError,
     PolicyViolationError,

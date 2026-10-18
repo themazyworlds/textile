@@ -14,12 +14,12 @@ from typing import Any
 from needle import DEFAULT_LAYER, Strand, Yarn
 from needle.errors import SAFE_EXCEPTIONS, StrandCollisionError, StrandOperationalError
 
-from textile.core.execution.reflector import reflect_strands
-from textile.core.execution.validation import validate_strand_arguments
 from textile.core.orchestration.skein import Skein, skein
-from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError, verify_security_policy
 from textile.core.telemetry.log import get_logger
-from textile.core.telemetry.recorder import (
+lazy from textile.core.execution.reflector import reflect_strands
+lazy from textile.core.execution.validation import validate_strand_arguments
+lazy from textile.core.security.context import OTPChallengeRequiredError, PolicyViolationError, verify_security_policy
+lazy from textile.core.telemetry.recorder import (
     ExecutionTelemetryContext,
     record_execution_end,
     record_execution_start,

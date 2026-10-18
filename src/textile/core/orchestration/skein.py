@@ -2,7 +2,6 @@
 Textile Skein - Layer 3 Symbolic Intent Compiler, Policy Engine, and Yarn Registry.
 """
 
-import importlib.metadata
 import importlib.util
 import inspect
 import sys
@@ -10,19 +9,20 @@ import threading
 import tomllib
 from pathlib import Path
 from typing import Any
+lazy import importlib.metadata
 
 import orjson
 from needle import Strand, Yarn
 from needle.errors import SAFE_EXCEPTIONS
 
-from textile.core.definitions.errors import PolicyViolationError
-from textile.core.definitions.settings import dumps_toml, generate_documented_toml
 from textile.core.orchestration.discovery import (
     find_yarn_files,
     get_yarn_search_paths,
     try_probe_isolated_yarn,
 )
 from textile.core.telemetry.log import get_logger
+lazy from textile.core.definitions.errors import PolicyViolationError
+lazy from textile.core.definitions.settings import dumps_toml, generate_documented_toml
 
 logger = get_logger(__name__)
 

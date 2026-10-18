@@ -4,14 +4,14 @@ Skein Command Definition (`quill skein`).
 
 import typer
 
-from textile.cli.commands.skein.handler import (
+from textile.cli.quill import quill
+lazy from textile.cli.commands.skein.handler import (
     handle_skein_disable,
     handle_skein_enable,
     handle_skein_toggle,
     render_skein_table,
     render_skein_tree,
 )
-from textile.cli.quill import quill
 lazy from textile.core.orchestration.skein import skein
 
 

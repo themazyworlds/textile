@@ -4,8 +4,8 @@ Authorize Command Definition (`quill authorize`).
 
 import typer
 
-from textile.cli.commands.authorize.handler import handle_authorize
 from textile.cli.quill import quill
+lazy from textile.cli.commands.authorize.handler import handle_authorize
 
 
 @quill.command("authorize")

@@ -4,8 +4,8 @@ Inspect Command Definition (`quill inspect`).
 
 import typer
 
-from textile.cli.commands.inspect.handler import inspect_strand_handler
 from textile.cli.quill import quill
+lazy from textile.cli.commands.inspect.handler import inspect_strand_handler
 
 
 @quill.command("inspect")

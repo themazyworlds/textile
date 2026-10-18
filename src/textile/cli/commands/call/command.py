@@ -5,9 +5,9 @@ Call Command Definition (`quill call`).
 import orjson
 import typer
 
-from textile.cli.commands.call.handler import execute_strand_call, parse_cli_args
 from textile.cli.quill import quill
 from textile.cli.ui import console
+lazy from textile.cli.commands.call.handler import execute_strand_call, parse_cli_args
 
 
 @quill.command("call")

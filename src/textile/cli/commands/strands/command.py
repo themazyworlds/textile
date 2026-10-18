@@ -4,8 +4,8 @@ Strands Command Definition (`quill strands`).
 
 import typer
 
-from textile.cli.commands.strands.handler import list_strands_handler
 from textile.cli.quill import quill
+lazy from textile.cli.commands.strands.handler import list_strands_handler
 
 
 @quill.command("strands")

@@ -10,7 +10,7 @@ lazy from needle.guardrails import (
     SessionProcessGuard,
 )
 
-from textile.core.definitions.errors import (
+lazy from textile.core.definitions.errors import (
     OTPChallengeRequiredError,
     PolicyViolationError,
 )
