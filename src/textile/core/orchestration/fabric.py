@@ -28,9 +28,6 @@ class CoreFabricYarn(Yarn):
             version="1.0.0",
         )
 
-    def is_available(self) -> bool:
-        return True
-
     @strand.observe
     def textile_get_state(self) -> dict[str, Any]:
         """Get full snapshot of the sensory blackboard state slots and notices."""
