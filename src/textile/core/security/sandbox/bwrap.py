@@ -12,90 +12,29 @@ import tempfile
 from pathlib import Path
 
 from textile.core.definitions.errors import SandboxUnavailableError
-from textile.core.security.sandbox.resources import resolve_sandbox_resources
-
-
-class BubblewrapBuilder:
-    """Builder pattern for constructing Bubblewrap (bwrap) execution arguments cleanly."""
-
-    def __init__(self, bwrap_path: str):
-        self.args: list[str] = [bwrap_path, "--clearenv"]
-
-    def bind_system_base(self) -> BubblewrapBuilder:
-        self.args.extend(["--ro-bind", "/usr", "/usr"])
-        lib64_target = "usr/lib64" if Path("/usr/lib64").exists() else "usr/lib"
-        self.args.extend(
-            [
-                "--symlink",
-                lib64_target,
-                "/lib64",
-                "--symlink",
-                "usr/lib",
-                "/lib",
-                "--symlink",
-                "usr/bin",
-                "/bin",
-                "--symlink",
-                "usr/bin",
-                "/sbin",
-            ]
-        )
-
-        for p in ("/etc", "/sys", "/opt", "/nix"):
-            self.args.extend(["--ro-bind-try", p, p])
-        self.args.extend(["--dev", "/dev", "--proc", "/proc"])
-        return self
-
-    def bind_tmpfs(self, paths: list[str]) -> BubblewrapBuilder:
-        for p in paths:
-            self.args.extend(["--tmpfs", p])
-        return self
-
-    def set_namespaces(self, allow_network: bool, unshare_user: bool = True) -> BubblewrapBuilder:
-        if unshare_user:
-            self.args.extend(["--unshare-user", "--unshare-pid"])
-        self.args.extend(["--unshare-ipc", "--unshare-uts", "--die-with-parent"])
-        if not allow_network:
-            self.args.append("--unshare-net")
-        return self
-
-    def bind_resources(self, resources: list[str] | None) -> BubblewrapBuilder:
-        if resources:
-            self.args.extend(resolve_sandbox_resources(resources))
-        return self
-
-    def bind_workspace(self, workspace: Path, writable: bool) -> BubblewrapBuilder:
-        flag = "--bind" if writable else "--ro-bind"
-        self.args.extend([flag, str(workspace), str(workspace), "--chdir", str(workspace)])
-        return self
-
-    def set_env(self, key: str, val: str | None) -> BubblewrapBuilder:
-        if val:
-            self.args.extend(["--setenv", key, val])
-        return self
-
-    def build(self, target_cmd: list[str]) -> list[str]:
-        return self.args + target_cmd
+from textile.core.security.sandbox.builder import BubblewrapBuilder
+from textile.core.security.sandbox.resources import apply_sandbox_resources
 
 
 def _bind_user_config_and_share(builder: BubblewrapBuilder) -> None:
     """Bind user configuration (~/.config/textile) and local share (~/.local) into sandbox."""
     textile_config = Path.home() / ".config" / "textile"
     if textile_config.exists():
-        builder.args.extend(["--ro-bind-try", str(textile_config), str(textile_config)])
+        builder.ro_bind(textile_config, try_ok=True)
 
     local_share = Path.home() / ".local"
     if local_share.exists():
-        builder.args.extend(["--ro-bind-try", str(local_share), str(local_share)])
+        builder.ro_bind(local_share, try_ok=True)
 
 
 def _bind_python_prefixes(builder: BubblewrapBuilder) -> None:
     """Bind virtualenv, sys.prefix, and extra sys.path locations (e.g. editable packages) into sandbox."""
     for check_path in (sys.prefix, sys.base_prefix, getattr(sys, "base_exec_prefix", None)):
         if check_path and Path(check_path).exists():
-            p_resolved = str(Path(check_path).resolve())
-            if not any(p_resolved.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
-                builder.args.extend(["--ro-bind-try", p_resolved, p_resolved])
+            p_resolved = Path(check_path).resolve()
+            p_str = str(p_resolved)
+            if not any(p_str.startswith(prefix) for prefix in ("/usr", "/lib", "/opt", "/nix")):
+                builder.ro_bind(p_resolved, try_ok=True)
 
     sys_temp = tempfile.gettempdir()
     ignored_prefixes = ("/usr", "/lib", "/opt", "/nix", sys_temp)
@@ -104,8 +43,8 @@ def _bind_python_prefixes(builder: BubblewrapBuilder) -> None:
             p_res = Path(entry).resolve()
             p_str = str(p_res)
             if not any(p_str.startswith(prefix) for prefix in ignored_prefixes):
-                target = str(p_res.parent if p_res.name == "src" else p_res)
-                builder.args.extend(["--ro-bind-try", target, target])
+                target = p_res.parent if p_res.name == "src" else p_res
+                builder.ro_bind(target, try_ok=True)
 
 
 def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) -> None:
@@ -119,7 +58,7 @@ def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) ->
         for p_str in (raw_path, resolved_path):
             if ".venv" in p_str:
                 venv_root = p_str.split("/bin/")[0]
-                builder.args.extend(["--ro-bind-try", venv_root, venv_root])
+                builder.ro_bind(venv_root, try_ok=True)
                 # Bind any external source directories linked via .pth files (e.g. editable needle SDK)
                 with contextlib.suppress(OSError):
                     for pth in Path(venv_root).glob("lib*/python*/site-packages/*.pth"):
@@ -128,11 +67,11 @@ def _bind_executable_dependencies(builder: BubblewrapBuilder, cmd: list[str]) ->
                             if target_line and not target_line.startswith(("#", "import ")):
                                 p_pth = Path(target_line).resolve()
                                 if p_pth.exists():
-                                    bind_target = str(p_pth.parent if p_pth.name == "src" else p_pth)
-                                    builder.args.extend(["--ro-bind-try", bind_target, bind_target])
+                                    bind_target = p_pth.parent if p_pth.name == "src" else p_pth
+                                    builder.ro_bind(bind_target, try_ok=True)
             elif not any(p_str.startswith(prefix) for prefix in ("/usr", "/bin", "/lib", "/opt", "/nix")):
-                parent_dir = str(Path(p_str).parent)
-                builder.args.extend(["--ro-bind-try", parent_dir, parent_dir])
+                parent_dir = Path(p_str).parent
+                builder.ro_bind(parent_dir, try_ok=True)
 
 
 class BubblewrapSandbox:
@@ -201,19 +140,24 @@ class BubblewrapSandbox:
         )
         builder = (
             BubblewrapBuilder(bwrap_path)
+            .clearenv()
             .bind_system_base()
-            .bind_tmpfs([container_tmp, container_home])
-            .bind_resources(resources)
-            .set_namespaces(allow_network=allow_network, unshare_user=not needs_host_session)
-            .bind_workspace(ws, is_writable)
-            .set_env("HOME", target_env.get("HOME", str(Path.home())))
-            .set_env("USER", target_env.get("USER", os.getenv("USER", "user")))
-            .set_env("PATH", target_env.get("PATH", "/usr/bin:/bin"))
-            .set_env("UV_CACHE_DIR", uv_cache)
-            .set_env("PYTHONPATH", target_env.get("PYTHONPATH"))
-            .set_env("TERMINAL", target_env.get("TERMINAL"))
-            .set_env("XDG_CONFIG_HOME", target_env.get("XDG_CONFIG_HOME"))
-            .set_env("XDG_DATA_HOME", target_env.get("XDG_DATA_HOME"))
+            .bind_tmpfs_paths([container_tmp, container_home])
+        )
+        if resources:
+            apply_sandbox_resources(builder, resources)
+
+        (
+            builder.set_namespaces(allow_network=allow_network, unshare_user=not needs_host_session)
+            .bind_workspace(ws, writable=is_writable)
+            .setenv("HOME", target_env.get("HOME", str(Path.home())))
+            .setenv("USER", target_env.get("USER", os.getenv("USER", "user")))
+            .setenv("PATH", target_env.get("PATH", "/usr/bin:/bin"))
+            .setenv("UV_CACHE_DIR", uv_cache)
+            .setenv("PYTHONPATH", target_env.get("PYTHONPATH"))
+            .setenv("TERMINAL", target_env.get("TERMINAL"))
+            .setenv("XDG_CONFIG_HOME", target_env.get("XDG_CONFIG_HOME"))
+            .setenv("XDG_DATA_HOME", target_env.get("XDG_DATA_HOME"))
         )
 
         _bind_user_config_and_share(builder)
@@ -225,11 +169,11 @@ class BubblewrapSandbox:
             for p in pythonpath.split(":"):
                 if p and Path(p).exists():
                     p_res = str(Path(p).resolve())
-                    builder.args.extend(["--ro-bind-try", p_res, p_res])
+                    builder.ro_bind(p_res, try_ok=True)
 
         for arg in cmd:
             if arg.endswith(".py") or Path(arg).exists():
                 p_arg = Path(arg).resolve()
-                builder.args.extend(["--ro-bind-try", str(p_arg.parent), str(p_arg.parent)])
+                builder.ro_bind(p_arg.parent, try_ok=True)
 
         return builder.build(cmd)

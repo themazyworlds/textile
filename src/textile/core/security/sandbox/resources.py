@@ -1,117 +1,93 @@
 """
 Declarative Desktop Resource & IPC Socket Resolver for Bubblewrap sandboxes.
-Translates generic resource specifiers into bwrap execution arguments.
+Translates generic resource specifiers into strongly typed BubblewrapBuilder operations.
 """
 
+from __future__ import annotations
+
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
+from textile.core.security.sandbox.builder import BubblewrapBuilder
 from textile.core.telemetry.log import get_logger
 
 logger = get_logger(__name__)
 
 
-def _resolve_display_bind() -> list[str]:
-    """Resolve dynamic Wayland / X11 display socket mounts for GUI strands."""
-    args = []
+def _apply_display_resource(builder: BubblewrapBuilder) -> None:
+    """Resolve and mount Wayland / X11 display socket and environment for GUI strands."""
     wayland_display = os.environ.get("WAYLAND_DISPLAY")
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if wayland_display and runtime:
         wl_sock = os.path.join(runtime, wayland_display)
         if Path(wl_sock).exists():
-            args.extend(
-                [
-                    "--ro-bind",
-                    wl_sock,
-                    wl_sock,
-                    "--setenv",
-                    "WAYLAND_DISPLAY",
-                    wayland_display,
-                    "--setenv",
-                    "XDG_RUNTIME_DIR",
-                    runtime,
-                ]
-            )
+            builder.ro_bind(wl_sock).setenv("WAYLAND_DISPLAY", wayland_display).setenv("XDG_RUNTIME_DIR", runtime)
+
     if x11_display := os.environ.get("DISPLAY"):
-        args.extend(["--setenv", "DISPLAY", x11_display])
+        builder.setenv("DISPLAY", x11_display)
         x11_sock = os.path.join("/", "tmp", ".X11-unix")
         if Path(x11_sock).exists():
-            args.extend(["--ro-bind", x11_sock, x11_sock])
-    return args
+            builder.ro_bind(x11_sock)
 
 
-def _resolve_sound_bind() -> list[str]:
-    """Resolve dynamic PipeWire / PulseAudio sound socket mounts for audio strands."""
-    args = []
+def _apply_sound_resource(builder: BubblewrapBuilder) -> None:
+    """Resolve and mount PipeWire / PulseAudio sound socket for audio strands."""
     if runtime := os.environ.get("XDG_RUNTIME_DIR"):
         for sock_name in ("pipewire-0", "pulse"):
             p = os.path.join(runtime, sock_name)
             if Path(p).exists():
-                args.extend(["--ro-bind", p, p])
-    return args
+                builder.ro_bind(p)
 
 
-def _resolve_dbus_session_bind() -> list[str]:
-    """Resolve dynamic D-Bus session bus socket mount."""
-    args = []
+def _apply_dbus_session_resource(builder: BubblewrapBuilder) -> None:
+    """Resolve and mount D-Bus session bus socket and environment."""
     if (runtime := os.environ.get("XDG_RUNTIME_DIR")) and Path(runtime).exists():
-        args.extend(["--bind", runtime, runtime, "--setenv", "XDG_RUNTIME_DIR", runtime])
+        builder.bind(runtime).setenv("XDG_RUNTIME_DIR", runtime)
+
     bus_addr = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
     if bus_addr:
-        args.extend(["--setenv", "DBUS_SESSION_BUS_ADDRESS", bus_addr])
+        builder.setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr)
         if "unix:path=" in bus_addr:
             sock_path = bus_addr.split("unix:path=")[1].split(",")[0]
             if Path(sock_path).exists():
-                args.extend(["--ro-bind", sock_path, sock_path])
+                builder.ro_bind(sock_path)
     elif runtime:
         default_bus = os.path.join(runtime, "bus")
         if Path(default_bus).exists():
-            args.extend(
-                [
-                    "--setenv",
-                    "DBUS_SESSION_BUS_ADDRESS",
-                    f"unix:path={default_bus}",
-                ]
-            )
-    return args
+            builder.setenv("DBUS_SESSION_BUS_ADDRESS", f"unix:path={default_bus}")
 
 
-def _resolve_dbus_system_bind() -> list[str]:
-    """Resolve dynamic D-Bus system bus socket mount."""
-    args = []
+def _apply_dbus_system_resource(builder: BubblewrapBuilder) -> None:
+    """Resolve and mount D-Bus system bus socket."""
     for sys_bus in ("/run/dbus/system_bus_socket", "/var/run/dbus/system_bus_socket"):
         if Path(sys_bus).exists():
-            args.extend(["--ro-bind", sys_bus, sys_bus])
+            builder.ro_bind(sys_bus)
             break
-    return args
 
 
-def _resolve_socket_bind(socket_spec: str) -> list[str]:
-    """Resolve unix domain socket or socket directory mount."""
-    args = []
+def _apply_socket_resource(builder: BubblewrapBuilder, socket_spec: str) -> None:
+    """Resolve and mount Unix domain socket or containing directory."""
     expanded = os.path.expandvars(os.path.expanduser(socket_spec))
     sock_path = Path(expanded)
     if sock_path.exists():
-        args.extend(["--ro-bind", str(sock_path), str(sock_path)])
+        builder.ro_bind(sock_path)
     elif sock_path.parent.exists():
-        args.extend(["--ro-bind-try", str(sock_path.parent), str(sock_path.parent)])
-    return args
+        builder.ro_bind(sock_path.parent, try_ok=True)
 
 
-def _resolve_env_spec(env_spec: str) -> list[str]:
-    """Resolve environment variable passing into sandbox."""
-    args = []
+def _apply_env_resource(builder: BubblewrapBuilder, env_spec: str) -> None:
+    """Resolve and inject environment variables into container."""
     if "=" in env_spec:
         k, v = env_spec.split("=", 1)
-        args.extend(["--setenv", k, v])
+        builder.setenv(k, v)
     elif val := os.environ.get(env_spec):
-        args.extend(["--setenv", env_spec, val])
-    return args
+        builder.setenv(env_spec, val)
 
 
-def resolve_sandbox_resources(resources: list[str]) -> list[str]:
+def apply_sandbox_resources(builder: BubblewrapBuilder, resources: Sequence[str]) -> None:
     """
-    Generically resolve declarative sandbox resource specifiers into Bubblewrap execution arguments.
+    Apply declarative resource specifiers directly to a BubblewrapBuilder instance.
 
     Supported specifiers:
       - "display", "display:wayland", "display:x11": Wayland / X11 display sockets and environment.
@@ -121,7 +97,6 @@ def resolve_sandbox_resources(resources: list[str]) -> list[str]:
       - "socket:<path>": Arbitrary Unix domain socket file or containing directory.
       - "env:<var>" or "env:<var>=<val>": Environment variable passing into the sandbox.
     """
-    args: list[str] = []
     for res_name in resources:
         clean_res = res_name.strip()
         if not clean_res:
@@ -129,19 +104,16 @@ def resolve_sandbox_resources(resources: list[str]) -> list[str]:
 
         lowered = clean_res.lower()
         if lowered in ("display", "display:wayland", "display:x11"):
-            args.extend(_resolve_display_bind())
+            _apply_display_resource(builder)
         elif lowered in ("sound", "sound:pipewire", "sound:pulseaudio"):
-            args.extend(_resolve_sound_bind())
+            _apply_sound_resource(builder)
         elif lowered in ("dbus:session", "dbus-session"):
-            args.extend(_resolve_dbus_session_bind())
+            _apply_dbus_session_resource(builder)
         elif lowered in ("dbus:system", "dbus-system"):
-            args.extend(_resolve_dbus_system_bind())
+            _apply_dbus_system_resource(builder)
         elif lowered.startswith("socket:"):
-            raw_path = clean_res[7:].strip()
-            args.extend(_resolve_socket_bind(raw_path))
+            _apply_socket_resource(builder, clean_res[7:].strip())
         elif lowered.startswith("env:"):
-            raw_env = clean_res[4:].strip()
-            args.extend(_resolve_env_spec(raw_env))
+            _apply_env_resource(builder, clean_res[4:].strip())
         else:
             logger.warning("sandbox.unrecognized_resource_requested", resource=res_name)
-    return args

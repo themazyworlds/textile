@@ -76,8 +76,8 @@ class TestBubblewrapSandbox:
                 assert "--setenv" in wrapped
                 assert "WAYLAND_DISPLAY" in wrapped
 
-    def test_resolve_declarative_sandbox_resources(self):
-        from textile.core.security.sandbox import resolve_sandbox_resources
+    def test_apply_declarative_sandbox_resources(self):
+        from textile.core.security.sandbox import BubblewrapBuilder, apply_sandbox_resources
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             sock_file = Path(tmp_dir) / "test.sock"
@@ -90,18 +90,61 @@ class TestBubblewrapSandbox:
                 "TEST_CUSTOM_ENV": "active",
             }
             with unittest.mock.patch.dict("os.environ", env_vars):
-                args = resolve_sandbox_resources(
+                builder = BubblewrapBuilder("bwrap")
+                apply_sandbox_resources(
+                    builder,
                     [
                         "display:wayland",
                         "dbus:session",
                         "socket:$XDG_RUNTIME_DIR/test.sock",
                         "env:TEST_CUSTOM_ENV",
                         "env:STATIC_VAL=123",
-                    ]
+                    ],
                 )
+                args = builder.args
                 assert "--setenv" in args
                 assert "WAYLAND_DISPLAY" in args
                 assert "DBUS_SESSION_BUS_ADDRESS" in args
                 assert "TEST_CUSTOM_ENV" in args
                 assert "STATIC_VAL" in args
                 assert str(sock_file) in args
+
+    def test_bubblewrap_builder_primitives(self):
+        from textile.core.security.sandbox import BubblewrapBuilder
+
+        builder = (
+            BubblewrapBuilder("/usr/bin/bwrap")
+            .clearenv()
+            .setenv("FOO", "BAR")
+            .unsetenv("BAZ")
+            .ro_bind("/etc", try_ok=True)
+            .bind("/tmp")
+            .dev_bind("/dev/null")
+            .tmpfs("/run")
+            .dev("/dev")
+            .proc("/proc")
+            .symlink("usr/bin", "/bin")
+            .dir("/var/log")
+            .chdir("/tmp")
+            .unshare("user", "net")
+            .die_with_parent()
+        )
+        cmd = builder.build(["echo", "hello"])
+
+        assert cmd[0] == "/usr/bin/bwrap"
+        assert "--clearenv" in cmd
+        assert cmd[2:5] == ["--setenv", "FOO", "BAR"]
+        assert cmd[5:7] == ["--unsetenv", "BAZ"]
+        assert cmd[7:10] == ["--ro-bind-try", "/etc", "/etc"]
+        assert cmd[10:13] == ["--bind", "/tmp", "/tmp"]
+        assert cmd[13:16] == ["--dev-bind", "/dev/null", "/dev/null"]
+        assert cmd[16:18] == ["--tmpfs", "/run"]
+        assert cmd[18:20] == ["--dev", "/dev"]
+        assert cmd[20:22] == ["--proc", "/proc"]
+        assert cmd[22:25] == ["--symlink", "usr/bin", "/bin"]
+        assert cmd[25:27] == ["--dir", "/var/log"]
+        assert cmd[27:29] == ["--chdir", "/tmp"]
+        assert "--unshare-user" in cmd
+        assert "--unshare-net" in cmd
+        assert "--die-with-parent" in cmd
+        assert cmd[-2:] == ["echo", "hello"]
