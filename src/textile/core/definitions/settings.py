@@ -56,16 +56,16 @@ def _format_type_name(annotation: Any) -> str:
     args = get_args(annotation)
 
     if origin is None:
-        if isinstance(annotation, type):
-            return annotation.__name__
-        return str(annotation)
+        return annotation.__name__ if isinstance(annotation, type) else str(annotation)
 
     origin_name = getattr(origin, "__name__", str(origin)).lower()
     if "union" in origin_name:
         non_none = [a for a in args if a is not type(None)]
-        if len(non_none) == 1:
-            return f"optional[{_format_type_name(non_none[0])}]"
-        return " | ".join(_format_type_name(a) for a in args)
+        return (
+            f"optional[{_format_type_name(non_none[0])}]"
+            if len(non_none) == 1
+            else " | ".join(_format_type_name(a) for a in args)
+        )
 
     if "literal" in origin_name:
         choices = ", ".join(f'"{a}"' if isinstance(a, str) else str(a) for a in args)
@@ -86,16 +86,19 @@ def _format_toml_literal(val: Any) -> str:
         return "true" if val else "false"
     if isinstance(val, (int, float)):
         return str(val)
+
     if isinstance(val, str):
         escaped = val.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-        return f'"{escaped}"'
-    if isinstance(val, (list, tuple, set)):
+        formatted = f'"{escaped}"'
+    elif isinstance(val, (list, tuple, set)):
         items = ", ".join(_format_toml_literal(x) for x in val)
-        return f"[{items}]"
-    if isinstance(val, dict):
+        formatted = f"[{items}]"
+    elif isinstance(val, dict):
         items = ", ".join(f"{k} = {_format_toml_literal(v)}" for k, v in val.items())
-        return f"{{{items}}}"
-    return f'"{val}"'
+        formatted = f"{{{items}}}"
+    else:
+        formatted = f'"{val}"'
+    return formatted
 
 
 def _render_schema_section(
