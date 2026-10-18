@@ -479,6 +479,92 @@ class TestYarnArchitecture(unittest.TestCase):
         skein.set_yarn_settings("configurable_dummy", {})
         skein.unregister_yarn("configurable_dummy")
 
+    def test_parse_yarn_manifest_ast(self):
+        import tempfile
+        from pathlib import Path
+
+        from textile.core.orchestration.discovery import parse_yarn_manifest_ast, try_probe_isolated_yarn
+
+        sample_code = '''
+"""
+Sample Module Docstring
+"""
+from needle import Yarn, strand
+
+class SampleSensorYarn(Yarn):
+    """A sample sensor for testing AST parsing."""
+    name = "sample_sensor"
+    layer = 25
+    resources = ["sensors", "dbus:system"]
+
+    @strand.observe
+    def get_temperature(self, sensor_id: str, precision: int = 2, unit: str = "C") -> float:
+        """Get temperature reading.
+        :param sensor_id: ID of the hardware sensor
+        :param precision: Decimal places
+        """
+        return 23.5
+
+    @strand.privileged(timeout=45.0, reason="Reset hardware sensor")
+    def reset_sensor(self, sensor_id: str, hard_reset: bool = False) -> str:
+        """Reset sensor hardware."""
+        return "ok"
+'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sample_file = Path(tmp_dir) / "sample_sensor.py"
+            sample_file.write_text(sample_code, encoding="utf-8")
+
+            manifest = parse_yarn_manifest_ast(sample_file)
+            assert manifest is not None
+            self.assertEqual(manifest["class_name"], "SampleSensorYarn")
+            self.assertEqual(manifest["name"], "sample_sensor")
+            self.assertEqual(manifest["layer"], 25)
+            self.assertEqual(manifest["resources"], ["sensors", "dbus:system"])
+            self.assertEqual(len(manifest["strands"]), 2)
+
+            # Strand 1: get_temperature
+            s1 = manifest["strands"][0]
+            self.assertEqual(s1["name"], "get_temperature")
+            self.assertEqual(s1["tier"], "OBSERVE")
+            self.assertEqual(s1["required"], ["sensor_id"])
+            self.assertEqual(s1["parameters"]["sensor_id"]["type"], "string")
+            self.assertEqual(s1["parameters"]["precision"]["type"], "integer")
+            self.assertEqual(s1["parameters"]["precision"]["default"], 2)
+            self.assertEqual(s1["parameters"]["unit"]["type"], "string")
+            self.assertEqual(s1["parameters"]["unit"]["default"], "C")
+
+            # Strand 2: reset_sensor
+            s2 = manifest["strands"][1]
+            self.assertEqual(s2["name"], "reset_sensor")
+            self.assertEqual(s2["tier"], "PRIVILEGED")
+            self.assertEqual(s2["timeout"], 45.0)
+            self.assertEqual(s2["reason"], "Reset hardware sensor")
+            self.assertEqual(s2["required"], ["sensor_id"])
+            self.assertEqual(s2["parameters"]["hard_reset"]["type"], "boolean")
+            self.assertEqual(s2["parameters"]["hard_reset"]["default"], False)
+
+            # Test try_probe_isolated_yarn integration
+            probed = try_probe_isolated_yarn(sample_file)
+            assert probed is not None
+            self.assertEqual(probed.name, "sample_sensor")
+            self.assertEqual(probed.layer, 25)
+            strands = probed.get_strands()
+            self.assertEqual(len(strands), 2)
+            self.assertEqual(strands[0].name, "get_temperature")
+            self.assertEqual(strands[1].name, "reset_sensor")
+
+    def test_parse_yarn_manifest_ast_syntax_error(self):
+        import tempfile
+        from pathlib import Path
+
+        from textile.core.orchestration.discovery import parse_yarn_manifest_ast
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bad_file = Path(tmp_dir) / "broken.py"
+            bad_file.write_text("def broken_syntax( - :", encoding="utf-8")
+            res = parse_yarn_manifest_ast(bad_file)
+            self.assertIsNone(res)
+
 
 if __name__ == "__main__":
     unittest.main()

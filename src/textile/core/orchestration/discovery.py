@@ -3,9 +3,10 @@ Textile Yarn Discovery Subsystem.
 Discovers Yarn entrypoints across XDG search paths and probes isolated venvs.
 """
 
+import ast
 import contextlib
 import os
-import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ __all__ = [
     "find_yarn_files",
     "get_probe_cache_file",
     "get_yarn_search_paths",
+    "parse_yarn_manifest_ast",
     "read_probe_cache",
     "try_probe_isolated_yarn",
     "write_probe_cache",
@@ -192,13 +194,202 @@ def find_yarn_files(target_dir: Path) -> list[Path]:
     return candidates
 
 
-def try_probe_isolated_yarn(py_file: Path) -> ProbedYarn | None:
-    """Attempt to discover Yarn using its private virtualenv probe with schema disk cache."""
-    yarn_venv_py = py_file.parent / ".venv" / "bin" / "python"
-    if not yarn_venv_py.exists():
+def _parse_param_type(ann_str: str) -> str:
+    clean = ann_str.split("|", maxsplit=1)[0].strip().lower() if ann_str else "str"
+    if "int" in clean:
+        return "integer"
+    if "float" in clean:
+        return "number"
+    if "bool" in clean:
+        return "boolean"
+    if "list" in clean:
+        return "array"
+    if "dict" in clean:
+        return "object"
+    return "string"
+
+
+def _extract_decorator_info(dec_node: ast.expr) -> tuple[str, dict[str, Any]]:
+    if isinstance(dec_node, ast.Call):
+        func_expr = ast.unparse(dec_node.func)
+        kwargs: dict[str, Any] = {}
+        for kw in dec_node.keywords:
+            if kw.arg:
+                with contextlib.suppress(Exception):
+                    kwargs[kw.arg] = ast.literal_eval(kw.value)
+                if kw.arg not in kwargs:
+                    kwargs[kw.arg] = ast.unparse(kw.value)
+        return func_expr, kwargs
+    return ast.unparse(dec_node), {}
+
+
+def _extract_strand_parameters(
+    item: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[dict[str, Any], list[str]]:
+    num_args = len(item.args.args)
+    num_defaults = len(item.args.defaults)
+    defaults: list[ast.expr | None] = [None] * (num_args - num_defaults) + list(item.args.defaults)
+
+    params: dict[str, Any] = {}
+    required: list[str] = []
+
+    for arg_node, def_node in zip(item.args.args, defaults, strict=False):
+        if arg_node.arg in {"self", "cls"}:
+            continue
+        ann_str = ast.unparse(arg_node.annotation) if arg_node.annotation else "str"
+        prop: dict[str, Any] = {"type": _parse_param_type(ann_str)}
+        if def_node is not None:
+            with contextlib.suppress(Exception):
+                prop["default"] = ast.literal_eval(def_node)
+            if "default" not in prop:
+                prop["default"] = ast.unparse(def_node)
+        else:
+            required.append(arg_node.arg)
+        params[arg_node.arg] = prop
+
+    return params, required
+
+
+def _extract_strand_data(
+    item: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, Any] | None:
+    strand_dec: tuple[str, dict[str, Any]] | None = None
+    for d in item.decorator_list:
+        d_name, d_kwargs = _extract_decorator_info(d)
+        if "strand" in d_name:
+            strand_dec = (d_name, d_kwargs)
+            break
+
+    if strand_dec is None:
         return None
 
+    dec_name, dec_kwargs = strand_dec
+    tier = dec_kwargs.get("tier")
+    if not tier:
+        tier = dec_name.split(".")[-1].upper() if "." in dec_name else "INTERACT"
+
+    method_doc = ast.get_docstring(item) or ""
+    method_first_line = method_doc.splitlines()[0].strip() if method_doc else item.name
+    desc = dec_kwargs.get("description") or method_first_line
+    s_name = dec_kwargs.get("name") or item.name
+
+    params, required = _extract_strand_parameters(item)
+    no_timeout = bool(dec_kwargs.get("no_timeout", False))
+    timeout = None if no_timeout else dec_kwargs.get("timeout")
+
+    return {
+        "name": s_name,
+        "description": desc,
+        "tier": str(tier),
+        "parameters": params,
+        "required": required,
+        "timeout": timeout,
+        "no_timeout": no_timeout,
+        "capability": dec_kwargs.get("capability"),
+        "resources": dec_kwargs.get("resources", []),
+        "reason": dec_kwargs.get("reason"),
+        "fallback": dec_kwargs.get("fallback"),
+    }
+
+
+def _read_accompanying_pyproject(py_file: Path) -> dict[str, Any]:
+    pyproject_file = py_file.parent / "pyproject.toml"
+    if not pyproject_file.is_file():
+        return {}
+    with contextlib.suppress(OSError, tomllib.TOMLDecodeError):
+        toml_data = tomllib.loads(pyproject_file.read_text(encoding="utf-8"))
+        proj_meta = toml_data.get("project", {})
+        proj_meta.update(toml_data.get("tool", {}).get("textile", {}))
+        return proj_meta
+    return {}
+
+
+def _inspect_class_body(
+    node: ast.ClassDef,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    class_attrs: dict[str, Any] = {}
+    strands_data: list[dict[str, Any]] = []
+
+    for item in node.body:
+        if isinstance(item, ast.Assign):
+            for target in item.targets:
+                if isinstance(target, ast.Name):
+                    with contextlib.suppress(Exception):
+                        class_attrs[target.id] = ast.literal_eval(item.value)
+        elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name) and item.value:
+            with contextlib.suppress(Exception):
+                class_attrs[item.target.id] = ast.literal_eval(item.value)
+        elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            strand_info = _extract_strand_data(item)
+            if strand_info:
+                strands_data.append(strand_info)
+
+    return class_attrs, strands_data
+
+
+def _build_yarn_manifest(
+    node: ast.ClassDef,
+    class_attrs: dict[str, Any],
+    strands_data: list[dict[str, Any]],
+    proj_meta: dict[str, Any],
+) -> dict[str, Any]:
+    class_doc = ast.get_docstring(node) or ""
+    first_doc_line = class_doc.splitlines()[0].strip() if class_doc else ""
+
+    raw_name = (
+        class_attrs.get("name")
+        or proj_meta.get("name", "").removeprefix("textile-yarn-").removeprefix("yarn-")
+        or node.name.lower().removesuffix("yarn")
+    )
+    yarn_desc = class_attrs.get("description") or proj_meta.get("description") or first_doc_line or raw_name
+
+    return {
+        "class_name": node.name,
+        "name": raw_name,
+        "description": yarn_desc,
+        "layer": int(class_attrs.get("layer", proj_meta.get("layer", 50))),
+        "tailor": class_attrs.get("tailor", proj_meta.get("tailor", "textile")),
+        "version": str(class_attrs.get("version", proj_meta.get("version", "1.0.0"))),
+        "resources": list(class_attrs.get("resources", proj_meta.get("resources", []))),
+        "strands": strands_data,
+    }
+
+
+def parse_yarn_manifest_ast(py_file: Path) -> dict[str, Any] | None:
+    """Statically parse a Yarn source file and extract its manifest and strands without executing code."""
+    try:
+        source = py_file.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(py_file))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+
+    proj_meta = _read_accompanying_pyproject(py_file)
+
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+
+        is_yarn_class = any(
+            (isinstance(b, ast.Name) and b.id == "Yarn")
+            or (isinstance(b, ast.Attribute) and b.attr == "Yarn")
+            for b in node.bases
+        )
+
+        class_attrs, strands_data = _inspect_class_body(node)
+        if not is_yarn_class and not strands_data:
+            continue
+
+        return _build_yarn_manifest(node, class_attrs, strands_data, proj_meta)
+
+    return None
+
+
+def try_probe_isolated_yarn(py_file: Path) -> ProbedYarn | None:
+    """Discover Yarn statically using pure-Python AST parsing with schema disk cache."""
     resolved_path = py_file.resolve()
+    if not resolved_path.is_file():
+        return None
+
     path_str = str(resolved_path)
     try:
         mtime = resolved_path.stat().st_mtime
@@ -220,37 +411,20 @@ def try_probe_isolated_yarn(py_file: Path) -> ProbedYarn | None:
             resources=data.get("resources", []),
         )
 
-    try:
-        res = subprocess.run(
-            [
-                str(yarn_venv_py),
-                "-m",
-                "needle.manifest",
-                path_str,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10.0,
-            check=False,
-        )
-        for line in res.stdout.splitlines():
-            if line.startswith("__TEXTILE_PROBE_JSON__:"):
-                raw_json = line.removeprefix("__TEXTILE_PROBE_JSON__:")
-                data = orjson.loads(raw_json)
-                probed_inst = ProbedYarn(
-                    name=data["name"],
-                    description=data["description"],
-                    layer=data["layer"],
-                    source_file=resolved_path,
-                    meta=data,
-                    tailor=data.get("tailor", "textile"),
-                    version=data.get("version", "1.0.0"),
-                    resources=data.get("resources", []),
-                )
-                cache[path_str] = {"mtime": mtime, "probe_data": data}
-                write_probe_cache(cache)
-                return probed_inst
+    data = parse_yarn_manifest_ast(resolved_path)
+    if not data:
         return None
-    except (subprocess.SubprocessError, OSError, orjson.JSONDecodeError) as e:
-        logger.debug("skein.yarn_venv_probe_failed", path=str(py_file), error=str(e))
-        return None
+
+    probed_inst = ProbedYarn(
+        name=data["name"],
+        description=data["description"],
+        layer=data["layer"],
+        source_file=resolved_path,
+        meta=data,
+        tailor=data.get("tailor", "textile"),
+        version=data.get("version", "1.0.0"),
+        resources=data.get("resources", []),
+    )
+    cache[path_str] = {"mtime": mtime, "probe_data": data}
+    write_probe_cache(cache)
+    return probed_inst
