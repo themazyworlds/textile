@@ -10,7 +10,7 @@ import typer
 from needle.errors import StrandNotFoundError
 lazy import pyotp
 
-from textile.core.cli.app import app
+from textile.core.cli.quill import quill
 from textile.core.cli.ui import Column, console, print_table
 from textile.core.definitions.errors import TextileError
 from textile.core.security.context import (
@@ -63,7 +63,7 @@ def _parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:
     return parsed_kwargs
 
 
-@app.command("strands")
+@quill.command("strands")
 def list_strands(
     filter_query: str | None = typer.Argument(None, help="Optional filter string for strand names or descriptions"),
     tier: str | None = typer.Option(
@@ -102,7 +102,7 @@ def list_strands(
     )
 
 
-@app.command("call")
+@quill.command("call")
 def call_strand(
     strand_name: str = typer.Argument(
         ...,
@@ -141,7 +141,7 @@ def call_strand(
         raise typer.Exit(code=1) from e
 
 
-@app.command("inspect")
+@quill.command("inspect")
 def inspect_strand(
     strand_name: str = typer.Argument(..., help="Name of strand to inspect parameter schema"),
 ):
@@ -176,13 +176,13 @@ def inspect_strand(
         )
 
 
-@app.command("twill")
+@quill.command("twill")
 def cmd_twill():
     """Launch official Twill / MCP stdio server."""
     twill.run_twill()
 
 
-@app.command("2fa")
+@quill.command("2fa")
 def cmd_2fa(
     code: bool = typer.Option(False, "--code", "-c", help="Generate and print current 6-digit TOTP code"),
 ):

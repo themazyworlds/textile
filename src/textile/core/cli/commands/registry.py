@@ -15,7 +15,7 @@ lazy from dulwich import errors, porcelain
 lazy from pydantic import BaseModel, Field
 lazy from rich.tree import Tree
 
-from textile.core.cli.app import app
+from textile.core.cli.quill import quill
 from textile.core.cli.ui import Column, console, print_table
 lazy from textile.core.definitions.settings import _format_type_name
 lazy from textile.core.orchestration.loom import loom
@@ -24,7 +24,7 @@ lazy from textile.core.telemetry.blackboard import sensory_tapestry
 lazy from textile.core.telemetry.ledger import core_tapestry
 
 
-@app.command("skein")
+@quill.command("skein")
 def cmd_skein(
     action: str | None = typer.Argument(None, help="enable, disable, toggle, tree"),
     yarn_target: str | None = typer.Argument(None, help="Target yarn name for enable/disable/toggle"),
@@ -200,7 +200,7 @@ def _handle_settings_init() -> None:
     )
 
 
-@app.command("settings")
+@quill.command("settings")
 def cmd_settings(
     action: str | None = typer.Argument(None, help="get, set, reset, init, docs"),
     yarn_name: str | None = typer.Argument(None, help="Target yarn name"),
@@ -232,7 +232,7 @@ def cmd_settings(
         _render_all_settings_table(skein.get_all_settings())
 
 
-@app.command("tapestry")
+@quill.command("tapestry")
 def cmd_tapestry(
     json_output: bool = typer.Option(False, "--json", help="Output tapestry state as Pydantic JSON"),
 ):
@@ -397,7 +397,7 @@ def _render_yarns_list_table() -> None:
     )
 
 
-@app.command("yarns")
+@quill.command("yarns")
 def cmd_yarns(
     action: str = typer.Argument("list", help="list, info, install, remove, paths"),
     target: str | None = typer.Argument(None, help="Yarn name, git repository URL, or local path"),
