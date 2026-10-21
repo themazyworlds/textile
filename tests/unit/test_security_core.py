@@ -11,24 +11,21 @@ import pyotp
 import pytest
 
 from textile import Strand, Yarn
-from textile.core.orchestration.loom import loom
-from textile.core.orchestration.skein import skein
-from textile.core.security.context import (
-    OTPChallengeRequiredError,
+from textile.core.loom.context import (
     OTPManager,
-    PolicyViolationError,
+    check_security_policy,
     get_totp_secret,
     get_totp_uri,
     global_otp_manager,
-    verify_security_policy,
 )
-from textile.core.telemetry.database import TapestryDatabase
+from textile.core.loom.mesh import loom
+from textile.core.skein.mesh import skein
 
 
 class TestOTPManager:
     def test_totp_verification_success_and_replay_rejection(self):
         secret = pyotp.random_base32()
-        mgr = OTPManager(database=TapestryDatabase(persist=False), secret=secret)
+        mgr = OTPManager(secret=secret)
         totp = pyotp.TOTP(secret)
         code = totp.now()
 
@@ -40,7 +37,7 @@ class TestOTPManager:
 
     def test_totp_wrong_code_fails(self):
         secret = pyotp.random_base32()
-        mgr = OTPManager(database=TapestryDatabase(persist=False), secret=secret)
+        mgr = OTPManager(secret=secret)
         assert mgr.verify_and_consume("000000") is False
 
     def test_totp_secret_generation_and_uri(self):
@@ -104,8 +101,9 @@ class TestSecurityPolicyGate:
         global_otp_manager.clear()
 
     def test_observe_tier_allows_without_otp(self):
-        # OBSERVE tier executes freely
-        verify_security_policy("observe", "sensors_get_telemetry")
+        passed, err = check_security_policy("observe", "sensors_get_telemetry")
+        assert passed is True
+        assert err is None
 
     def test_mutate_tier_requires_2fa(self):
         strand = "file_op"
@@ -113,18 +111,20 @@ class TestSecurityPolicyGate:
         totp = pyotp.TOTP(secret)
         code = totp.now()
 
-        # Without 2FA code, raises OTPChallengeRequiredError
-        with pytest.raises(OTPChallengeRequiredError) as exc_info:
-            verify_security_policy("mutate", strand)
-
-        assert exc_info.value.strand_name == strand
+        # Without 2FA code, returns False with notice message
+        passed, err = check_security_policy("mutate", strand)
+        assert passed is False
+        assert "2FA Confirmation Required" in str(err)
 
         # With correct 2FA code, passes cleanly
-        assert verify_security_policy("mutate", strand, otp=code) is True
+        passed_ok, err_ok = check_security_policy("mutate", strand, otp=code)
+        assert passed_ok is True
+        assert err_ok is None
 
         # Replaying the same code fails
-        with pytest.raises(PolicyViolationError):
-            verify_security_policy("mutate", strand, otp=code)
+        passed_replay, err_replay = check_security_policy("mutate", strand, otp=code)
+        assert passed_replay is False
+        assert "Invalid or expired 2FA code" in str(err_replay)
 
     def test_otp_drift_and_monotonic_replay_protection(self):
         secret = global_otp_manager._get_secret()
@@ -145,7 +145,7 @@ class TestSecurityPolicyGate:
 
         # Attempting past window (-1) after consuming current window fails monotonically
         past_time = datetime.fromtimestamp((base_step - 1) * 30, tz=UTC)
-        past_code = totp.at(past_time)
+        past_code = past_time and totp.at(past_time)
         assert global_otp_manager.verify_and_consume(past_code) is False
 
     def test_privileged_and_system_exec_require_2fa(self):
@@ -154,10 +154,12 @@ class TestSecurityPolicyGate:
         totp = pyotp.TOTP(secret)
         code = totp.now()
 
-        with pytest.raises(OTPChallengeRequiredError):
-            verify_security_policy("privileged", strand)
+        passed, err = check_security_policy("privileged", strand)
+        assert passed is False
+        assert "2FA Confirmation Required" in str(err)
 
-        assert verify_security_policy("privileged", strand, otp=code) is True
+        passed_ok, _ = check_security_policy("privileged", strand, otp=code)
+        assert passed_ok is True
 
     @pytest.mark.asyncio
     async def test_loom_unmasked_error_propagation(self):

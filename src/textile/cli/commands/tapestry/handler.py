@@ -3,28 +3,21 @@ Tapestry Command Handler.
 Inspects active and historic execution tasks and sensory blackboard context.
 """
 
-from typing import Any
-
-lazy from pydantic import BaseModel, Field
+lazy import orjson
 
 from textile.cli.ui import Column, print_table
-lazy from textile.core.telemetry.blackboard import sensory_tapestry
-lazy from textile.core.telemetry.ledger import core_tapestry
+lazy from textile.core.tapestry.intra import intra_mesh as core_tapestry
+lazy from textile.core.tapestry.sensory import sensory_mesh as sensory_tapestry
 
 
 def handle_tapestry(json_output: bool = False) -> None:
     """Inspect engine task ledger and sensory blackboard."""
     if json_output:
-
-        class TapestryStateModel(BaseModel):
-            engine: dict[str, Any] = Field(default_factory=dict)
-            sensory: dict[str, Any] = Field(default_factory=dict)
-
-        model = TapestryStateModel(
-            engine=core_tapestry.get_state(),
-            sensory=sensory_tapestry.get_state(),
-        )
-        print(model.model_dump_json(indent=2))
+        payload = {
+            "engine": core_tapestry.get_engine_state(),
+            "sensory": sensory_tapestry.get_state(),
+        }
+        print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
         return
 
     active = core_tapestry.get_active_tasks()

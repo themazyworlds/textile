@@ -1,0 +1,216 @@
+"""
+Textile Isolated Strand Subprocess Runner.
+Invoked for dependency-isolated, sandbox-confined strand executions.
+"""
+
+import contextlib
+import inspect
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import orjson
+from hem import (
+    CompletedProcess,
+    PathGrant,
+    Sandbox,
+    SandboxUnavailableError,
+    TimeoutExpired,
+    async_run_command,
+    run_command,
+)
+from needle import CapabilityTier
+
+from textile.core.loom.invoker import format_handler_result
+lazy from textile.core.camshaft import camshaft
+
+_format_handler_result = format_handler_result
+
+
+def _get_textile_config_binds() -> list[Path]:
+    """Resolve user configuration (~/.config/textile/settings.toml) and local share (~/.local) paths."""
+    binds: list[Path] = []
+    settings_file = Path.home() / ".config" / "textile" / "settings.toml"
+    if settings_file.exists():
+        binds.append(settings_file)
+    local_share = Path.home() / ".local"
+    if local_share.exists():
+        binds.append(local_share)
+    return binds
+
+
+def _build_worker_env() -> dict[str, str]:
+    """Construct clean execution environment for worker process, stripping host security credentials."""
+    env = os.environ.copy()
+    for key in list(env.keys()):
+        if key.startswith("TEXTILE_TOTP_") or key == "TEXTILE_TOTP_SECRET":
+            env.pop(key, None)
+    return env
+
+
+@dataclass(slots=True)
+class _WorkerExecutionSpec:
+    yarn: Any
+    strand_name: str
+    args: dict[str, Any]
+    tier_str: str
+    cwd: str
+
+
+def _resolve_target_spec(yarn: Any) -> str:
+    """Resolve target module spec or file path for isolated execution."""
+    if hasattr(yarn, "_source_file") and yarn._source_file:
+        return str(yarn._source_file)
+    target_spec = yarn.__class__.__module__
+    with contextlib.suppress(TypeError, OSError):
+        file_path = inspect.getfile(yarn.__class__)
+        if file_path and Path(file_path).exists():
+            target_spec = file_path
+    return target_spec
+
+
+def _resolve_yarn_python(yarn: Any) -> str:
+    """Resolve Python interpreter path for yarn, prioritizing yarn-local venv."""
+    if hasattr(yarn, "_source_file") and yarn._source_file:
+        p = Path(yarn._source_file).resolve()
+        yarn_venv_py = p.parent / ".venv" / "bin" / "python"
+        if yarn_venv_py.exists():
+            return str(yarn_venv_py)
+    with contextlib.suppress(TypeError, OSError, ValueError):
+        file_path = inspect.getfile(yarn.__class__)
+        if file_path:
+            p = Path(file_path).resolve()
+            yarn_venv_py = p.parent / ".venv" / "bin" / "python"
+            if yarn_venv_py.exists():
+                return str(yarn_venv_py)
+    return sys.executable
+
+
+def _build_worker_command(spec: _WorkerExecutionSpec) -> list[str]:
+    """Construct isolated worker arguments."""
+    target_spec = _resolve_target_spec(spec.yarn)
+    python_bin = _resolve_yarn_python(spec.yarn)
+    class_name = getattr(spec.yarn, "_class_name", spec.yarn.__class__.__name__)
+    return [
+        python_bin,
+        "-m",
+        "needle.worker",
+        target_spec,
+        class_name,
+        spec.strand_name,
+        orjson.dumps(spec.args).decode(),
+        spec.tier_str,
+    ]
+
+
+def _prepare_execution(
+    spec: _WorkerExecutionSpec,
+    env: dict[str, str],
+) -> tuple[Sandbox | None, list[str]]:
+    """Prepare sandbox or direct command according to tier policy."""
+    raw_cmd = _build_worker_command(spec)
+    policy = camshaft.get_tier_policy(spec.tier_str)
+    if policy.requires_sandbox:
+        box = Sandbox(
+            profile="strict",
+            workspace=spec.cwd,
+            writable=policy.workspace_writable,
+            resources=getattr(spec.yarn, "resources", []),
+            env=env,
+        )
+        for bind_path in _get_textile_config_binds():
+            box = box.allow(PathGrant(bind_path, writable=False))
+        return box, raw_cmd
+    return None, raw_cmd
+
+
+def _parse_worker_output(res: CompletedProcess[str], strand_name: str) -> str:
+    """Parse JSON stdout response from worker process."""
+    out = res.stdout.strip()
+    err = res.stderr.strip()
+    if out:
+        try:
+            payload = orjson.loads(out)
+            if payload.get("success"):
+                return _format_handler_result(payload.get("result"))
+            return f"Error: {payload.get('error', 'Execution failed')}"
+        except orjson.JSONDecodeError, ValueError, TypeError:
+            if res.returncode == 0:
+                return out
+
+    err_msg = err or out or f"Exit code {res.returncode}"
+    return f"Error: Strand '{strand_name}' worker process crashed ({err_msg}). Host process preserved."
+
+
+async def execute_strand_async(
+    yarn: Any,
+    strand_name: str,
+    args: dict[str, Any],
+    timeout: float | None = 300.0,
+    tier: CapabilityTier | str = CapabilityTier.INTERACT,
+) -> str:
+    """Run a strand asynchronously in an isolated ephemeral process with sandbox confinement."""
+    tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
+    cwd = str(Path.cwd())
+    spec = _WorkerExecutionSpec(
+        yarn=yarn,
+        strand_name=strand_name,
+        args=args,
+        tier_str=tier_str,
+        cwd=cwd,
+    )
+    env = _build_worker_env()
+
+    try:
+        box, raw_cmd = _prepare_execution(spec, env)
+        proc_timeout = None if (timeout is None or timeout <= 0) else timeout
+        if box is not None:
+            res = await box.async_run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout)
+        else:
+            res = await async_run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        return _parse_worker_output(res, strand_name)
+    except TimeoutExpired, TimeoutError:
+        return f"Error: Strand '{strand_name}' worker process timed out after {timeout} seconds."
+    except SandboxUnavailableError as e:
+        hint = f" (Hint: {e.hint})" if e.hint else ""
+        return f"Error executing isolated strand '{strand_name}': {e.message}{hint}"
+    except (OSError, ValueError) as e:
+        return f"Error executing isolated strand '{strand_name}': {e}"
+
+
+def execute_strand(
+    yarn: Any,
+    strand_name: str,
+    args: dict[str, Any],
+    timeout: float | None = 300.0,
+    tier: CapabilityTier | str = CapabilityTier.INTERACT,
+) -> str:
+    """Run a strand synchronously in an isolated ephemeral process with sandbox confinement."""
+    tier_str = tier.value if isinstance(tier, CapabilityTier) else str(tier)
+    cwd = str(Path.cwd())
+    spec = _WorkerExecutionSpec(
+        yarn=yarn,
+        strand_name=strand_name,
+        args=args,
+        tier_str=tier_str,
+        cwd=cwd,
+    )
+    env = _build_worker_env()
+
+    try:
+        box, raw_cmd = _prepare_execution(spec, env)
+        proc_timeout = None if (timeout is None or timeout <= 0) else timeout
+        if box is not None:
+            res = box.run(raw_cmd, capture_output=True, text=True, timeout=proc_timeout)
+        else:
+            res = run_command(raw_cmd, capture_output=True, text=True, timeout=proc_timeout, env=env)
+        return _parse_worker_output(res, strand_name)
+    except TimeoutExpired, TimeoutError:
+        return f"Error: Strand '{strand_name}' worker process timed out after {timeout} seconds."
+    except SandboxUnavailableError as e:
+        hint = f" (Hint: {e.hint})" if e.hint else ""
+        return f"Error executing isolated strand '{strand_name}': {e.message}{hint}"
+    except (OSError, ValueError) as e:
+        return f"Error executing isolated strand '{strand_name}': {e}"

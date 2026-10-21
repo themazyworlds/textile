@@ -2,6 +2,7 @@
 Textile • Sovereign AI Subsystem & Desktop Intelligence Engine.
 """
 
+lazy from hem import SandboxUnavailableError
 lazy from needle import (
     DEFAULT_LAYER,
     Strand,
@@ -13,41 +14,36 @@ lazy from needle import (
     strand,
 )
 
-lazy from textile.core.definitions.errors import (
-    OTPChallengeRequiredError,
-    PolicyViolationError,
-    SandboxUnavailableError,
-    TextileError,
-)
-
 __version__ = "0.1.0"
 
-lazy from textile.core.orchestration.instructions import fabric_instructions
-lazy from textile.core.orchestration.loom import loom
-lazy from textile.core.orchestration.skein import skein
-lazy from textile.core.telemetry.blackboard import sensory_tapestry
-lazy from textile.core.telemetry.elastic import EventFrame, EventUrgency, elastic
-lazy from textile.core.telemetry.ledger import core_tapestry
+lazy from textile.core.camshaft import Camshaft, camshaft
+lazy from textile.core.loom.mesh import loom
+lazy from textile.core.skein.mesh import skein
+lazy from textile.core.tapestry.elastic import EventFrame, EventUrgency, elastic
+lazy from textile.core.tapestry.intra import core_tapestry, intra_mesh
+lazy from textile.core.tapestry.sensory import sensory_mesh, sensory_tapestry
+lazy from textile.core.twill.instructions import fabric_instructions
 
 __all__ = [
+    "Camshaft",
     "DEFAULT_LAYER",
     "EventFrame",
     "EventUrgency",
-    "OTPChallengeRequiredError",
-    "PolicyViolationError",
     "SandboxUnavailableError",
     "Strand",
     "StrandCollisionError",
     "StrandNotFoundError",
     "StrandOperationalError",
-    "TextileError",
     "Yarn",
     "YarnNotFoundError",
     "__version__",
+    "camshaft",
     "core_tapestry",
     "elastic",
     "fabric_instructions",
+    "intra_mesh",
     "loom",
+    "sensory_mesh",
     "sensory_tapestry",
     "skein",
     "strand",

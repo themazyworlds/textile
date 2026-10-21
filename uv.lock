@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.15"
 
 [[package]]
@@ -93,6 +93,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a8/f2/8d2dd8276ca05e1f5157b6a0d34efb2f585f47a0fbed61e8aad04b221f0b/bidict-0.24.1.tar.gz", hash = "sha256:4dca6c17f0b01700e9f24359daa5ebabf7be022d99f4cb2a257b6af2a5076c88", size = 30818, upload-time = "2026-08-25T23:45:52.214Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/97/53/2a3c7d562271ec6b6e38e7216b3104899f8aa4180c0713cb8aaf69e29cd5/bidict-0.24.1-py3-none-any.whl", hash = "sha256:fd3eaa737917d8a14f4baa391670c433c4e3f6f5fd2cd99d4bf436437f432364", size = 36175, upload-time = "2026-08-25T23:45:51.096Z" },
+]
+
+[[package]]
+name = "blinker"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e048515135495f198351908d99540d69bfdc8c1d15b73dc55ce/blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf", size = 22460, upload-time = "2024-11-08T17:25:47.436Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458, upload-time = "2024-11-08T17:25:46.184Z" },
 ]
 
 [[package]]
@@ -670,17 +679,14 @@ version = "0.1.0"
 source = { editable = "../textile-needle" }
 dependencies = [
     { name = "orjson" },
-    { name = "pydantic" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "orjson", specifier = ">=3.10.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-]
+requires-dist = [{ name = "orjson", specifier = ">=3.10.0" }]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
@@ -1208,6 +1214,8 @@ name = "textile"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "blinker" },
+    { name = "colorama" },
     { name = "desktop-notifier" },
     { name = "dulwich" },
     { name = "hem" },
@@ -1235,6 +1243,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "blinker", specifier = ">=1.9.0" },
+    { name = "colorama", specifier = ">=0.4.6" },
     { name = "desktop-notifier", specifier = ">=6.2.0" },
     { name = "dulwich", specifier = ">=1.2.17" },
     { name = "hem", editable = "../../hem" },

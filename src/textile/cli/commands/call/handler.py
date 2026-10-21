@@ -6,14 +6,10 @@ Executes strands dynamically via Loom with argument mapping and security policy 
 from typing import Any
 
 import typer
+lazy from colorama.ansi import Fore, Style
 
-from textile.cli.ui import console
-lazy from textile.core.definitions.errors import TextileError
-lazy from textile.core.orchestration.loom import loom
-lazy from textile.core.security.context import (
-    OTPChallengeRequiredError,
-    PolicyViolationError,
-)
+lazy from textile.core.camshaft import camshaft
+lazy from textile.core.loom.mesh import loom
 
 
 def parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:
@@ -23,21 +19,21 @@ def parse_cli_args(strand_name: str, args: list[str]) -> dict[str, Any]:
     return dict(zip(param_names, args))
 
 
-def execute_strand_call(strand_name: str, parsed_kwargs: dict[str, Any]) -> None:
-    """Execute target strand via Loom with visual OTP challenges and error formatting."""
-    try:
-        res = loom.execute_sync(strand_name, parsed_kwargs)
-        console.print(res)
-    except OTPChallengeRequiredError as e:
-        console.print("\n  [bold bright_yellow]2FA Confirmation Required[/bold bright_yellow]")
-        console.print("  [dim]Enter your 6-digit Authenticator / TOTP code to authorize this action.[/dim]")
-        console.print(f"  [bold cyan]Confirm:[/bold cyan] quill call {strand_name} otp=<6_digit_code>\n")
-        raise typer.Exit(code=1) from e
-    except PolicyViolationError as e:
-        console.print(f"\n  [bold red]Security Policy Violation:[/bold red] {e}\n")
-        raise typer.Exit(code=1) from e
-    except TextileError as e:
-        console.print(f"[bold red]{e.message}[/bold red]")
-        if e.hint:
-            console.print(f"[dim yellow]Hint: {e.hint}[/dim yellow]")
-        raise typer.Exit(code=1) from e
+async def execute_strand_call(strand_name: str, parsed_kwargs: dict[str, Any]) -> None:
+    """Execute target strand via Camshaft with visual OTP challenges and error formatting."""
+    yarn = loom.get_yarn_for_strand(strand_name)
+    yarn_name = yarn.name if yarn else "unknown"
+    res = await camshaft.execute_strand(strand_name, parsed_kwargs)
+
+    print(f"\n{res}")
+    if str(res).startswith("Error:"):
+        raise typer.Exit(code=1)
+
+    if yarn_name != "unknown":
+        banner = (
+            f"\n{Style.DIM}sewn by{Style.RESET_ALL} "
+            f"{Style.BRIGHT}{Fore.CYAN}{yarn_name}{Style.RESET_ALL} "
+            f"{Style.DIM}>{Style.RESET_ALL} "
+            f"{Style.BRIGHT}{Fore.WHITE}{strand_name}{Style.RESET_ALL}"
+        )
+        print(banner)

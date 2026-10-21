@@ -13,6 +13,8 @@ import hem
 import pytest
 from hem import BubblewrapBuilder, apply_resources, create_sandbox, wrap_command
 
+from textile.core.loom.runner import _build_worker_env, _get_textile_config_binds
+
 
 class TestBubblewrapSandbox:
     def test_bwrap_availability(self):
@@ -149,8 +151,6 @@ class TestBubblewrapSandbox:
         assert cmd[-2:] == ["echo", "hello"]
 
     def test_totp_secret_isolation_in_sandbox(self):
-        from textile.core.execution.runner import _build_worker_env, _get_textile_config_binds
-
         # 1. Verify config binds do not include ~/.config/textile directory or totp.secret
         binds = _get_textile_config_binds()
         textile_dir = Path.home() / ".config" / "textile"

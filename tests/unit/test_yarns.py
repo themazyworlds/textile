@@ -6,8 +6,9 @@ import pytest
 from pydantic import BaseModel, Field
 
 from textile import Strand, Yarn
-from textile.core.orchestration.loom import loom
-from textile.core.orchestration.skein import skein
+from textile.core.camshaft import camshaft
+from textile.core.loom.mesh import loom
+from textile.core.skein.mesh import skein
 
 
 class CustomPydanticModel(BaseModel):
@@ -112,15 +113,15 @@ class TestYarnArchitecture(unittest.TestCase):
         # 2. Isolated process execution (system_exec requires 2FA confirmation)
         import pyotp
 
-        from textile.core.security.context import global_otp_manager
+        from textile.core.camshaft import camshaft
 
-        totp = pyotp.TOTP(global_otp_manager._get_secret())
+        totp = pyotp.TOTP(camshaft.get_totp_secret())
         otp_code = totp.now()
         res = loom.execute_sync("isolated_tool", {"x": "val"}, otp=otp_code)
         self.assertEqual(res, "isolated_val")
 
         # 3. Crash recovery: child os._exit(11) must NOT crash host parent
-        global_otp_manager.clear()
+        camshaft.clear_totp()
         crash_otp = totp.now()
         crash_res = loom.execute_sync("crashing_tool", {}, otp=crash_otp)
         self.assertIn("crashed", crash_res)
@@ -275,7 +276,7 @@ class TestYarnArchitecture(unittest.TestCase):
 
         pk = PackageKit()
         self.assertEqual(pk.name, "packagekit")
-        self.assertEqual(pk.layer, 10)
+        self.assertEqual(pk.layer, 50)
         strands = [s.name for s in pk.get_strands()]
         self.assertIn("packagekit_search", strands)
         self.assertIn("packagekit_install", strands)
@@ -381,9 +382,10 @@ class TestYarnArchitecture(unittest.TestCase):
 
         from timer.timer import Timer
 
-        from textile.core.telemetry.elastic import EventFrame, elastic
+        from textile.core.tapestry.elastic import EventFrame, elastic
 
         timer_yarn = Timer()
+        timer_yarn._elastic = elastic
         events_fired: list[EventFrame] = []
 
         def _on_expired(frame: EventFrame):
@@ -483,8 +485,6 @@ class TestYarnArchitecture(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
-        from textile.core.orchestration.discovery import parse_yarn_manifest_ast, try_probe_isolated_yarn
-
         sample_code = '''
 """
 Sample Module Docstring
@@ -527,7 +527,7 @@ resources = ["sensors", "dbus:system"]
             sample_file = sample_dir / "sample_sensor.py"
             sample_file.write_text(sample_code, encoding="utf-8")
 
-            manifest = parse_yarn_manifest_ast(sample_file)
+            manifest = camshaft.parse_yarn_manifest_ast(sample_file)
             assert manifest is not None
             self.assertEqual(manifest["class_name"], "SampleSensorYarn")
             self.assertEqual(manifest["name"], "sample_sensor")
@@ -556,8 +556,8 @@ resources = ["sensors", "dbus:system"]
             self.assertEqual(s2["parameters"]["hard_reset"]["type"], "boolean")
             self.assertEqual(s2["parameters"]["hard_reset"]["default"], False)
 
-            # Test try_probe_isolated_yarn integration
-            probed = try_probe_isolated_yarn(sample_file)
+            # Test try_probe_isolated_yarn integration via camshaft
+            probed = camshaft.probe_isolated_yarn(sample_file)
             assert probed is not None
             self.assertEqual(probed.name, "sample_sensor")
             self.assertEqual(probed.layer, 25)
@@ -570,13 +570,39 @@ resources = ["sensors", "dbus:system"]
         import tempfile
         from pathlib import Path
 
-        from textile.core.orchestration.discovery import parse_yarn_manifest_ast
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             bad_file = Path(tmp_dir) / "broken.py"
             bad_file.write_text("def broken_syntax( - :", encoding="utf-8")
-            res = parse_yarn_manifest_ast(bad_file)
+            res = camshaft.parse_yarn_manifest_ast(bad_file)
             self.assertIsNone(res)
+
+    def test_extract_decorator_info_and_positional_mapping(self):
+        import ast
+
+        from textile.core.skein.discovery import _extract_strand_data, extract_decorator_info
+
+        func_code = """
+@strand.interact("custom_name", "Custom positional description", timeout=12.5)
+def original_func_name(self, value: int = 42):
+    '''Docstring fallback'''
+    return "ok"
+"""
+        tree = ast.parse(func_code)
+        fn_node = tree.body[0]
+        assert isinstance(fn_node, ast.FunctionDef)
+        dec_info = extract_decorator_info(fn_node.decorator_list[0])
+        self.assertEqual(dec_info.name, "strand.interact")
+        self.assertTrue(dec_info.is_call)
+        self.assertEqual(dec_info.args, ["custom_name", "Custom positional description"])
+        self.assertEqual(dec_info.kwargs, {"timeout": 12.5})
+
+        strand_data = _extract_strand_data(fn_node)
+        assert strand_data is not None
+        self.assertEqual(strand_data["name"], "custom_name")
+        self.assertEqual(strand_data["description"], "Custom positional description")
+        self.assertEqual(strand_data["tier"], "INTERACT")
+        self.assertEqual(strand_data["timeout"], 12.5)
+        self.assertEqual(strand_data["parameters"]["value"]["default"], 42)
 
 
 if __name__ == "__main__":

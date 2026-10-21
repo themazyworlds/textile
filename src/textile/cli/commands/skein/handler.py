@@ -6,28 +6,25 @@ Manages Skein layer hierarchy, policy engine, and yarn activation toggling.
 lazy from rich.tree import Tree
 
 from textile.cli.ui import Column, console, print_table
-lazy from textile.core.orchestration.loom import loom
-lazy from textile.core.orchestration.skein import skein
+lazy from textile.core.camshaft import camshaft
+lazy from textile.core.skein.mesh import skein
 
 
 def handle_skein_enable(yarn_target: str) -> None:
     """Enable capability yarn in Skein."""
-    skein.set_yarn_enabled(yarn_target, True)
-    loom._rebuild_active()
+    camshaft.set_yarn_enabled(yarn_target, True)
     console.print(f"  [bold green]✓[/bold green] Enabled yarn [bold white]{yarn_target}[/bold white].")
 
 
 def handle_skein_disable(yarn_target: str) -> None:
     """Disable capability yarn in Skein."""
-    skein.set_yarn_enabled(yarn_target, False)
-    loom._rebuild_active()
+    camshaft.set_yarn_enabled(yarn_target, False)
     console.print(f"  [bold yellow]✓[/bold yellow] Disabled yarn [bold white]{yarn_target}[/bold white].")
 
 
 def handle_skein_toggle(yarn_target: str) -> None:
     """Toggle activation state of a capability yarn in Skein."""
-    state = skein.toggle_yarn(yarn_target)
-    loom._rebuild_active()
+    state = camshaft.toggle_yarn(yarn_target)
     state_str = "[bold green]enabled[/bold green]" if state else "[bold yellow]disabled[/bold yellow]"
     console.print(f"  [bold white]✓[/bold white] Toggled yarn [bold white]{yarn_target}[/bold white] to {state_str}.")
 
@@ -35,7 +32,7 @@ def handle_skein_toggle(yarn_target: str) -> None:
 def render_skein_tree() -> None:
     """Render Skein layer hierarchy as an interactive Rich tree."""
     layers_map: dict[int, list[tuple[str, bool, int]]] = {}
-    for name, yarn in skein.all_yarns.items():
+    for name, yarn in skein.get_all_yarns().items():
         is_en = skein.is_enabled(name)
         strands_count = len(yarn.get_strands())
         layers_map.setdefault(yarn.layer, []).append((name, is_en, strands_count))
@@ -55,7 +52,7 @@ def render_skein_tree() -> None:
 def render_skein_table() -> None:
     """Render table of all yarns in Skein with layer and status."""
     rows = []
-    for name, yarn in sorted(skein.all_yarns.items(), key=lambda x: (-x[1].layer, x[1].name)):
+    for name, yarn in sorted(skein.get_all_yarns().items(), key=lambda x: (-x[1].layer, x[1].name)):
         is_en = skein.is_enabled(name)
         en_str = "[green]YES[/green]" if is_en else "[red]NO[/red]"
         desc = (yarn.description or "").splitlines()[0].strip() if yarn.description else ""

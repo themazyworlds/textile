@@ -4,7 +4,7 @@ Lists and filters registered strands across capability tiers.
 """
 
 from textile.cli.ui import Column, print_table
-lazy from textile.core.orchestration.loom import loom
+lazy from textile.core.loom.mesh import loom
 
 
 def list_strands_handler(filter_query: str | None = None, tier: str | None = None) -> None:

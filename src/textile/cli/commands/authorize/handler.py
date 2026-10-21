@@ -7,11 +7,8 @@ import time
 
 lazy import pyotp
 
-from textile.cli.ui import console
-from textile.core.security.context import (
-    get_totp_secret,
-    get_totp_uri,
-)
+lazy from textile.cli.ui import console
+lazy from textile.core.loom.context import get_totp_secret, get_totp_uri
 
 
 def handle_authorize(code_only: bool = False) -> None:

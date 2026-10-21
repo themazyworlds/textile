@@ -1,8 +1,7 @@
 import asyncio
 import unittest
 
-from textile.core.telemetry.blackboard import sensory_tapestry
-from textile.core.telemetry.elastic import ElasticEngine, EventFrame, EventUrgency
+from textile.core.tapestry.elastic import ElasticEngine, EventFrame, EventUrgency
 
 
 class TestElasticEngine(unittest.TestCase):
@@ -89,7 +88,7 @@ class TestElasticEngine(unittest.TestCase):
             retained_value={"active": True, "count": 42},
         )
 
-        val = sensory_tapestry.get_slot("test.custom_slot")
+        val = self.elastic.get_slot("test.custom_slot")
         self.assertIsNotNone(val)
         self.assertTrue(val["active"])
         self.assertEqual(val["count"], 42)
@@ -120,40 +119,23 @@ class TestElasticEngine(unittest.TestCase):
 
         asyncio.run(_test_stream())
 
-    def test_cross_process_ipc_sync(self):
-        import time
+    def test_multi_subscriber_isolation(self):
+        received_a = []
+        received_b = []
 
-        # Create two simulated processes (engine_a and engine_b)
-        engine_a = ElasticEngine(enable_ipc_poller=True)
-        engine_a._pid = 11111  # Simulate Process A (e.g. Twill / Timer)
-
-        engine_b = ElasticEngine(enable_ipc_poller=True)
-        engine_b._pid = 22222  # Simulate Process B (e.g. Weave Voice Agent)
-
-        received_by_b = []
-
-        token = engine_b.subscribe("timer.expired", received_by_b.append)
+        token_a = self.elastic.subscribe("timer.started", received_a.append)
+        token_b = self.elastic.subscribe("timer.*", received_b.append)
         try:
-            # Engine A broadcasts a timer expiration
-            engine_a.broadcast(
-                topic="timer.expired",
-                summary="Timer 'Tea' has finished (180s)",
-                source="timer",
-                urgency=EventUrgency.ALERT,
-                data={"label": "Tea", "id": "tea_01"},
-            )
+            self.elastic.broadcast("timer.started", "Timer started", "timer")
+            self.assertEqual(len(received_a), 1)
+            self.assertEqual(len(received_b), 1)
 
-            # Wait briefly for Engine B's background IPC thread to poll the event
-            time.sleep(0.15)
-
-            self.assertEqual(len(received_by_b), 1)
-            self.assertEqual(received_by_b[0].topic, "timer.expired")
-            self.assertEqual(received_by_b[0].data["label"], "Tea")
-            self.assertEqual(received_by_b[0].data["id"], "tea_01")
+            self.elastic.broadcast("timer.expired", "Timer expired", "timer")
+            self.assertEqual(len(received_a), 1)
+            self.assertEqual(len(received_b), 2)
         finally:
-            engine_b.unsubscribe(token)
-            engine_a.close()
-            engine_b.close()
+            self.elastic.unsubscribe(token_a)
+            self.elastic.unsubscribe(token_b)
 
 
 if __name__ == "__main__":

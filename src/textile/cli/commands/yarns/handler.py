@@ -12,7 +12,7 @@ from pathlib import Path
 lazy from dulwich import errors, porcelain
 
 from textile.cli.ui import Column, console, print_table
-lazy from textile.core.orchestration.skein import skein
+lazy from textile.core.skein.mesh import skein
 
 
 def handle_yarn_paths() -> None:
@@ -26,7 +26,7 @@ def handle_yarn_paths() -> None:
 
 def handle_yarn_info(target: str) -> None:
     """Inspect detailed metadata, source location, and strands for an installed yarn."""
-    yarn = skein.all_yarns.get(target)
+    yarn = skein.get_yarn(target)
     if not yarn:
         console.print(f"  [bold red]Error:[/bold red] Yarn '[bold white]{target}[/bold white]' is not installed.")
         return
@@ -99,8 +99,7 @@ def handle_yarn_install(target: str, user_yarns: Path) -> None:
         )
         console.print(f"    Destination: {dest}")
 
-    skein._initialized = False
-    skein.initialize()
+    skein.reload_plugins()
 
 
 def handle_yarn_remove(target: str, user_yarns: Path) -> None:
@@ -116,7 +115,7 @@ def handle_yarn_remove(target: str, user_yarns: Path) -> None:
 def render_yarns_list_table() -> None:
     """Render all discovered and installed capability yarns."""
     rows = []
-    for name, yarn in sorted(skein.all_yarns.items()):
+    for name, yarn in sorted(skein.get_all_yarns().items()):
         desc = (yarn.description or "").splitlines()[0].strip() if yarn.description else ""
         rows.append(
             (

@@ -3,9 +3,9 @@ Twill Command Handler.
 Launches official Twill Model Context Protocol (MCP) server over stdio.
 """
 
-lazy from textile.core.orchestration import twill
+lazy from textile.core.twill.mesh import run_twill_async
 
 
-def run_twill_handler() -> None:
+async def run_twill_handler() -> None:
     """Launch official Twill / MCP stdio server."""
-    twill.run_twill()
+    await run_twill_async()

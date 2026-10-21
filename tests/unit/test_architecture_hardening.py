@@ -5,15 +5,15 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pyotp
-from hem import Sandbox
+from hem import Sandbox, SandboxUnavailableError
 from needle import Strand, Yarn
 from needle.errors import StrandCollisionError
 
-from textile.core.definitions.errors import SandboxUnavailableError
-from textile.core.execution.invoker import execute_direct
-from textile.core.execution.runner import execute_strand, execute_strand_async
-from textile.core.orchestration.loom import Loom
-from textile.core.security.context import OTPChallengeRequiredError, OTPManager
+from textile.core.camshaft import camshaft
+from textile.core.loom.context import OTPManager
+from textile.core.loom.invoker import execute_direct
+from textile.core.loom.mesh import Loom
+from textile.core.loom.runner import execute_strand, execute_strand_async
 
 
 class TestArchitectureHardening(unittest.TestCase):
@@ -85,13 +85,6 @@ class TestArchitectureHardening(unittest.TestCase):
             self.assertIn("Install 'bubblewrap'", res_async)
 
     def test_strand_collision_raises_error(self):
-        class MockSkein:
-            def initialize(self):
-                pass
-
-            def get_active_yarns(self):
-                return {"y1": YarnA(), "y2": YarnB()}
-
         class YarnA(Yarn):
             def __init__(self):
                 super().__init__(name="y1", layer=10)
@@ -112,15 +105,26 @@ class TestArchitectureHardening(unittest.TestCase):
             def get_strands(self):
                 return [self.build_strand("conflicting_strand", "Conflicting B", lambda args: "b")]
 
-        test_loom = Loom(registry=MockSkein())  # type: ignore
-        with self.assertRaises(StrandCollisionError):
+        test_loom = Loom()
+        with (
+            patch("textile.core.loom.mesh.camshaft.initialize"),
+            patch(
+                "textile.core.loom.mesh.camshaft.get_active_yarns",
+                return_value={"y1": YarnA(), "y2": YarnB()},
+            ),
+            patch(
+                "textile.core.loom.mesh.camshaft.get_all_yarns",
+                return_value={"y1": YarnA(), "y2": YarnB()},
+            ),
+            self.assertRaises(StrandCollisionError),
+        ):
             test_loom.initialize()
 
     def test_totp_code_hidden_from_llm_string_output(self):
-        err = OTPChallengeRequiredError(strand_name="hyprland_exit_session")
-        err_str = str(err)
-        self.assertIn("2FA Confirmation Required", err_str)
-        self.assertIn("hyprland_exit_session", err_str)
+        passed, err_str = camshaft.check_security_policy("mutate", "hyprland_exit_session")
+        self.assertFalse(passed)
+        self.assertIn("2FA Confirmation Required", str(err_str))
+        self.assertIn("hyprland_exit_session", str(err_str))
 
     def test_loom_execute_sync_handler_thread_offload(self):
         main_thread_ident = threading.get_ident()

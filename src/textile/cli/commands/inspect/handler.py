@@ -4,10 +4,9 @@ Reflects strand schema, parameters, and documentation.
 """
 
 import typer
-from needle.errors import StrandNotFoundError
 
 from textile.cli.ui import Column, console, print_table
-lazy from textile.core.orchestration.loom import loom
+lazy from textile.core.loom.mesh import loom
 
 
 def inspect_strand_handler(strand_name: str) -> None:
@@ -15,10 +14,7 @@ def inspect_strand_handler(strand_name: str) -> None:
     target = loom.get_strand(strand_name)
 
     if not target:
-        all_names = [s.name for s in loom.get_all_strands()]
-        err = StrandNotFoundError(strand_name, available_strands=all_names)
-        console.print(f"[bold red]{err.message}[/bold red]")
-        console.print(f"[dim yellow]{err.hint}[/dim yellow]")
+        console.print(f"[bold red]Strand '{strand_name}' not found.[/bold red]")
         raise typer.Exit(code=1)
 
     console.print(

@@ -3,40 +3,55 @@ Unit tests for Textile CLI strand call argument parsing.
 """
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
 
 from textile.cli.quill import quill
-from textile.core.orchestration.loom import loom
+from textile.core.camshaft import camshaft
 
 
 class TestCliExecution(unittest.TestCase):
     def setUp(self):
-        loom._initialized = False
-        loom.initialize()
+        camshaft.initialize()
         self.runner = CliRunner()
 
     def test_call_strand_positional_args(self):
-        with patch.object(loom, "execute", return_value="ok") as mock_exec:
+        with patch.object(camshaft, "execute_strand", new_callable=AsyncMock, return_value="ok") as mock_exec:
             result = self.runner.invoke(quill, ["call", "hyprland_focus_workspace", "8"])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("ok", result.stdout)
-            mock_exec.assert_called_once_with("hyprland_focus_workspace", {"workspace": "8"}, caller=None, otp=None)
+            mock_exec.assert_awaited_once_with("hyprland_focus_workspace", {"workspace": "8"})
 
     def test_call_strand_multi_positional_args(self):
-        with patch.object(loom, "execute", return_value="ok") as mock_exec:
+        with patch.object(camshaft, "execute_strand", new_callable=AsyncMock, return_value="ok") as mock_exec:
             result = self.runner.invoke(quill, ["call", "file_find", "/tmp", "*.log"])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("ok", result.stdout)
-            mock_exec.assert_called_once_with("file_find", {"path": "/tmp", "pattern": "*.log"}, caller=None, otp=None)
+            mock_exec.assert_awaited_once_with("file_find", {"path": "/tmp", "pattern": "*.log"})
 
     def test_call_strand_json_args(self):
-        with patch.object(loom, "execute", return_value="ok") as mock_exec:
+        with patch.object(camshaft, "execute_strand", new_callable=AsyncMock, return_value="ok") as mock_exec:
             result = self.runner.invoke(quill, ["call", "hyprland_focus_workspace", "--json", '{"workspace": "3"}'])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("ok", result.stdout)
-            mock_exec.assert_called_once_with("hyprland_focus_workspace", {"workspace": "3"}, caller=None, otp=None)
+            mock_exec.assert_awaited_once_with("hyprland_focus_workspace", {"workspace": "3"})
+
+    def test_call_strand_otp_challenge(self):
+        with patch.object(
+            camshaft, "execute_strand", new_callable=AsyncMock, return_value="Error: 2FA Confirmation Required"
+        ):
+            result = self.runner.invoke(quill, ["call", "mock_strand"])
+            self.assertEqual(result.exit_code, 1)
+            self.assertIn("2FA Confirmation Required", result.stdout)
+
+    def test_call_strand_policy_violation(self):
+        with patch.object(
+            camshaft, "execute_strand", new_callable=AsyncMock, return_value="Error: Security Policy Violation"
+        ):
+            result = self.runner.invoke(quill, ["call", "mock_strand"])
+            self.assertEqual(result.exit_code, 1)
+            self.assertIn("Security Policy Violation", result.stdout)
 
     def test_yarns_install_via_dulwich(self):
         from unittest.mock import MagicMock

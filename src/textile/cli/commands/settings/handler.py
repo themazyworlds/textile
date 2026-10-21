@@ -8,8 +8,8 @@ from typing import Any
 lazy from pydantic import BaseModel
 
 from textile.cli.ui import Column, console, print_table
-lazy from textile.core.definitions.settings import _format_type_name
-lazy from textile.core.orchestration.skein import skein
+lazy from textile.core.skein.mesh import skein
+lazy from textile.core.skein.settings import _format_type_name
 
 
 def parse_cli_setting_val(raw: str) -> Any:
@@ -68,7 +68,7 @@ def render_all_settings_table(all_settings: dict[str, Any]) -> None:
 
 def render_schema_docs(yarn_name: str | None = None) -> None:
     """Reflect and render schema documentation for yarn settings models."""
-    schemas = skein.get_all_yarn_schemas()
+    schemas = skein.get_settings_schemas()
     if yarn_name and yarn_name in schemas:
         targets = {yarn_name: schemas[yarn_name]}
     elif yarn_name:
@@ -118,7 +118,7 @@ def render_schema_docs(yarn_name: str | None = None) -> None:
 
 def handle_settings_init() -> None:
     """Generate documented default ~/.config/textile/settings.toml configuration file."""
-    template = skein.generate_settings_template()
+    template = skein.generate_documented_toml()
     skein._settings_file.parent.mkdir(parents=True, exist_ok=True)
     skein._settings_file.write_text(template, encoding="utf-8")
     console.print(

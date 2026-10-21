@@ -2,8 +2,8 @@ import sqlite3
 import threading
 import unittest
 
-from textile.core.telemetry.blackboard import NoticeLevel, SensoryTapestry
-from textile.core.telemetry.ledger import CoreTapestry
+from textile.core.tapestry.intra import CoreTapestry
+from textile.core.tapestry.sensory import NoticeLevel, SensoryTapestry
 
 
 class TestTapestry(unittest.TestCase):

@@ -2,10 +2,10 @@
 Yarns Command Definition (`quill yarns`).
 """
 
-from pathlib import Path
+lazy from pathlib import Path
 
-import platformdirs
 import typer
+lazy import platformdirs
 
 from textile.cli.quill import quill
 lazy from textile.cli.commands.yarns.handler import (
@@ -15,7 +15,7 @@ lazy from textile.cli.commands.yarns.handler import (
     handle_yarn_remove,
     render_yarns_list_table,
 )
-lazy from textile.core.orchestration.skein import skein
+lazy from textile.core.camshaft import camshaft
 
 
 @quill.command("yarns")
@@ -24,7 +24,7 @@ def cmd_yarns(
     target: str | None = typer.Argument(None, help="Yarn name, git repository URL, or local path"),
 ):
     """Manage installed capability yarns, inspection, and discovery search paths."""
-    skein.initialize()
+    camshaft.initialize()
     user_yarns = Path(platformdirs.user_data_dir("textile")) / "yarns"
 
     if action in ("paths", "search-paths"):

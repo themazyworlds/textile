@@ -12,7 +12,7 @@ lazy from textile.cli.commands.skein.handler import (
     render_skein_table,
     render_skein_tree,
 )
-lazy from textile.core.orchestration.skein import skein
+lazy from textile.core.camshaft import camshaft
 
 
 @quill.command("skein")
@@ -21,7 +21,7 @@ def cmd_skein(
     yarn_target: str | None = typer.Argument(None, help="Target yarn name for enable/disable/toggle"),
 ):
     """Inspect and manage the Skein runtime layer hierarchy, policy engine, and yarn activation."""
-    skein.initialize()
+    camshaft.initialize()
 
     if action == "enable" and yarn_target:
         handle_skein_enable(yarn_target)

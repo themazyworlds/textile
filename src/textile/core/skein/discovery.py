@@ -1,0 +1,597 @@
+"""
+Textile Yarn Discovery Subsystem.
+Discovers Yarn entrypoints across XDG search paths and probes isolated venvs.
+"""
+
+import ast
+import contextlib
+import os
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import orjson
+import platformdirs
+from needle import CapabilityTier, Yarn
+from needle import parse_capability_tier as _parse_tier
+lazy from needle import Strand
+
+lazy from textile.core.camshaft import camshaft
+
+__all__ = [
+    "ProbedYarn",
+    "build_strand_index",
+    "find_yarn_files",
+    "get_probe_cache_file",
+    "get_strand_index_file",
+    "get_yarn_search_paths",
+    "parse_yarn_manifest_ast",
+    "probe_isolated_yarn",
+    "read_probe_cache",
+    "read_strand_index",
+    "try_probe_isolated_yarn",
+    "write_probe_cache",
+    "write_strand_index",
+]
+
+
+class ProbedYarn(Yarn):
+    """Dynamically created Yarn representing a capability package probed in an isolated venv."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        layer: int,
+        source_file: Path,
+        meta: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
+        res = kwargs.get("resources") if "resources" in kwargs else meta.get("resources", [])
+        super().__init__(
+            name=name,
+            description=description,
+            layer=layer,
+            tailor=kwargs.get("tailor") or meta.get("tailor", "textile"),
+            version=kwargs.get("version") or meta.get("version", "1.0.0"),
+            resources=res,
+        )
+        self.resources = list(res) if res else []
+        self._source_file = source_file
+        self._class_name = meta.get("class_name", self.__class__.__name__)
+        self._probed_strands_data = meta.get("strands", [])
+        self._cached_strands: list[Strand] | None = None
+
+    def get_strands(self) -> list[Strand]:
+        if self._cached_strands is not None:
+            return self._cached_strands
+
+        strands: list[Strand] = []
+        for s_data in self._probed_strands_data:
+            s_name = s_data["name"]
+            tier_val = _parse_tier(s_data.get("tier", CapabilityTier.INTERACT), s_name)
+            params = s_data.get("parameters", {})
+            req_list = s_data.get("required", [])
+            strand_desc = s_data.get("description", s_name)
+            no_timeout = bool(s_data.get("no_timeout", False))
+            timeout = None if no_timeout else s_data.get("timeout", 30.0)
+
+            strands.append(
+                Strand(
+                    name=s_name,
+                    description=strand_desc,
+                    parameters=params,
+                    required=req_list,
+                    handler=None,
+                    raw_handler=None,
+                    capability=s_data.get("capability"),
+                    tier=tier_val,
+                    resources=list(s_data.get("resources", [])),
+                    timeout=timeout,
+                    no_timeout=no_timeout,
+                    reason=s_data.get("reason"),
+                    fallback=s_data.get("fallback"),
+                )
+            )
+
+        self._cached_strands = strands
+        return strands
+
+
+def get_yarn_search_paths(config_dir: Path | None = None) -> list[Path]:
+    """Retrieve ordered list of filesystem search paths for yarn discovery using platformdirs."""
+    paths: list[Path] = []
+
+    # 1. Explicit environment variable override
+    env_paths = os.environ.get("TEXTILE_YARN_PATH")
+    if env_paths:
+        for p in env_paths.split(":"):
+            if p.strip():
+                paths.append(Path(p.strip()).expanduser().resolve())
+
+    # 2. User custom / override directory (~/.config/textile/yarns)
+    user_config = config_dir or (Path(platformdirs.user_config_dir("textile")) / "yarns")
+    paths.append(user_config.expanduser().resolve())
+
+    # 3. User installed plugins directory (~/.local/share/textile/yarns)
+    user_data = Path(platformdirs.user_data_dir("textile")) / "yarns"
+    paths.append(user_data.expanduser().resolve())
+
+    # 4. System-wide installed directories (/usr/local/share/textile/yarns, /usr/share/textile/yarns)
+    site_dirs = platformdirs.site_data_dir("textile", multipath=True)
+    for site_dir in site_dirs.split(":"):
+        if site_dir.strip():
+            paths.append((Path(site_dir.strip()) / "yarns").resolve())
+
+    # 5. Sibling textile-yarns repo or workspace dev directory (if running from git source tree)
+    with contextlib.suppress(Exception):
+        sibling_yarns = Path(__file__).resolve().parents[5] / "textile-yarns" / "yarns"
+        if sibling_yarns.exists():
+            paths.append(sibling_yarns.resolve())
+        repo_yarns = Path(__file__).resolve().parents[4] / "yarns"
+        if repo_yarns.exists():
+            paths.append(repo_yarns.resolve())
+
+    seen: set[Path] = set()
+    unique_paths: list[Path] = []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+
+    return unique_paths
+
+
+_CACHE_MEM: dict[str, Any] = {
+    "probe": None,
+    "index": None,
+}
+
+
+def get_probe_cache_file() -> Path:
+    cache_dir = Path(platformdirs.user_cache_dir("textile"))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / "probed_yarns_cache.json"
+
+
+def get_strand_index_file() -> Path:
+    cache_dir = Path(platformdirs.user_cache_dir("textile"))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / "strand_index.json"
+
+
+def read_probe_cache() -> dict[str, Any]:
+    if _CACHE_MEM["probe"] is not None:
+        return _CACHE_MEM["probe"]
+    cache_file = get_probe_cache_file()
+    if not cache_file.exists():
+        _CACHE_MEM["probe"] = {}
+        return _CACHE_MEM["probe"]
+    with contextlib.suppress(OSError, orjson.JSONDecodeError):
+        _CACHE_MEM["probe"] = orjson.loads(cache_file.read_bytes())
+        return _CACHE_MEM["probe"]
+    _CACHE_MEM["probe"] = {}
+    return _CACHE_MEM["probe"]
+
+
+def build_strand_index(probe_cache: dict[str, Any]) -> dict[str, Any]:
+    """Compile a fast lookup index mapping strand_name -> yarn metadata and capability resolution."""
+    strand_index: dict[str, Any] = {}
+    cap_map: dict[str, tuple[int, str]] = {}
+
+    entries: list[tuple[int, str, dict[str, Any]]] = []
+    for py_path, entry in probe_cache.items():
+        data = entry.get("probe_data")
+        if not data:
+            continue
+        entries.append((data.get("layer", 50), py_path, data))
+
+    entries.sort(key=lambda x: x[0])
+
+    for layer, py_path, data in entries:
+        y_name = data.get("name")
+        for s in data.get("strands", []):
+            s_name = s.get("name")
+            if not s_name:
+                continue
+            cap = s.get("capability")
+            if cap and cap in cap_map and cap_map[cap][0] > layer:
+                continue
+            if cap:
+                cap_map[cap] = (layer, s_name)
+
+            strand_index[s_name] = {
+                "yarn_name": y_name,
+                "source_file": py_path,
+                "layer": layer,
+                "strand": s,
+            }
+
+    return strand_index
+
+
+def read_strand_index() -> dict[str, Any]:
+    if _CACHE_MEM["index"] is not None:
+        return _CACHE_MEM["index"]
+    index_file = get_strand_index_file()
+    if index_file.exists():
+        with contextlib.suppress(OSError, orjson.JSONDecodeError):
+            _CACHE_MEM["index"] = orjson.loads(index_file.read_bytes())
+            return _CACHE_MEM["index"]
+
+    # Build from probe cache if missing
+    cache = read_probe_cache()
+    if cache:
+        _CACHE_MEM["index"] = build_strand_index(cache)
+        write_strand_index(_CACHE_MEM["index"])
+        return _CACHE_MEM["index"]
+
+    _CACHE_MEM["index"] = {}
+    return _CACHE_MEM["index"]
+
+
+def write_strand_index(index: dict[str, Any]) -> None:
+    _CACHE_MEM["index"] = index
+    index_file = get_strand_index_file()
+    with contextlib.suppress(OSError, orjson.JSONEncodeError):
+        tmp_file = index_file.with_suffix(".tmp")
+        tmp_file.write_bytes(orjson.dumps(index, option=orjson.OPT_INDENT_2))
+        tmp_file.replace(index_file)
+
+
+def write_probe_cache(cache: dict[str, Any]) -> None:
+    _CACHE_MEM["probe"] = cache
+    cache_file = get_probe_cache_file()
+    with contextlib.suppress(OSError, orjson.JSONEncodeError):
+        tmp_file = cache_file.with_suffix(".tmp")
+        tmp_file.write_bytes(orjson.dumps(cache, option=orjson.OPT_INDENT_2))
+        tmp_file.replace(cache_file)
+    idx = build_strand_index(cache)
+    write_strand_index(idx)
+
+
+def find_yarn_files(target_dir: Path) -> list[Path]:
+    """Discover Yarn Python entrypoint files in target_dir without scanning site-packages."""
+    candidates: list[Path] = []
+    with contextlib.suppress(OSError):
+        for entry in target_dir.iterdir():
+            if entry.name.startswith((".", "_")):
+                continue
+            if entry.is_file() and entry.suffix == ".py":
+                candidates.append(entry)
+            elif entry.is_dir() and entry.name not in {
+                ".venv",
+                "venv",
+                "__pycache__",
+                "site-packages",
+                "node_modules",
+                "dist",
+                "build",
+            }:
+                clean_name = entry.name.removeprefix("textile-yarn-").removeprefix("yarn-")
+                named_py = entry / f"{entry.name}.py"
+                clean_py = entry / f"{clean_name}.py"
+                init_py = entry / "__init__.py"
+
+                if named_py.is_file():
+                    candidates.append(named_py)
+                elif clean_py.is_file():
+                    candidates.append(clean_py)
+                elif init_py.is_file():
+                    candidates.append(init_py)
+    return candidates
+
+
+def _parse_param_type(ann_str: str) -> str:
+    clean = ann_str.split("|", maxsplit=1)[0].strip().lower() if ann_str else "str"
+    if "int" in clean:
+        return "integer"
+    if "float" in clean:
+        return "number"
+    if "bool" in clean:
+        return "boolean"
+    if "list" in clean:
+        return "array"
+    if "dict" in clean:
+        return "object"
+    return "string"
+
+
+@dataclass(frozen=True, slots=True)
+class DecoratorInfo:
+    name: str
+    args: list[Any] = field(default_factory=list)
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    is_call: bool = False
+
+
+def _eval_or_unparse(node: ast.AST) -> Any:
+    """Safely evaluates literals (strings, ints, lists, dicts) or falls back to source string."""
+    try:
+        return ast.literal_eval(node)
+    except ValueError, TypeError, SyntaxError, MemoryError, RecursionError:
+        return ast.unparse(node)
+
+
+def extract_decorator_info(dec_node: ast.expr) -> DecoratorInfo:
+    """Extracts structured information from an AST decorator node."""
+    if not isinstance(dec_node, ast.Call):
+        return DecoratorInfo(name=ast.unparse(dec_node), is_call=False)
+
+    func_name = ast.unparse(dec_node.func)
+
+    args = [
+        f"*{ast.unparse(arg.value)}" if isinstance(arg, ast.Starred) else _eval_or_unparse(arg) for arg in dec_node.args
+    ]
+
+    kwargs: dict[str, Any] = {}
+    for kw in dec_node.keywords:
+        if kw.arg is not None:
+            kwargs[kw.arg] = _eval_or_unparse(kw.value)
+        else:
+            unpack_key = f"**{ast.unparse(kw.value)}"
+            kwargs[unpack_key] = ast.unparse(kw.value)
+
+    return DecoratorInfo(name=func_name, args=args, kwargs=kwargs, is_call=True)
+
+
+def _extract_strand_parameters(
+    item: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[dict[str, Any], list[str]]:
+    num_args = len(item.args.args)
+    num_defaults = len(item.args.defaults)
+    defaults: list[ast.expr | None] = [None] * (num_args - num_defaults) + list(item.args.defaults)
+
+    params: dict[str, Any] = {}
+    required: list[str] = []
+
+    for arg_node, def_node in zip(item.args.args, defaults, strict=False):
+        if arg_node.arg in {"self", "cls"}:
+            continue
+        ann_str = ast.unparse(arg_node.annotation) if arg_node.annotation else "str"
+        prop: dict[str, Any] = {"type": _parse_param_type(ann_str)}
+        if def_node is not None:
+            prop["default"] = _eval_or_unparse(def_node)
+        else:
+            required.append(arg_node.arg)
+        params[arg_node.arg] = prop
+
+    return params, required
+
+
+def _extract_strand_data(
+    item: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, Any] | None:
+    strand_info: DecoratorInfo | None = None
+    for d in item.decorator_list:
+        info = extract_decorator_info(d)
+        if "strand" in info.name:
+            strand_info = info
+            break
+
+    if strand_info is None:
+        return None
+
+    dec_kwargs = strand_info.kwargs
+    tier = dec_kwargs.get("tier")
+    if not tier:
+        tier = strand_info.name.split(".")[-1].upper() if "." in strand_info.name else "INTERACT"
+
+    method_doc = ast.get_docstring(item) or ""
+    method_first_line = method_doc.splitlines()[0].strip() if method_doc else item.name
+    desc = dec_kwargs.get("description")
+    s_name = dec_kwargs.get("name")
+
+    if strand_info.args:
+        first_arg = strand_info.args[0]
+        if not s_name and isinstance(first_arg, str):
+            s_name = first_arg
+        if not desc and len(strand_info.args) > 1:
+            second_arg = strand_info.args[1]
+            if isinstance(second_arg, str):
+                desc = second_arg
+
+    s_name = s_name or item.name
+    desc = desc or method_first_line
+
+    params, required = _extract_strand_parameters(item)
+    no_timeout = bool(dec_kwargs.get("no_timeout", False))
+    timeout = None if no_timeout else dec_kwargs.get("timeout")
+
+    return {
+        "name": s_name,
+        "description": desc,
+        "tier": str(tier),
+        "parameters": params,
+        "required": required,
+        "timeout": timeout,
+        "no_timeout": no_timeout,
+        "capability": dec_kwargs.get("capability"),
+        "resources": dec_kwargs.get("resources", []),
+        "reason": dec_kwargs.get("reason"),
+        "fallback": dec_kwargs.get("fallback"),
+    }
+
+
+def _read_accompanying_pyproject(py_file: Path) -> dict[str, Any]:
+    pyproject_file = py_file.parent / "pyproject.toml"
+    if not pyproject_file.is_file():
+        return {}
+    with contextlib.suppress(OSError, tomllib.TOMLDecodeError):
+        toml_data = tomllib.loads(pyproject_file.read_text(encoding="utf-8"))
+        proj_meta = toml_data.get("project", {})
+        proj_meta.update(toml_data.get("tool", {}).get("textile", {}))
+        return proj_meta
+    return {}
+
+
+def _inspect_class_body(
+    node: ast.ClassDef,
+) -> list[dict[str, Any]]:
+    strands_data: list[dict[str, Any]] = []
+
+    for item in node.body:
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            strand_info = _extract_strand_data(item)
+            if strand_info:
+                strands_data.append(strand_info)
+
+    return strands_data
+
+
+def _build_yarn_manifest(
+    node: ast.ClassDef,
+    strands_data: list[dict[str, Any]],
+    proj_meta: dict[str, Any],
+) -> dict[str, Any]:
+    raw_name = proj_meta.get("name", "").removeprefix("textile-yarn-").removeprefix(
+        "yarn-"
+    ) or node.name.lower().removesuffix("yarn")
+    yarn_desc = proj_meta.get("description", "") or raw_name
+
+    return {
+        "class_name": node.name,
+        "name": raw_name,
+        "description": yarn_desc,
+        "layer": int(proj_meta.get("layer", 50)),
+        "tailor": str(proj_meta.get("tailor", "textile")),
+        "version": str(proj_meta.get("version", "1.0.0")),
+        "resources": list(proj_meta.get("resources", [])),
+        "strands": strands_data,
+    }
+
+
+def parse_yarn_manifest_ast(py_file: Path) -> dict[str, Any] | None:
+    """Statically parse a Yarn source file and extract its manifest and strands without executing code."""
+    try:
+        source = py_file.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(py_file))
+    except OSError, SyntaxError, UnicodeDecodeError:
+        return None
+
+    proj_meta = _read_accompanying_pyproject(py_file)
+
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+
+        is_yarn_class = any(
+            (isinstance(b, ast.Name) and b.id == "Yarn") or (isinstance(b, ast.Attribute) and b.attr == "Yarn")
+            for b in node.bases
+        )
+
+        strands_data = _inspect_class_body(node)
+        if not is_yarn_class and not strands_data:
+            continue
+
+        return _build_yarn_manifest(node, strands_data, proj_meta)
+
+    return None
+
+
+def try_probe_isolated_yarn(py_file: Path) -> ProbedYarn | None:
+    """Discover Yarn statically using pure-Python AST parsing with schema disk cache."""
+    resolved_path = py_file.resolve()
+    if not resolved_path.is_file():
+        return None
+
+    path_str = str(resolved_path)
+    try:
+        mtime = resolved_path.stat().st_mtime
+    except OSError:
+        return None
+
+    cache = read_probe_cache()
+    cached_entry = cache.get(path_str)
+    if cached_entry and cached_entry.get("mtime") == mtime and "probe_data" in cached_entry:
+        data = cached_entry["probe_data"]
+        return ProbedYarn(
+            name=data["name"],
+            description=data["description"],
+            layer=data["layer"],
+            source_file=resolved_path,
+            meta=data,
+            tailor=data.get("tailor", "textile"),
+            version=data.get("version", "1.0.0"),
+            resources=data.get("resources", []),
+        )
+
+    data = parse_yarn_manifest_ast(resolved_path)
+    if not data:
+        return None
+
+    probed_inst = ProbedYarn(
+        name=data["name"],
+        description=data["description"],
+        layer=data["layer"],
+        source_file=resolved_path,
+        meta=data,
+        tailor=data.get("tailor", "textile"),
+        version=data.get("version", "1.0.0"),
+        resources=data.get("resources", []),
+    )
+    cache[path_str] = {"mtime": mtime, "probe_data": data}
+    write_probe_cache(cache)
+    return probed_inst
+
+
+probe_isolated_yarn = try_probe_isolated_yarn
+
+
+@camshaft.on("get_yarn_search_paths")
+def _on_get_yarn_search_paths(_sender: Any = None, *, config_dir: Path | None = None, **_kw: Any) -> list[Path]:
+    return get_yarn_search_paths(config_dir=config_dir)
+
+
+@camshaft.on("find_yarn_files")
+def _on_find_yarn_files(_sender: Any = None, *, target_dir: Path | None = None, **_kw: Any) -> list[Path]:
+    if target_dir is None:
+        return []
+    return find_yarn_files(target_dir)
+
+
+@camshaft.on("probe_isolated_yarn")
+def _on_probe_isolated_yarn(_sender: Any = None, *, file_path: Path | None = None, **_kw: Any) -> ProbedYarn | None:
+    if file_path is None:
+        return None
+    return try_probe_isolated_yarn(file_path)
+
+
+@camshaft.on("parse_yarn_manifest_ast")
+def _on_parse_yarn_ast(_sender: Any = None, *, file_path: Path | None = None, **_kw: Any) -> dict[str, Any] | None:
+    if file_path is None:
+        return None
+    return parse_yarn_manifest_ast(file_path)
+
+
+@camshaft.on("read_strand_index")
+def _on_read_strand_index(_sender: Any = None, **_kw: Any) -> dict[str, Any]:
+    return read_strand_index()
+
+
+@camshaft.on("write_strand_index")
+def _on_write_strand_index(_sender: Any = None, *, index: dict[str, Any] | None = None, **_kw: Any) -> None:
+    if index is not None:
+        write_strand_index(index)
+
+
+@camshaft.on("build_strand_index")
+def _on_build_strand_index(
+    _sender: Any = None,
+    *,
+    probe_cache: dict[str, Any] | None = None,
+    **_kw: Any,
+) -> dict[str, Any]:
+    return build_strand_index(probe_cache or {})
+
+
+@camshaft.on("read_probe_cache")
+def _on_read_probe_cache(_sender: Any = None, **_kw: Any) -> dict[str, Any]:
+    return read_probe_cache()
+
+
+@camshaft.on("write_probe_cache")
+def _on_write_probe_cache(_sender: Any = None, *, cache: dict[str, Any] | None = None, **_kw: Any) -> None:
+    if cache is not None:
+        write_probe_cache(cache)

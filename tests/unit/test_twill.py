@@ -5,44 +5,46 @@ import unittest
 from mcp import ClientSession, types
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-from textile.core.orchestration.loom import loom
-from textile.core.orchestration.twill import create_twill_server
-from textile.core.security.policy import get_tier_policy
+from textile.core.camshaft import camshaft
+from textile.core.twill.mesh import create_twill_server
 
 
 class TestTierPolicy(unittest.TestCase):
-    """Unit tests for TierPolicy security matrix and get_tier_policy()."""
+    """Unit tests for TierPolicy security matrix and camshaft.get_tier_policy()."""
+
+    def setUp(self):
+        camshaft.initialize()
 
     def test_observe_tier_policy(self):
-        policy = get_tier_policy("observe")
+        policy = camshaft.get_tier_policy("observe")
         self.assertFalse(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertFalse(policy.workspace_writable)
         self.assertEqual(policy.default_timeout, 10.0)
 
     def test_interact_tier_policy(self):
-        policy = get_tier_policy("interact")
+        policy = camshaft.get_tier_policy("interact")
         self.assertFalse(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertFalse(policy.workspace_writable)
         self.assertEqual(policy.default_timeout, 15.0)
 
     def test_mutate_tier_policy(self):
-        policy = get_tier_policy("mutate")
+        policy = camshaft.get_tier_policy("mutate")
         self.assertTrue(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertTrue(policy.workspace_writable)
         self.assertEqual(policy.default_timeout, 60.0)
 
     def test_privileged_tier_policy(self):
-        policy = get_tier_policy("privileged")
+        policy = camshaft.get_tier_policy("privileged")
         self.assertTrue(policy.requires_2fa)
         self.assertFalse(policy.requires_sandbox)
         self.assertTrue(policy.workspace_writable)
         self.assertEqual(policy.default_timeout, 300.0)
 
     def test_system_exec_tier_policy(self):
-        policy = get_tier_policy("system_exec")
+        policy = camshaft.get_tier_policy("system_exec")
         self.assertTrue(policy.requires_2fa)
         self.assertTrue(policy.requires_sandbox)
         self.assertFalse(policy.workspace_writable)
@@ -50,12 +52,12 @@ class TestTierPolicy(unittest.TestCase):
 
     def test_invalid_tier_fails_closed(self):
         with self.assertRaises(ValueError):
-            get_tier_policy("invalid_untrusted_tier")
+            camshaft.get_tier_policy("invalid_untrusted_tier")
 
 
 class TestTwillServer(unittest.TestCase):
     def setUp(self):
-        loom.initialize()
+        camshaft.initialize()
 
     def test_twill_server_creation(self):
         app = create_twill_server()
@@ -63,7 +65,7 @@ class TestTwillServer(unittest.TestCase):
 
     def test_twill_stdio_client_connection(self):
         async def _run_test():
-            params = StdioServerParameters(command=sys.executable, args=["-m", "textile.core.orchestration.twill"])
+            params = StdioServerParameters(command=sys.executable, args=["-m", "textile.core.twill.mesh"])
             async with (
                 stdio_client(params) as (read_stream, write_stream),
                 ClientSession(read_stream, write_stream) as session,
@@ -78,6 +80,23 @@ class TestTwillServer(unittest.TestCase):
                 item = res.content[0]
                 text_content = item.text if isinstance(item, types.TextContent) else getattr(item, "text", "")
                 self.assertIn("slots", text_content)
+
+        asyncio.run(_run_test())
+
+    def test_twill_call_tool_error_handling(self):
+        async def _run_test():
+            params = StdioServerParameters(command=sys.executable, args=["-m", "textile.core.twill.mesh"])
+            async with (
+                stdio_client(params) as (read_stream, write_stream),
+                ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                res = await session.call_tool("non_existent_tool_123", {})
+                self.assertTrue(res.is_error)
+                self.assertIsNotNone(res.content)
+                item = res.content[0]
+                text_content = item.text if isinstance(item, types.TextContent) else getattr(item, "text", "")
+                self.assertIn("Error:", text_content)
 
         asyncio.run(_run_test())
 

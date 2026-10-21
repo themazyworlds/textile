@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from textile.core.orchestration.skein import skein
+from textile.core.skein.mesh import skein
 
 # Discover yarns from sibling repo (../textile-yarns/yarns) or fallback to workspace
 sibling_yarns = Path(__file__).resolve().parents[2] / "textile-yarns" / "yarns"
